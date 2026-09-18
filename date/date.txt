@@ -1,0 +1,124 @@
+Funkcija / metoda	                Šta radi	                                Primer / napomena
+----------------------------------------------------------------------------------------------------
+
+date()	                            formatira datum/vreme	                    date('Y-m-d H:i:s')
+
+time()	                            trenutni Unix timestamp	                    time()
+
+strtotime()	                        tekst → timestamp	                        strtotime('+2 days')
+
+mktime()	                        ručno pravi timestamp	                    mktime(12, 0, 0, 9, 18, 2026)
+
+checkdate()	                        proverava validnost datuma	                checkdate(2, 29, 2024)
+
+getdate()	                        timestamp → niz informacija	                getdate()
+
+gmdate()	                        kao date(), ali UTC	                        gmdate('Y-m-d H:i:s')
+
+microtime()	                        vreme sa mikrosekundama	korisno za benchmarking
+
+hrtime()	                        high-resolution timer	                    preciznije merenje trajanja
+
+date_default_timezone_set()	        postavlja timezone	                        Europe/Belgrade
+
+date_default_timezone_get()	        vraća trenutni timezone	—
+
+timezone_identifiers_list()	        lista timezone-ova	—
+
+new DateTime()	                    objekat za datum/vreme	                    mutable
+
+new DateTimeImmutable()	            immutable datum/vreme	                    često bolji izbor
+
+DateTime::format()	                formatira datum	                            $date->format('d.m.Y')
+
+DateTime::modify()	                menja datum relativno	                    ->modify('+1 month')
+
+DateTime::setDate()	                menja datum	godina, mesec, dan
+
+DateTime::setTime()	                menja vreme	sat, minut, sekund
+
+DateTime::setTimezone()	            menja timezone	—
+
+DateTime::getTimestamp()	        DateTime → timestamp	—
+
+DateTime::setTimestamp()	        timestamp → DateTime	—
+
+DateTime::diff()	                razlika između datuma	                    vraća DateInterval
+
+DateTime::add()	                    dodaje interval	P2D = 2 dana
+
+DateTime::sub()	                    oduzima interval	—
+
+new DateInterval()	                predstavlja vremenski interval	            new DateInterval('P1M')
+
+DateInterval::format()	            formatira razliku	                        %y, %m, %d
+
+new DatePeriod()	                prolazi kroz raspon datuma	kalendari, rezervacije
+
+DateTime::createFromFormat()	    parsira poznati format	veoma korisno
+DateTime::getLastErrors()	        greške pri parsiranju	                    validacija datuma
+
+date_parse()	                    rastavlja datum na komponente	            proceduralna alternativa
+
+
+--------------------------------------- MAPA PAMĆENJA -----------------------------------------------------
+
+CURRENT TIME
+time()
+
+TEXT → TIME
+strtotime()
+createFromFormat()
+
+TIME → TEXT
+date()
+format()
+
+CHANGE TIME
+modify()
+add()
+sub()
+
+COMPARE TIME
+diff()
+
+RANGE OF DATES
+DatePeriod
+
+DURATION
+DateInterval
+
+TIMEZONE
+DateTimeZone
+setTimezone()
+
+PERFORMANCE TIME
+microtime()
+hrtime()
+
+
+
+-------------------------------------------------- STRINGS UNUTAR METODA -> ZNAČENJE -----------------------------
+
+|   Oznaka|          | Značenje  |              | Primer |
+|--------------------------------------------------------|
+|   `Y`   |         godina, 4 cifre             | `2026` |
+|   `y`   |         godina, 2 cifre             | `26` |
+|   `m`   |         mesec `01–12`               | `09` |
+|   `n`   |         mesec `1–12`                | `9` |
+|   `d`   |         dan `01–31`                 | `18` |
+|   `j`   |         dan `1–31`                  | `18` |
+|   `H`   |         sat `00–23`                 | `07` |
+|   `i`   |         minuti                      | `41` |
+|   `s`   |         sekunde                     | `49` |
+|   `l`   |         naziv dana                  | `Friday` |
+|   `D`   |         skraćeni dan                | `Fri` |
+|   `F`   |         naziv meseca                | `September` |
+|   `M`   |         skraćeni mesec              | `Sep` |
+|   `N`   |         dan u nedelji `1–7`         | `5` |
+|   `w`   |         dan u nedelji `0–6`         | `5` |
+|   `t`   |         broj dana u mesecu          | `30` |
+|   `L`   |         prestupna godina            | `0` / `1` |
+|   `U`   |         Unix timestamp              | `...` |
+|   `c`   |         ISO 8601                    | veoma korisno |
+
