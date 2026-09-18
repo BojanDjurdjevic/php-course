@@ -229,5 +229,248 @@ echo "<br>";
 
 // -------------------------------------
 
-//array_reverse() -> obrće redosled -> Laravel: reverse()
+//array_reverse(array, preserve - optional (bool), da li se čuvaju ili ne ključevi) -> obrće redosled -> Laravel: reverse()
 
+$cars = ['Alfa Romeo' => 'Giulietta', 'Fiat' => '500L', 'Lancia' => 'Delta', 'Opel' => 'Astra K'];
+
+$reversecars = array_reverse($cars);
+$preserve = array_reverse($cars, true);
+
+print_r($reversecars);
+echo "</br>";
+print_r($preserve);
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_search(value, array, strict - optional (bool), ako hoćemo da se razlikuju po tipu) -> pronalazi i vraća ključ zadate vrednosti -> Laravel: search()
+
+/**
+ * Ako nađe vrednost -> vraća njen ključ (prvi koji se poklapa)
+ * Ako ne nađe -> FALSE
+ * Ako je pogrešan parametar -> NULL
+ */
+
+$fruits = ['a' => 'Kruška', 'b' => 'Jabuka', 'c' => 9, 'd' => 'Grožđe', 'e' => "9", 'f' => 'Šljiva', 'g' => "9"];
+
+echo array_search('Jabuka', $fruits);
+echo "</br>";
+echo array_search('9', $fruits, true);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_slice(array, start, length - optional (num), preserve (bool)) -> iseca određenji deo niza od čega nastaje novi niz -> Laravel: slice()
+
+/**
+ * start - Određuje odakle će početi sečenje, tj od kog indexa (počinje se od narednog / 2 -> od 3). 
+ * Ako je negativan br, broji se od poslednjeg ind i sečenje počinje u zavisnosti od broja (-2 -> pretposlednji ind).
+ * 
+ * preserve - ako je na true -> zadržava svoje ključeve (index ako nije assoc) iz prethodnog niza. 
+ */
+
+$colors = ["red","green","blue","yellow","brown","white"];
+
+print_r(array_slice($colors, 2));
+echo "</br>";
+
+print_r(array_slice($colors, -3, 2));
+echo "</br>";
+
+print_r(array_slice($colors, 2, 3, true));
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_sum(array) -> Vraća zbir elemenata niza -> Laravel: sum()
+
+$a= ["a" => 52.2,"b" => 13.7,"c" => 0.9];
+echo array_sum($a);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_unique(array, sorttype - optionnal (određuje kako se vrši poređenje)) -> Uklanja duplikate -> Laravel: unique()
+
+$colors = ["red", "green", "red", "blue", "yellow", "brown", "white", "red"];
+
+print_r(array_unique($colors));
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// in_array(value, array, strict - optional (bool)) -> Proverava da li je zdata vrednost u nizu -> Laravel: contains()
+
+/**
+ * strict - Ako je true, biće proveravani i tipovi podataka, a ako je value string, biće i case-sensitive.
+ */
+
+$names = ["Peter", "Joe", "Glenn", "Cleveland", 23];
+
+if(in_array("23", $names, true)) {
+    echo "23 je u nizu";
+} else {
+    echo "23 nije u nizu";
+}
+
+echo "</br>";
+
+if(in_array(23, $names, true)) {
+    echo "23 je u nizu";
+} else {
+    echo "23 nije u nizu";
+}
+
+echo "</br>";
+
+if(in_array("Glenn", $names, true)) {
+    echo "Glenn je u nizu";
+} else {
+    echo "Glenn nije u nizu";
+}
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// sort(array, sorttypes) - asc / rsort() - desc ->  sortira običan niz rastuće / opadajuće (ASC / DESC) -> Laravel: sort()
+
+$numbers = [4, 6, 2, 22, 11];
+sort($numbers); 
+print_r($numbers);
+echo "</br>";
+
+$cars = ["Volvo","BMW", "Alfa Romeo", "Toyota"];
+rsort($cars);
+print_r($cars);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+// asort() / arsort() -> sortira assoc niz ASC / DESC prema vrednostima (čuva ključeve) -> Laravel: sort()
+
+$age = ["Peter" => "35", "Ben" => "55", "Joe" => "43"];
+asort($age);
+print_r($age);
+echo "</br>";
+
+arsort($age);
+print_r($age);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+// ksort(array) / krsort(array) -> sortira ASC DESC po ključevima -> Laravel: sortKeys()
+
+ksort($age);
+print_r($age);
+echo "</br>";
+
+krsort($age);
+print_r($age);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+// usort(array, callback) / custom sortiranje -> Laravel: callbackomsort() / sortBy()
+
+function my_sort($a, $b) {
+  if ($a == $b) return 0;
+  return ($a < $b) ? -1 : 1;
+}
+
+$a = array(4, 2, 8, 6);
+usort($a, "my_sort");
+
+foreach($a as $key => $value) {
+  echo "[" . $key . "] => " . $value;
+  echo "<br>";
+}
+
+echo "<br>";
+echo "<br>";
+
+// ---------------------------- VAŽNO - čuvena trojka kao u JS -------------------------------------------//
+
+// array_map(my_function, array1, array2, ...) -> transformiše svaki element prema uputstvima -> Laravel: map()
+
+/**
+ * Šalje svaki element niza u custom made funkciju koja proverava svaki element i transformiše ga po potrebi.
+ * Vraća novi niz sa transformisanim vrednostima.
+ */
+
+$osobe = [
+    [
+        'ime' => 'Bojan',
+        'prezime' => 'Đurđević',
+        'godine' => 40
+    ],
+
+    [
+        'ime' => 'Milan',
+        'prezime' => 'Vasić',
+        'godine' => 45
+    ],
+
+    [
+        'ime' => 'Jovan',
+        'prezime' => 'Jović',
+        'godine' => 17
+    ],
+];
+
+$osobe2 = array_map(function ($osoba) {
+    $osoba['punoletan'] = $osoba['godine'] > 17 ? true : false;
+
+    return $osoba;
+}, $osobe);
+
+print_r($osobe2);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_filter(array, callback, flag) -> Filtrira vrednosti niza, prema callbackfunkciji.
+/**
+ * Klučevi ostaju očuvani.
+ * Filtriraju se vrednosti prema callback-u, i ako vrednost odgovara filteru (ako je true), vrednost ostaje u nizu.
+ */
+
+$osobe3 = array_filter($osobe2, fn($osoba) => $osoba['punoletan']);
+print_r($osobe3);
+
+echo "<br>";
+echo "<br>";
+
+// -------------------------------------
+
+// array_reduce(array, my_function, initial)
+/**
+*  MAP       jedan element → transformacija u drugi element
+*  FILTER    mnogo elemenata → ostaju samo oni koji zadovoljavaju uslov
+*  REDUCE    mnogo elemenata → jedna vrednost na kraju
+ */
+
+$brojevi = [5, 10, 15, 25, 30];
+$animals = ["Dog", "Cat", "Fox", "Horse", "Wolf"];
+
+$novi_br = array_reduce($brojevi, fn($carry, $item) => $carry + $item);
+$new_animals = array_reduce($animals, fn($carry, $item) => $carry . " - " . $item);
+
+print_r($novi_br);
+echo "</br>";
+print_r($new_animals);
