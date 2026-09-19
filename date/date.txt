@@ -122,3 +122,41 @@ hrtime()
 |   `U`   |         Unix timestamp              | `...` |
 |   `c`   |         ISO 8601                    | veoma korisno |
 
+
+---------------------------------------------------- MAPA ZA DATE OBJEKAT -------------------------------------------------
+
+NAPRAVI DATUM
+new DateTime()
+new DateTimeImmutable()
+
+PRIKAŽI DATUM
+format()
+
+PROMENI DATUM
+modify()
+setDate()
+setTime()
+
+DODAJ / ODUZMI
+add()
+sub()
+DateInterval
+
+UPOREDI DATUME
+diff()
+
+RASPON DATUMA
+DatePeriod
+
+INPUT → DATUM
+createFromFormat()
+
+VALIDACIJA
+getLastErrors()
+
+TIMEZONE
+setTimezone()
+
+DATETIME ↔ UNIX
+getTimestamp()
+setTimestamp()
