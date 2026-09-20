@@ -148,7 +148,7 @@ print_r(date_parse("2013-05-01 12:30:45.5"));
 echo "</br>" . "</br>";
 //-------------------------------
 
-// -------------------------------------------------------- DATE AS OBJECT---------------------------------------------------
+// ------------- DATE AS OBJECT ------------------- DATE AS OBJECT ------------------------ DATE AS OBJECT -------------- DATE AS OBJECT ----------------- DATE AS OBJECT -------------------- DATE AS OBJECT ------------------------------
 
 // DateTime je mutable i njegove metode mogu promeniti postojeći objekat
 
@@ -208,5 +208,111 @@ $date->setTime(14, 30); // h, m, mogu se dodati i s
 
 echo $date->format('Y-m-d H:i:s');
 // 2026-09-19 14:30:00
+
+echo "</br>" . "</br>";
+//-------------------------------
+
+// setTimezone()
+
+echo "<b>setTimezone()<b> </br>";
+
+$date = new DateTime(
+    "today", // zašto postavlja na 00 ?
+    new DateTimeZone("Europe/Belgrade")
+);
+
+$date->setTimezone(
+    new DateTimeZone("America/New_York")
+); 
+
+echo $date->format("d.m.Y H:i:s");
+
+echo "</br>" . "</br>";
+//-------------------------------
+
+// get / setTimestamp()
+
+echo "<b>get / setTimestamp()<b> </br>";
+
+$date = new DateTime('2026-09-19 12:00:00');
+
+$timestamp = $date->getTimestamp();
+
+echo $timestamp . "</br>" . "</br>";
+
+$date = new DateTime();
+
+$date->setTimestamp(1789812000);
+
+echo $date->format('Y-m-d H:i:s');
+
+echo "</br>" . "</br>";
+//-------------------------------------------------- VAŽNO!!! Računa razlkiku između 2 datuma -------------------------------------------------
+
+// diff()
+
+echo "<b>diff()<b> </br>";
+
+$start = new DateTime('2020-01-01');
+
+$end = new DateTime('2026-09-19');
+
+$diff = $start->diff($end);
+
+echo $diff->y;
+
+/**
+ *   echo $diff->y; // godine
+ *   echo $diff->m; // meseci
+ *   echo $diff->d; // dani
+ */
+
+echo "</br>" . "</br>";
+
+echo "<b>Razlika u godinama (sa datumima) - rođendan->danas<b> </br>";
+
+$birth = new DateTime('1986-12-08');
+$today = new DateTime('today');
+
+$age = $birth->diff($today)->y;
+
+echo $age;
+// 40
+
+echo "</br>" . "</br>";
+//--------------------------------------------------
+
+// add() -> dodaje date interval. sub() oduzima interval
+
+echo "<b>DateTime::add()<b> </br>";
+
+$start = new DateTime('today');
+
+$interval = new DateInterval('P5D');
+
+$date->add($interval);
+
+echo $date->format('Y-m-d');
+
+/**
+ *   P5D -> 5 days
+ *   P1M -> 1 month
+ *   P1Y -> 1 year
+ *   P2W -> 2 weeks      
+ */
+
+echo "</br>" . "</br>";
+
+echo "<b>sub()<b> </br>";
+
+$interval = new DateInterval('P10D');
+
+$date->sub($interval);
+
+echo $date->format('Y-m-d');
+
+
+echo "</br>" . "</br>";
+//--------------------------------------------------
 
 ?>
