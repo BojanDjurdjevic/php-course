@@ -189,3 +189,203 @@ setTimestamp()
 | `createFromFormat()`          | `Carbon::createFromFormat()`                          | skoro isto |
 | `getLastErrors()`             | `Carbon::getLastErrors()`                             | dostupno |
 | `checkdate()`                 | `Carbon::canBeCreatedFromFormat()` / validacija       | zavisi od slučaja |
+
+
+------------------------------------------------------- CARBON METODE ZA MODIFY() --------------------------------------------------------------
+
+$date->addSecond();
+$date->addSeconds(10);
+
+$date->addMinute();
+$date->addMinutes(30);
+
+$date->addHour();
+$date->addHours(3);
+
+$date->addDay();
+$date->addDays(7);
+
+$date->addWeek();
+$date->addWeeks(2);
+
+$date->addMonth();
+$date->addMonths(3);
+
+$date->addYear();
+$date->addYears(5);
+
+
+// ANALOGNO I ZA SUB() (SMANJITI ZA...)
+
+$date->subDay();
+$date->subDays(5);
+
+$date->subWeek();
+$date->subMonth();
+$date->subYear();
+
+$date->subHours(3);
+$date->subMinutes(30);
+
+----------------------------------------------------- CARBON metode za diff() -----------------------------------------------------------------------
+
+diffInSeconds()
+diffInMinutes()
+diffInHours()
+diffInDays()
+diffInWeeks()
+diffInMonths()
+diffInYears()
+
+// Posebno za poređenja u odnosu na danas:
+
+isToday()
+isTomorrow()
+isYesterday()
+
+isPast()
+isFuture()
+
+isWeekend()
+isWeekday()
+
+-------------------
+
+isSameDay()
+isSameMonth()
+isSameYear()
+isSameHour()
+
+-------------------------------------------------- CARBON metode za format ---------------------------------------------------------------------------
+
+$date->year;
+$date->month;
+$date->day;
+
+$date->hour;
+$date->minute;
+$date->second;
+
+$date->dayOfWeek;
+$date->dayOfYear;
+$date->weekOfYear;
+
+$date->daysInMonth;
+
+---------------------------------------------- SUMA Laravel metoda za vreme ------------------------------------------------------------------------------
+
+now()
+today()
+
+Carbon::now()
+Carbon::parse()
+Carbon::create()
+Carbon::createFromFormat()
+
+format()
+toDateString()
+toDateTimeString()
+
+addDay()
+addDays()
+addWeek()
+addMonth()
+addYear()
+
+subDay()
+subDays()
+subMonth()
+
+startOfDay()
+endOfDay()
+startOfWeek()
+endOfWeek()
+startOfMonth()
+endOfMonth()
+
+diffInDays()
+diffInHours()
+diffInMonths()
+diffInYears()
+diffForHumans()
+
+isPast()
+isFuture()
+isToday()
+isWeekend()
+
+isSameDay()
+
+gt()
+gte()
+lt()
+lte()
+
+between()
+
+timezone()
+
+timestamp
+
+copy()
+
+--------------------------------------------------------------------- MAPA pamćenja -------------------------------------------------------------
+
+NAPRAVI DATUM
+now()
+today()
+Carbon::parse()
+Carbon::create()
+Carbon::createFromFormat()
+
+        ↓
+
+PROMENI DATUM
+addDay()
+addDays()
+addMonth()
+subDay()
+subMonth()
+
+        ↓
+
+GRANICE PERIODA
+startOfDay()
+endOfDay()
+startOfMonth()
+endOfMonth()
+
+        ↓
+
+UPOREDI
+isPast()
+isFuture()
+isToday()
+gt()
+lt()
+between()
+
+        ↓
+
+RAZLIKA
+diffInDays()
+diffInHours()
+diffInYears()
+
+        ↓
+
+PRIKAŽI
+format()
+toDateString()
+toDateTimeString()
+diffForHumans()
+
+        ↓
+
+RASPON
+CarbonPeriod
+
+        ↓
+
+TRAJANJE
+CarbonInterval
