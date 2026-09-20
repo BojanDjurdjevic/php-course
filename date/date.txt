@@ -160,3 +160,32 @@ setTimezone()
 DATETIME ↔ UNIX
 getTimestamp()
 setTimestamp()
+
+
+------------------------------------------------------ PANDAN SVEMU OVOME U LARAVELU -------------------------------------------------------
+
+| Core PHP                      | Carbon / Laravel                                      | Primer |
+
+|------------------------------------------------------------------------------------------------|
+
+| `new DateTime()`              | `Carbon::now()` / `now()`                             | `$date = now();` |
+| `new DateTime('...')`         | `Carbon::parse()`                                     | `Carbon::parse('2026-09-20')` |
+| `new DateTimeImmutable()`     | `CarbonImmutable::parse()`                            | immutable pristup |
+| `date()`                      | `->format()`                                          | `now()->format('d.m.Y')` |
+| `time()`                      | `now()->timestamp`                                    | Unix timestamp |
+| `strtotime()`                 | `Carbon::parse()`                                     | `Carbon::parse('next Monday')` |
+| `modify('+1 month')`          | `->addMonth()`                                        | čitljivije |
+| `modify('-3 days')`           | `->subDays(3)`                                        | — |
+| `setDate()`                   | `->setDate()`                                         | isto postoji |
+| `setTime()`                   | `->setTime()`                                         | isto postoji |
+| `setTimezone()`               | `->setTimezone()` / `->timezone()`                    | — |
+| `getTimestamp()`              | `->timestamp` / `->getTimestamp()`                    | — |
+| `setTimestamp()`              | `Carbon::createFromTimestamp()`                       | — |
+| `diff()`                      | `diffInDays()`, `diffInYears()`...                    | mnogo praktičnije |
+| `add(DateInterval)`           | `addDay()`, `addMonth()`...                           | — |
+| `sub(DateInterval)`           | `subDay()`, `subMonth()`...                           | — |
+| `DateInterval`                | `CarbonInterval`                                      | `CarbonInterval::days(3)` |
+| `DatePeriod`                  | `CarbonPeriod`                                        | raspon datuma |
+| `createFromFormat()`          | `Carbon::createFromFormat()`                          | skoro isto |
+| `getLastErrors()`             | `Carbon::getLastErrors()`                             | dostupno |
+| `checkdate()`                 | `Carbon::canBeCreatedFromFormat()` / validacija       | zavisi od slučaja |

@@ -298,7 +298,10 @@ echo $date->format('Y-m-d');
  *   P5D -> 5 days
  *   P1M -> 1 month
  *   P1Y -> 1 year
- *   P2W -> 2 weeks      
+ *   P2W -> 2 weeks    
+ *   PT2H    2 hours
+ *   PT30M   30 min
+ *   PT45S   45 sec
  */
 
 echo "</br>" . "</br>";
@@ -311,6 +314,113 @@ $date->sub($interval);
 
 echo $date->format('Y-m-d');
 
+
+echo "</br>" . "</br>";
+//--------------------------------------------------
+
+/**
+ *   DateInterval::format()
+ * 
+  *  new DateInterval('P2DT3H'); -> 2 days & 3 hours
+
+  *  Ne mešati sa DateInterval (koristi Y-m-d)
+  *  DateInterval::format() koristi:
+
+  *  %y → godine
+  *  %m → meseci
+  *  %d → dani
+  *  %h → sati
+  *  %i → minuti
+  *  %s → sekunde
+
+  * !!! Formatira rezultat intervala
+ */
+
+ $start = new DateTime('2020-03-10');
+ $end = new DateTime('2026-09-19');
+
+ $diff = $start->diff($end);
+
+ echo $diff->format('%y godina, %m meseci, %d dana');
+
+ echo "</br>" . "</br>";
+//--------------------------------------------------
+
+// new DatePeriod() -> ODLIČAN ZA GENERISANJE NIZA DATUMA
+
+echo "<b>" . "DatePeriod " . "</b>" . "</br></br>";
+
+$start = new DateTime('tomorrow');
+$end = new DateTime('+8 days');
+
+$interval = new DateInterval('P1D');
+
+$period = new DatePeriod($start, $interval, $end); // 3 params: pčetak, koji interval, kraj
+
+foreach ($period as $date) {
+    echo $date->format('Y-m-d') . "</br>";
+}
+
+ echo "</br>" . "</br>";
+//--------------------------------------------------
+
+// new DateTime::createFromFormat() -> Formatiranje datuma (korisno kod user unosa, i pravilan unos u bazu)
+
+echo "<b>" . "DateTime::createFromFortmat() " . "</b>" . "</br></br>";
+
+$input = '19.09.2026 14:30';
+
+$date = DateTime::createFromFormat(
+    'd.m.Y H:i',
+    $input
+);
+
+echo $date->format('Y-m-d H:i:s');
+// 2026-09-19 14:30:00
+
+ echo "</br>" . "</br>";
+//--------------------------------------------------
+
+// new DateTime::getLastErrors() -> Korisno da se proveri datum, jer PHP ponekad može da normalizuje nevalidan datum
+
+echo "<b>" . "DateTime::getLastErrors() " . "</b>" . "</br></br>";
+
+$date = DateTime::createFromFormat(
+    'd/m/Y',
+    '32/09/2026'
+);
+
+$errors = DateTime::getLastErrors();
+
+print_r($errors);
+echo "</br>";
+
+if ($errors !== false && $errors['warning_count'] > 0) {
+    echo 'Datum nije validan.';
+}
+
+echo "</br>" . "</br>";
+//--------------------------------------------------
+
+// Bolji primer lastErrors:
+
+echo "<b>" . "DateTime::getLastErrors() - još jedan primer " . "</b>" . "</br></br>";
+
+$input = '19/09/2026';
+
+$date = DateTime::createFromFormat('d/m/Y', $input);
+
+$errors = DateTime::getLastErrors();
+
+if (
+    $date === false ||
+    ($errors !== false &&
+        ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+) {
+    echo 'Neispravan datum.';
+} else {
+    echo $date->format('Y-m-d');
+}
 
 echo "</br>" . "</br>";
 //--------------------------------------------------
