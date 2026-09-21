@@ -1,0 +1,127 @@
+| PHP                               | Šta radi                          | Laravel pandan  |
+
+|------------------------------------------------------------------------------------------
+
+| `strlen()`                        | dužina stringa u bajtovima        | `Str::length()` |
+| `mb_strlen()`                     | dužina UTF-8 stringa              | `Str::length()` |
+| `substr()`                        | uzima deo stringa                 | `Str::substr()` |
+| `mb_substr()`                     | UTF-8 substring                   | `Str::substr()` |
+| `strpos()`                        | pozicija substringa               | `Str::position()` |
+| `stripos()`                       | pozicija, case-insensitive        | — |
+| `str_contains()`                  | sadrži substring                  | `Str::contains()` |
+| `str_starts_with()`               | počinje sa                        | `Str::startsWith()` |
+| `str_ends_with()`                 | završava sa                       | `Str::endsWith()` |
+| `str_replace()`                   | zamena teksta                     | `Str::replace()` |
+| `str_ireplace()`                  | zamena bez case sensitivity       | — |
+| `substr_replace()`                | zamena dela stringa               | — |
+| `strtolower()`                    | mala slova                        | `Str::lower()` |
+| `strtoupper()`                    | velika slova                      | `Str::upper()` |
+| `mb_strtolower()`                 | UTF-8 mala slova                  | `Str::lower()` |
+| `mb_strtoupper()`                 | UTF-8 velika slova                | `Str::upper()` |
+| `ucfirst()`                       | prvo slovo veliko                 | `Str::ucfirst()` |
+| `lcfirst()`                       | prvo slovo malo                   | `Str::lcfirst()` |
+| `ucwords()`                       | svaka reč veliko slovo            | `Str::title()` približno |
+| `trim()`                          | uklanja whitespace sa oba kraja   | `Str::trim()` |
+| `ltrim()`                         | levo                              | `Str::ltrim()` |
+| `rtrim()`                         | desno                             | `Str::rtrim()` |
+| `explode()`                       | string → array                    | često isto u Laravelu |
+| `implode()`                       | array → string                    | isto |
+| `str_split()`                     | string → niz karaktera/delova     | — |
+| `str_word_count()`                | broji reči                        | `Str::wordCount()` |
+| `str_repeat()`                    | ponavlja string                   | `Str::repeat()` |
+| `str_pad()`                       | dopunjava string                  | `Str::padLeft()`, `padRight()` |
+| `sprintf()`                       | formatira string                  | uglavnom PHP |
+| `htmlspecialchars()`              | escape za HTML output             | Blade `{{ }}` |
+| `html_entity_decode()`            | HTML entities → karakteri         | — |
+| `nl2br()`                         | newline → `<br>`                  | — |
+| `preg_match()`                    | regex matching                    | `Str::isMatch()` za neke slučajeve |
+| `preg_replace()`                  | regex zamena                      | `Str::replaceMatches()` |
+| `preg_split()`                    | regex split                       | — |
+
+----------------------------------------------------- LARAVEL METODE -----------------------------------------
+
+Str::contains()
+Str::startsWith()
+Str::endsWith()
+
+Str::lower()
+Str::upper()
+Str::title()
+
+Str::replace()
+
+Str::length()
+Str::substr()
+
+Str::slug()
+
+Str::limit()
+Str::words()
+
+Str::before()
+Str::after()
+Str::between()
+
+Str::trim()
+Str::squish()
+
+Str::mask()
+
+Str::of()
+
+--------------------------------------------------- MAPA PAMĆENJA ------------------------------------------------
+
+DUŽINA
+strlen()
+mb_strlen()
+
+PRONAĐI
+strpos()
+str_contains()
+str_starts_with()
+str_ends_with()
+
+ISECI
+substr()
+mb_substr()
+
+ZAMENI
+str_replace()
+preg_replace()
+
+OČISTI
+trim()
+
+PROMENI CASE
+strtolower()
+strtoupper()
+ucfirst()
+ucwords()
+
+STRING ↔ ARRAY
+explode()
+implode()
+
+FORMATIRAJ
+sprintf()
+
+BEZBEDAN HTML OUTPUT
+htmlspecialchars()
+
+REGEX
+preg_match()
+preg_replace()
+
+----------------------------
+
+LARAVEL BONUS
+
+Str::slug()
+Str::limit()
+Str::words()
+Str::before()
+Str::after()
+Str::between()
+Str::squish()
+Str::mask()
+Str::of()
