@@ -1,0 +1,31 @@
+| PHP                           | Šta radi                          | Laravel pandan |
+|--------------------------------------------------------------------------------
+| `+ - * /`                     | osnovna matematika                | isti PHP |
+| `%`                           | ostatak pri deljenju              | isti PHP |
+| `**`                          | stepenovanje                      | isti PHP |
+| `round()`                     | zaokružuje                        | uglavnom isti PHP |
+| `ceil()`                      | uvek naviše                       | isti PHP |
+| `floor()`                     | uvek naniže                       | isti PHP |
+| `abs()`                       | apsolutna vrednost                | isti PHP |
+| `min()`                       | najmanja vrednost                 | `collect()->min()` za kolekcije |
+| `max()`                       | najveća vrednost                  | `collect()->max()` |
+| `pow()`                       | stepen | obično `**`              |
+| `sqrt()`                      | kvadratni koren                   | isti PHP |
+| `intdiv()`                    | celobrojno deljenje               | isti PHP |
+| `fmod()`                      | modulo za float                   | isti PHP |
+| `number_format()`             | formatira broj                    | `Number::format()` |
+| `is_numeric()`                | proverava da li je numeric        | Laravel `numeric` validation |
+| `is_int()`                    | proverava integer tip             | Laravel `integer` validation |
+| `is_float()`                  | proverava float                   | — |
+| `(int)`                       | cast u integer                    | `$request->integer()` u nekim situacijama |
+| `(float)`                     | cast u float                      | — |
+| `intval()`                    | vrednost kao int                  | uglavnom `(int)` |
+| `floatval()`                  | vrednost kao float                | uglavnom `(float)` |
+| `random_int()`                | secure random integer             | PHP i u Laravelu |
+| `rand()`                      | pseudo-random broj                | uglavnom ne preferirati |
+| `pi()`                        | π                                 | PHP |
+| `deg2rad()`                   | stepeni → radijani                | PHP |
+| `rad2deg()`                   | radijani → stepeni                | PHP |
+| `log()`                       | logaritam                         | PHP |
+| `log10()`                     | log baza 10                       | PHP |
+| `sin()`, `cos()`, `tan()`     | trigonometrija                    | PHP |
