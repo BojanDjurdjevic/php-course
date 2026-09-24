@@ -29,3 +29,75 @@
 | `log()`                       | logaritam                         | PHP |
 | `log10()`                     | log baza 10                       | PHP |
 | `sin()`, `cos()`, `tan()`     | trigonometrija                    | PHP |
+
+
+-------------------------------------------------- MAPA PAMĆENJA ---------------------------------------------------------
+
+RAČUNAJ
++ - * / % **
+
+ZAOKRUŽI
+round()
+ceil()
+floor()
+
+GRANICE
+min()
+max()
+abs()
+
+CELOBROJNA MATEMATIKA
+intdiv()
+%
+
+PROVERI TIP / INPUT
+is_numeric()
+is_int()
+is_float()
+
+KONVERTUJ
+(int)
+(float)
+
+RANDOM
+random_int()
+
+PRIKAZ
+number_format()
+
+──────── LARAVEL ────────
+
+FORMAT
+Number::format()
+
+NOVAC
+Number::currency()
+
+PROCENAT
+Number::percentage()
+
+OGRANIČI RANGE
+Number::clamp()
+
+HUMAN READABLE
+Number::abbreviate()
+Number::forHumans()
+Number::fileSize()
+
+KOLEKCIJE
+sum()
+avg()
+min()
+max()
+
+------------------------------------------------------------- !!! Matematika i Novac !!! --------------------------------------
+
+Neće uvek vratiti precizan decimalni br!!!
+
+obični brojevi → int / float
+
+novac → integer minor units
+
+ILI DECIMAL u DB + pažljivo računanje
+ILI BCMath / money biblioteka za ozbiljnije slučajeve
+
