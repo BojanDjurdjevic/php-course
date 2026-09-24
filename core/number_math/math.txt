@@ -101,3 +101,35 @@ novac → integer minor units
 ILI DECIMAL u DB + pažljivo računanje
 ILI BCMath / money biblioteka za ozbiljnije slučajeve
 
+-------------------------------------------------------- OSTALI OPERATORI ----------------------------------------------------
+
+| PHP                           | Šta radi                          | Laravel pandan / napomena |
+|---------------------------------------------------------------------------
+| `===`                         | ista vrednost + isti tip          | koristi često |
+| `!==`                         | nije ista vrednost ili tip        | koristi često |
+| `==`                          | poredi uz type juggling           | oprez |
+| `!=`                          | loose inequality                  | oprez |
+| `<=>`                         | spaceship operator                | sorting/comparison |
+| `is_null()`                   | proverava `null`                  | `blank()`/`filled()` nisu isto |
+| `isset()`                     | postoji i nije `null`             | veoma važno |
+| `empty()`                     | proverava „praznu“ vrednost       | Laravel `blank()` približno |
+| `is_int()`                    | integer?                          | validation `integer` |
+| `is_float()`                  | float?                            | validation `numeric` |
+| `is_string()`                 | string?                           | validation `string` |
+| `is_bool()`                   | bool?                             | validation `boolean` |
+| `is_array()`                  | array?                            | validation `array` |
+| `is_object()`                 | object?                           | — |
+| `is_numeric()`                | broj ili numeric string?          | validation `numeric` |
+| `gettype()`                   | vraća tip                         | debugging |
+| `get_debug_type()`            | precizniji tip                    | bolji za debugging |
+| `(int)`                       | cast u integer                    | `$request->integer()` |
+| `(float)`                     | cast u float                      | — |
+| `(string)`                    | cast u string                     | — |
+| `(bool)`                      | cast u boolean                    | `$request->boolean()` |
+| `(array)`                     | cast u array                      | — |
+| `??`                          | null coalescing                   | `data_get(..., default)` slična ideja |
+| `??=`                         | dodeli ako je null                | veoma korisno |
+| `?:`                          | Elvis operator                    | koristi fallback za falsy |
+| `?->`                         | nullsafe operator                 | često u Laravel objektima |
+| `match`                       | strogo grananje po vrednosti      | često bolje od `switch` |
+| `instanceof`                  | proverava klasu/interface         | veoma važno u OOP |
