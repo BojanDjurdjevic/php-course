@@ -133,3 +133,98 @@ ILI BCMath / money biblioteka za ozbiljnije slučajeve
 | `?->`                         | nullsafe operator                 | često u Laravel objektima |
 | `match`                       | strogo grananje po vrednosti      | često bolje od `switch` |
 | `instanceof`                  | proverava klasu/interface         | veoma važno u OOP |
+
+
+---------------------------------------------- ZAMKE U POREĐENJU I HVATANJU VREDNOSTI ---------------------------------------------
+
+'5' == 5 → true
+
+'5' === 5 → false
+
+isset($x) → false ako je null
+
+empty(0) → true
+
+(bool) 'false' → true
+
+'0' → falsy
+
+??  → proverava null
+
+?: → proverava truthiness
+
+--------------------------------------------  LARAVEL PANDAN ------------------------------------------------------------------------
+
+$request->boolean()
+$request->integer()
+
+$request->has()
+$request->filled()
+$request->missing()
+
+blank()
+filled()
+
+data_get()
+
+validation:
+integer
+numeric
+boolean
+string
+array
+
+Eloquent casts:
+integer
+float
+boolean
+decimal
+array
+datetime
+
+-------------------------------------------------------- MAPA PMĆENJA -------------------------------------------------------------------
+
+POREDI VREDNOST + TIP
+===
+
+POREDI UZ KONVERZIJU
+==
+
+PROVERI POSTOJANJE
+isset()
+
+PROVERI PRAZNINU
+empty()
+
+PROVERI TIP
+is_*()
+
+PRETVORI TIP
+(int)
+(float)
+(string)
+(bool)
+
+FALLBACK AKO JE NULL
+??
+
+FALLBACK AKO JE FALSY
+?:
+
+SAFE NULL ACCESS
+?->
+
+PROVERI KLASU
+instanceof
+
+──────── LARAVEL ────────
+
+HTTP INPUT
+$request->boolean()
+$request->integer()
+
+VALIDACIJA
+integer / numeric / boolean / string
+
+MODEL TYPES
+casts()
