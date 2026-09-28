@@ -228,3 +228,5 @@ integer / numeric / boolean / string
 
 MODEL TYPES
 casts()
+
+// https://vite.new/vue

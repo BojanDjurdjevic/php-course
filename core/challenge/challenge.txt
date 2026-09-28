@@ -1,0 +1,552 @@
+
+# PHP Core Checkpoint — Interview pitanja i odgovori
+
+## 1. Koja je razlika između `==` i `===`?
+
+`==` radi loose comparison i PHP može izvršiti type juggling pre poređenja.
+
+```php
+1 == '1'; // true
+```
+
+`===` radi strict comparison i zahteva istu vrednost i isti tip.
+
+```php
+1 === '1'; // false
+1 === 1;   // true
+```
+
+Zamka:
+
+```php
+0 == false; // true
+```
+
+Zato je dobra praksa koristiti `===` i `!==` osim kada svesno želimo loose comparison.
+
+---
+
+## 2. Koja je razlika između `isset()` i `array_key_exists()`?
+
+`isset()` proverava da li ključ/promjenljiva postoji i da vrednost nije `null`.
+
+```php
+$user = [
+    'email' => null,
+];
+
+isset($user['email']); // false
+```
+
+`array_key_exists()` proverava samo da li ključ postoji, bez obzira na njegovu vrednost.
+
+```php
+array_key_exists('email', $user); // true
+```
+
+Mentalno:
+
+```text
+isset()
+ključ postoji + vrednost nije null
+
+array_key_exists()
+ključ postoji
+```
+
+---
+
+## 3. Koja je razlika između `array_map()`, `array_filter()` i `array_reduce()`?
+
+### `array_map()`
+
+Transformiše svaki element i vraća novi niz.
+
+```php
+$usersWithAge = array_map(function ($user) {
+    $user['age'] = 2026 - $user['birth_year'];
+
+    return $user;
+}, $users);
+```
+
+Mentalno:
+
+```text
+element → transformacija → novi element
+```
+
+### `array_filter()`
+
+Zadržava samo elemente koji prođu uslov.
+
+```php
+$activeUsers = array_filter(
+    $users,
+    fn ($user) => $user['active']
+);
+```
+
+Mentalno:
+
+```text
+element → true/false → ostaje ili se uklanja
+```
+
+### `array_reduce()`
+
+Svodi ceo niz na jednu konačnu vrednost.
+
+```php
+$total = array_reduce(
+    $prices,
+    fn ($carry, $price) => $carry + $price,
+    0
+);
+```
+
+Mentalno:
+
+```text
+više elemenata → jedna vrednost
+```
+
+Najkraće:
+
+```text
+map    → transformiši
+filter → filtriraj
+reduce → akumuliraj
+```
+
+---
+
+## 4. Šta vraća `strpos('Laravel PHP', 'Laravel')`?
+
+Vraća:
+
+```php
+0
+```
+
+jer se `Laravel` nalazi na početnoj poziciji stringa.
+
+Zato je ovo pogrešno:
+
+```php
+if (strpos($text, 'Laravel')) {
+    //
+}
+```
+
+Pozicija `0` je falsy.
+
+Ispravno:
+
+```php
+if (strpos($text, 'Laravel') !== false) {
+    //
+}
+```
+
+Ako nam treba samo provera postojanja substringa:
+
+```php
+if (str_contains($text, 'Laravel')) {
+    //
+}
+```
+
+---
+
+## 5. Koja je razlika između `strlen()` i `mb_strlen()`?
+
+`strlen()` vraća broj bajtova.
+
+`mb_strlen()` pravilno računa multibyte karaktere, npr. UTF-8.
+
+```php
+$text = 'Đorđe';
+
+echo mb_strlen($text);
+```
+
+Za jezike koji koriste karaktere poput:
+
+```text
+č ć š đ ž
+ñ
+é
+α β γ
+```
+
+bolje je koristiti `mb_*` funkcije kada je relevantno.
+
+---
+
+## 6. Koja je razlika između `round()`, `ceil()` i `floor()`?
+
+Za:
+
+```php
+$value = 4.3;
+```
+
+dobijamo:
+
+```php
+round($value); // 4
+ceil($value);  // 5
+floor($value); // 4
+```
+
+Mentalno:
+
+```text
+round() → najbliža vrednost
+ceil()  → prema +∞
+floor() → prema -∞
+```
+
+Primer sa negativnim brojem:
+
+```php
+ceil(-4.3);  // -4
+floor(-4.3); // -5
+```
+
+---
+
+## 7. Zašto `float` može biti problem kod novca?
+
+Float koristi IEEE 754 floating-point reprezentaciju, pa mnoge decimalne vrednosti ne mogu biti predstavljene potpuno precizno.
+
+Primer:
+
+```php
+$result = 0.1 + 0.2;
+```
+
+Interna vrednost može biti približno:
+
+```text
+0.30000000000000004
+```
+
+Za jednostavnije finansijske sisteme često čuvamo novac u najmanjoj jedinici.
+
+```php
+$priceInCents = 15599;
+```
+
+što predstavlja:
+
+```text
+155.99 EUR
+```
+
+Matematika tada ostaje integer:
+
+```php
+$total = $priceInCents * 3;
+```
+
+Za kompleksnije sisteme možemo koristiti:
+
+```text
+BCMath
+DECIMAL u bazi
+Money value objects / money biblioteke
+```
+
+---
+
+## 8. Koja je razlika između `??` i `?:`?
+
+### Null coalescing operator `??`
+
+Koristi desnu vrednost samo ako leva nije definisana ili je `null`.
+
+```php
+$input = 0;
+
+$value = $input ?? 'default';
+// 0
+```
+
+```php
+$input = null;
+
+$value = $input ?? 'default';
+// default
+```
+
+### Elvis operator `?:`
+
+Koristi desnu vrednost ako je leva falsy.
+
+```php
+$input = 0;
+
+$value = $input ?: 'default';
+// default
+```
+
+Falsy vrednosti uključuju:
+
+```php
+false;
+0;
+0.0;
+'';
+'0';
+[];
+null;
+```
+
+Mentalno:
+
+```text
+?? → null / undefined fallback
+?: → falsy fallback
+```
+
+---
+
+## 9. Koja je razlika između `DateTime` i `DateTimeImmutable`?
+
+`DateTime` je mutable.
+
+```php
+$today = new DateTime('2026-09-25');
+
+$tomorrow = $today->modify('+1 day');
+
+echo $today->format('Y-m-d');
+// 2026-09-26
+```
+
+Originalni objekat je promenjen.
+
+`DateTimeImmutable` ne menja originalni objekat.
+
+```php
+$today = new DateTimeImmutable('2026-09-25');
+
+$tomorrow = $today->modify('+1 day');
+
+echo $today->format('Y-m-d');
+// 2026-09-25
+
+echo $tomorrow->format('Y-m-d');
+// 2026-09-26
+```
+
+---
+
+## 10. Kada koristiti `DatePeriod` / `CarbonPeriod`?
+
+Kada želimo da iteriramo kroz raspon datuma.
+
+Primer booking sistema:
+
+```php
+$period = new DatePeriod(
+    new DateTime('2026-10-12'),
+    new DateInterval('P1D'),
+    new DateTime('2026-10-17')
+);
+
+foreach ($period as $date) {
+    echo $date->format('Y-m-d') . PHP_EOL;
+}
+```
+
+U booking aplikaciji ovo može služiti za proveru inventory-ja za svako noćenje između check-in i check-out datuma.
+
+Laravel / Carbon:
+
+```php
+$period = CarbonPeriod::create(
+    $checkIn,
+    $checkOut
+);
+
+foreach ($period as $date) {
+    //
+}
+```
+
+---
+
+## 11. Koja je razlika između `explode()` i `implode()`?
+
+`explode()`:
+
+```text
+string → array
+```
+
+```php
+$arr = explode(' ', 'Hello my dear ChatGPT');
+
+print_r($arr);
+```
+
+Rezultat:
+
+```php
+[
+    'Hello',
+    'my',
+    'dear',
+    'ChatGPT',
+]
+```
+
+`implode()`:
+
+```text
+array → string
+```
+
+```php
+$str = implode(' ', $arr);
+
+echo $str;
+// Hello my dear ChatGPT
+```
+
+---
+
+## 12. Šta vraćaju `is_numeric('123')` i `is_int('123')`?
+
+```php
+is_numeric('123');
+// true
+```
+
+jer `'123'` predstavlja validnu numeričku vrednost.
+
+```php
+is_int('123');
+// false
+```
+
+jer je stvarni PHP tip:
+
+```text
+string
+```
+
+Dok:
+
+```php
+is_int(123);
+// true
+```
+
+Mentalno:
+
+```text
+is_numeric()
+Da li je broj ili numeric string?
+
+is_int()
+Da li je stvarni PHP tip int?
+```
+
+---
+
+## 13. Šta vraća `(bool) 'false'`?
+
+Vraća:
+
+```php
+true
+```
+
+jer je `'false'` neprazan string.
+
+```php
+(bool) '';       // false
+(bool) 'false';  // true
+(bool) 'hello';  // true
+```
+
+To može biti problem kod HTML form inputa:
+
+```text
+is_active=false
+```
+
+Ako uradimo:
+
+```php
+$isActive = (bool) $_POST['is_active'];
+```
+
+dobijamo:
+
+```php
+true
+```
+
+Bolje:
+
+```php
+$isActive = filter_var(
+    $_POST['is_active'],
+    FILTER_VALIDATE_BOOLEAN
+);
+```
+
+Ako želimo razlikovati nevalidan input od `false`:
+
+```php
+$isActive = filter_var(
+    $_POST['is_active'],
+    FILTER_VALIDATE_BOOLEAN,
+    FILTER_NULL_ON_FAILURE
+);
+```
+
+Laravel pandan:
+
+```php
+$isActive = $request->boolean('is_active');
+```
+
+---
+
+## 14. Koja je razlika između `(int) $value` i Laravel `integer` validacije?
+
+Casting:
+
+```php
+$value = '5';
+
+$number = (int) $value;
+// 5
+```
+
+Casting menja tip.
+
+Ali:
+
+```php
+(int) 'hello';
+// 0
+```
+
+Zato casting nije validacija.
+
+Laravel:
+
+```php
+$request->validate([
+    'quantity' => ['required', 'integer'],
+]);
+```
+
+proverava da vrednost odgovara integer
