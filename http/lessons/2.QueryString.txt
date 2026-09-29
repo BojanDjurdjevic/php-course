@@ -1,0 +1,438 @@
+https://example.com/products
+                         │
+                         └── ?page=2&sort=price
+
+Deo nakon ? je query string
+
+parametri se pišu kao -> key=value A međusobno se odvajaju sa -> &
+
+?page=2&sort=price :
+
+page = 2
+sort = price
+
+http://php-course.test/products.php?page=2&sort=price -> print_r($_GET);
+
+Dobijemo:
+
+Array
+(
+    [page] => 2
+    [sort] => price
+)
+
+-------------------
+
+$_GET = [
+    'page' => '2',
+    'sort' => 'price',
+];
+
+VREDNOSTI SU UVEK string
+
+/products/15?page=2
+
+15 → route parameter
+
+2 → query parameter
+
+------------------------------------------------
+
+/products?page=2&sort=price&direction=asc&category=books
+
+$_GET = [
+    'page' => '2',
+    'sort' => 'price',
+    'direction' => 'asc',
+    'category' => 'books',
+];
+
+$page = $_GET['page'] ?? 1;
+$sort = $_GET['sort'] ?? 'created_at';
+$direction = $_GET['direction'] ?? 'desc';
+$category = $_GET['category'] ?? null;
+
+-------------------------------------------------
+
+Query string ne mora biti vezan za GET metodu
+Ovo je zanimljiva nijansa.
+Možeš imati:
+POST /orders?send_email=1
+
+I PHP će i dalje imati:
+$_GET['send_email'];
+
+jer $_GET predstavlja URL query parameters, ne telo GET requesta.
+
+$_GET
+nije:  "podaci iz GET metode"
+
+nego:  "podaci iz URL query stringa"
+---------------------------------------------------
+
+Specijalni karakteri
+Recimo želimo:
+search=PHP & Laravel
+
+Ako samo napišeš:
+?search=PHP & Laravel
+
+& ima posebno značenje — odvaja parametre.
+Zato mora biti encoded.
+Na primer:
+?search=PHP+%26+Laravel
+
+PHP će dobiti:
+$_GET['search'];
+
+kao:
+PHP & Laravel
+
+To je razlog zašto URL encoding postoji.
+
+----------------------------------------------------
+
+Nested / array query parametri — PHP je ovde baš zanimljiv
+Recimo:
+?filters[city]=Novi+Sad&filters[min_price]=50
+
+PHP će napraviti:
+$_GET = [
+    'filters' => [
+        'city' => 'Novi Sad',
+        'min_price' => '50',
+    ],
+];
+
+Dakle možeš:
+$city = $_GET['filters']['city'] ?? null;
+
+Ovo je jedna vrlo PHP-specifična i korisna mogućnost.
+
+------------------------------------------------------
+
+Indexed arrays u query stringu
+Možeš poslati:
+?features[]=wifi&features[]=parking&features[]=spa
+
+PHP:
+$_GET = [
+    'features' => [
+        'wifi',
+        'parking',
+        'spa',
+    ],
+];
+
+Dakle:
+$features = $_GET['features'] ?? [];
+
+Možeš zatim:
+foreach ($features as $feature) {
+    echo $feature;
+}
+
+Ovo je vrlo zgodno za checkbox filtere.
+
+-----------------------------------------------------
+
+Associative nested filters
+Recimo auto search:
+/cars?filter[make]=BMW&filter[fuel]=diesel&filter[min_price]=5000
+
+PHP:
+$_GET = [
+    'filter' => [
+        'make' => 'BMW',
+        'fuel' => 'diesel',
+        'min_price' => '5000',
+    ],
+];
+
+Onda:
+$filters = $_GET['filter'] ?? [];
+
+i:
+$make = $filters['make'] ?? null;
+$minPrice = $filters['min_price'] ?? null;
+
+Veoma čist način organizovanja kompleksnijih filtera.
+
+---------------------------------------------------------------
+
+http_build_query() — array → query string
+
+Imamo:
+$params = [
+    'page' => 2,
+    'sort' => 'price',
+    'city' => 'Novi Sad',
+];
+
+Možemo:
+$query = http_build_query($params);
+
+echo $query;
+
+dobiti nešto poput:
+page=2&sort=price&city=Novi+Sad
+
+PHP-ov http_build_query() generiše URL-encoded query string iz niza ili objekta. php.net
+To je mnogo bolje nego ručno:
+$query = '?page=' . $page
+    . '&sort=' . $sort
+    . '&city=' . $city;
+
+jer http_build_query() pravilno radi encoding.
+
+------------------------------------------------------
+
+Nested array + http_build_query()
+$params = [
+    'filters' => [
+        'city' => 'Novi Sad',
+        'price_min' => 50,
+    ],
+    'page' => 2,
+];
+
+$query = http_build_query($params);
+
+dobiješ URL-encoded varijantu nečega što konceptualno predstavlja:
+filters[city]=Novi Sad
+filters[price_min]=50
+page=2
+
+Dakle PHP zna oba smera:
+array
+↓
+http_build_query()
+↓
+query string
+
+---------------------------------------------------------
+
+parse_str() — query string → array
+Obrnuto:
+$query = 'page=2&sort=price';
+
+parse_str($query, $params);
+
+print_r($params);
+
+dobijaš:
+[
+    'page' => '2',
+    'sort' => 'price',
+]
+
+parse_str() parsira string kao query string i rezultat smešta u prosleđeni niz. U modernom PHP-u drugi argument je obavezan. php.net
+Mentalno:
+http_build_query()
+
+ARRAY → QUERY STRING
+
+
+parse_str()
+
+QUERY STRING → ARRAY
+
+Slično kao naše:
+implode / explode
+
+samo specijalizovano za URL query format.
+
+
+http_build_query()
+
+ARRAY → QUERY STRING
+
+
+parse_str()
+
+QUERY STRING → ARRAY
+
+-------------------------------------------------------
+
+$_SERVER['QUERY_STRING']
+Ako URL glasi:
+/products?page=2&sort=price
+
+možeš pogledati sirov query string:
+echo $_SERVER['QUERY_STRING'];
+
+i dobiti:
+page=2&sort=price
+
+Dok:
+print_r($_GET);
+
+daje parsiranu verziju:
+[
+    'page' => '2',
+    'sort' => 'price',
+]
+
+Dakle:
+$_SERVER['QUERY_STRING']
+→ raw string
+
+$_GET
+→ parsed associative array
+
+Ovo je vrlo korisna mentalna razlika.
+
+-------------------------------------------------------------
+
+Ne verovati $_GET inputu
+
+Query string je user input.
+
+Korisnik može ručno napisati:
+?page=hello
+
+ili:
+?price=-999999
+
+ili:
+?sort=DROP_TABLE
+
+Zato ovo:
+$page = $_GET['page'] ?? 1;
+
+nije dovoljno ako ti stvarno treba integer.
+Možeš:
+$page = filter_input(
+    INPUT_GET,
+    'page',
+    FILTER_VALIDATE_INT
+);
+
+if ($page === false || $page === null || $page < 1) {
+    $page = 1;
+}
+
+Ili ručna validacija:
+$page = $_GET['page'] ?? '1';
+
+if (!ctype_digit($page)) {
+    $page = '1';
+}
+
+$page = (int) $page;
+
+----------------------------------------
+
+Output encoding je druga stvar
+
+Recimo:
+?name=<script>alert(1)</script>
+
+Ovo je opasno:
+echo $_GET['name'];
+
+Jer browser može pokušati da interpretira HTML/JS.
+Bolje:
+echo htmlspecialchars(
+    $_GET['name'] ?? '',
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+Važno:
+VALIDATION
+"Da li je input dozvoljen?"
+
+nije isto što i
+
+OUTPUT ESCAPING
+"Kako ga bezbedno prikazujem?"
+
+-------------------------------------
+
+Laravel pandan
+Core PHP:
+$page = $_GET['page'] ?? 1;
+
+Laravel:
+$page = $request->query('page', 1);
+
+Ako želiš sve:
+$query = $request->query();
+
+Laravel dokumentacija kaže da query() čita isključivo query string, dok input() može da čita input šire iz request-a. Laravel
+Dakle:
+$request->query('page');
+
+je precizniji pandan:
+$_GET['page']
+
+nego:
+$request->input('page');
+
+---------------------------------------
+
+/cars?make=BMW&fuel=diesel&min_price=5000&sort=price&page=2
+
+PHP
+
+$filters = [
+    'make' => $_GET['make'] ?? null,
+    'fuel' => $_GET['fuel'] ?? null,
+    'min_price' => $_GET['min_price'] ?? null,
+    'sort' => $_GET['sort'] ?? 'created_at',
+    'page' => $_GET['page'] ?? 1,
+];
+
+Laravel
+
+$filters = [
+    'make' => $request->query('make'),
+    'fuel' => $request->query('fuel'),
+    'min_price' => $request->query('min_price'),
+    'sort' => $request->query('sort', 'created_at'),
+    'page' => $request->query('page', 1),
+];
+
+-------------------------------------------------- MAPA PAMĆENJA ------------------------------------------------
+
+URL:
+
+/cars?page=2&sort=price
+      └─────────────────┐
+                        ↓
+                  QUERY STRING
+                        ↓
+PHP parsira:
+                        ↓
+$_GET = [
+    'page' => '2',
+    'sort' => 'price',
+];
+
+READ PARAMETER
+$_GET['page'] ?? 1
+
+RAW QUERY
+$_SERVER['QUERY_STRING']
+
+ARRAY → QUERY STRING
+http_build_query()
+
+QUERY STRING → ARRAY
+parse_str()
+
+LARAVEL
+$request->query()
+
+ZAMKE :
+
+$_GET vrednosti su uglavnom stringovi
+
+$_GET nije vezan samo za GET HTTP method
+
+query input je user-controlled
+
+URL encoding je obavezan za specijalne karaktere
+
+route parameter ≠ query parameter

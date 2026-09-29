@@ -1,0 +1,515 @@
+<input name="email">
+        ↓
+HTML form
+        ↓
+HTTP POST request
+        ↓
+request body
+        ↓
+PHP parsira body
+        ↓
+$_POST['email']
+        ↓
+Laravel:
+$request->input('email')
+
+-----------------------------------------------
+
+Kod klasične POST HTML forme podaci više nisu u URL query stringu, nego u HTTP request body-ju.
+
+-----------------------------------------------
+
+Šta browser zapravo šalje?
+Ako korisnik unese:
+Name: Bojan
+Email: bojan@example.com
+
+HTTP request konceptualno izgleda:
+POST /http/lesson-04/process.php HTTP/1.1
+Host: php-course.test
+Content-Type: application/x-www-form-urlencoded
+Content-Length: ...
+
+name=Bojan&email=bojan%40example.com
+
+Primeti:
+POST /process.php
+
+je request line.
+Zatim:
+Content-Type: application/x-www-form-urlencoded
+
+opisuje format body-ja.
+I na kraju:
+name=Bojan&email=bojan%40example.com
+
+je request body. Kod POST forme browser šalje podatke u body-ju, a Content-Type govori serveru kako su ti podaci
+
+.................................................
+
+PHP od toga pravi $_POST
+U process.php možemo:
+<?php
+
+print_r($_POST);
+
+Dobijaš:
+Array
+(
+    [name] => Bojan
+    [email] => bojan@example.com
+)
+
+Konceptualno:
+$_POST = [
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+];
+
+Dakle potpuno ista ideja koju smo videli sa $_GET.
+QUERY STRING
+?page=2&sort=price
+
+        ↓ PHP
+
+$_GET = [
+    'page' => '2',
+    'sort' => 'price',
+];
+
+Nasuprot tome:
+POST BODY
+name=Bojan&email=bojan...
+
+        ↓ PHP
+
+$_POST = [
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+];
+
+PHP definiše $_POST kao superglobalni asocijativni niz podataka iz POST zahteva kada je body kodiran kao application/x-www-form-urlencoded ili multipart/form-data.
+
+------------------------------------------------------------
+
+Bezbedno čitanje $_POST
+Nemoj odmah:
+$name = $_POST['name'];
+
+jer ključ možda ne postoji.
+Bolje:
+$name = $_POST['name'] ?? '';
+$email = $_POST['email'] ?? '';
+
+Tu ponovo koristimo ono što smo već naučili:
+??
+
+Ako podatak ne postoji:
+$name = '';
+
+------------------------------------------------------------
+
+form.php:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User form</title>
+</head>
+<body>
+
+<form action="process.php" method="POST">
+    <div>
+        <label for="name">Name</label>
+
+        <input
+            type="text"
+            id="name"
+            name="name"
+        >
+    </div>
+
+    <div>
+        <label for="email">Email</label>
+
+        <input
+            type="email"
+            id="email"
+            name="email"
+        >
+    </div>
+
+    <button type="submit">
+        Submit
+    </button>
+</form>
+
+</body>
+</html>
+
+process.php:
+
+<?php
+
+$name = $_POST['name'] ?? '';
+$email = $_POST['email'] ?? '';
+
+echo 'Name: '
+    . htmlspecialchars($name, ENT_QUOTES, 'UTF-8')
+    . '<br>';
+
+echo 'Email: '
+    . htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
+
+
+2 stvari:
+
+READ INPUT
+$_POST
+
+OUTPUT ESCAPING
+htmlspecialchars()
+
+-------------------------------------------------
+
+GET
+
+"Daj mi nešto na osnovu ovih parametara."
+
+search
+filter
+pagination
+sorting
+
+----------------------------------------------
+
+POST
+
+"Evo podataka koje želim da obradiš."
+
+Primeri:
+
+registration
+login
+create booking
+create order
+contact form
+
+-----------------------------------------------
+
+POST ne znači da su podaci tajni
+Ovo je veoma važna stvar.
+Ljudi često kažu:
+POST je bezbedniji jer password nije u URL-u.
+
+Preciznije:
+POST samo ne stavlja podatke u query string.
+To nije encryption.
+Ako pošalješ:
+POST /login
+
+email=bojan@example.com&password=secret
+
+preko običnog:
+http://
+
+sam POST ne štiti password.
+Za transportnu zaštitu koristi se:
+HTTPS
+
+Dakle:
+GET vs POST
+→ gde / kako se request semantički šalje
+
+HTTPS
+→ šifrovanje komunikacije
+
+To su odvojeni problemi.
+
+---------------------------------------------
+
+application/x-www-form-urlencoded
+Ovo je default za običnu HTML POST formu:
+<form method="POST">
+
+Browser šalje nešto nalik:
+name=Bojan&city=Novi+Sad&age=40
+
+Izgleda skoro kao query string.
+I jeste vrlo sličan encoding:
+key=value&key=value
+
+Razlika je gde se nalazi.
+GET:
+URL
+
+?name=Bojan&city=Novi+Sad
+
+POST:
+BODY
+
+name=Bojan&city=Novi+Sad
+
+MDN opisuje application/x-www-form-urlencoded upravo kao key/value parove razdvojene sa &, uz URL/percent encoding specijalnih karaktera.
+
+-------------------------------------------------
+
+FORM array iunputs
+
+<input
+    type="checkbox"
+    name="skills[]"
+    value="php"
+>
+
+<input
+    type="checkbox"
+    name="skills[]"
+    value="laravel"
+>
+
+<input
+    type="checkbox"
+    name="skills[]"
+    value="vue"
+>
+
+----
+
+$_POST = [
+    'skills' => [
+        'php',
+        'laravel',
+    ],
+];
+
+foreach ($skills as $skill) {
+    echo htmlspecialchars($skill);
+}
+
+---------------------------------------------------
+
+Checkbox ima jednu čuvenu zamku
+
+
+Recimo:
+<input
+    type="checkbox"
+    name="newsletter"
+    value="1"
+>
+
+Ako je checkbox čekiran:
+$_POST['newsletter'];
+// '1'
+
+Ali ako nije čekiran, browser ga uglavnom uopšte neće poslati.
+Dakle možda nećeš dobiti:
+[
+    'newsletter' => '0',
+]
+
+nego ključ jednostavno ne postoji.
+Zato:
+$newsletter = isset($_POST['newsletter']);
+
+ili:
+$newsletter = ($_POST['newsletter'] ?? '0') === '1';
+
+Laravel ti za ovakve slučajeve daje mnogo prijatnije:
+$newsletter = $request->boolean('newsletter');
+
+--------------------------------------------------------
+
+PROVERA METODE:
+
+<?php
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+
+    exit('Method Not Allowed');
+}
+
+$name = $_POST['name'] ?? '';
+$email = $_POST['email'] ?? '';
+
+---
+
+je li POST?
+     ↓
+   nije
+     ↓
+405 Method Not Allowed
+
+----------------------------------------------------
+
+Content-Type
+
+
+Ovo je jako bitno!!!
+
+PHP ne kaže samo:
+„Aha, POST je — napuniću $_POST.“
+
+Nije tako jednostavno.
+Bitno je u kom formatu je request body poslat.
+Klasična forma:
+Content-Type: application/x-www-form-urlencoded
+
+→ PHP popunjava:
+$_POST
+
+Forma sa file uploadom:
+Content-Type: multipart/form-data
+
+→ PHP popunjava:
+$_POST
+$_FILES
+
+Ali ako JavaScript pošalje:
+Content-Type: application/json
+
+sa:
+{
+    "name": "Bojan",
+    "email": "bojan@example.com"
+}
+
+onda:
+$_POST
+
+neće automatski sadržati taj JSON.
+PHP dokumentacija eksplicitno navodi da $_POST automatski radi 
+za application/x-www-form-urlencoded i multipart/form-data; 
+za druge content type-ove poput application/json koristi se raw body preko php://input.
+
+----------------------------------------------------------
+
+multipart/form-data
+
+Ako imaš:
+<form
+    method="POST"
+    enctype="multipart/form-data"
+>
+
+browser šalje body u delovima.
+Recimo:
+text field
+file
+text field
+file
+
+svaki postaje poseban part, odvojen tzv. boundary vrednošću. multipart/form-data je encoding koji se koristi kada forma šalje fajlove. MDN Web Docs
+PHP tada tekstualne vrednosti stavlja u:
+$_POST
+
+a uploadovane fajlove u:
+$_FILES
+
+------------------------------------------------------------
+
+CORE PHP                 LARAVEL
+
+$_GET                    $request->query()
+
+$_POST                   $request->input()
+                         za form/request input
+
+$_POST['email']          $request->input('email')
+
+nested array             dot notation
+$user['name']            input('user.name')
+
+--------
+
+public function store(
+    StoreBookingRequest $request
+) {
+    $roomId = $request->input('room_id');
+
+    // ...
+}
+
+-------
+
+CLIENT
+   ↓
+POST /bookings
+   ↓
+Content-Type
+   ↓
+BODY
+   ↓
+Laravel Request
+   ↓
+validation
+   ↓
+controller
+
+---------------------------------------------------------------
+
+HTTP METHOD
+POST
+
+        ≠
+
+BODY
+name=Bojan&email=...
+
+        ≠
+
+CONTENT TYPE
+application/x-www-form-urlencoded
+
+        ≠
+
+PHP REPRESENTATION
+$_POST
+
+----------------------------------------------- MAPA PAMĆENJA -------------------------------------------
+
+HTML
+
+<form method="POST">
+
+<input
+    name="email"
+    value="bojan@example.com"
+>
+
+        ↓
+
+BROWSER
+
+POST /process.php
+
+Content-Type:
+application/x-www-form-urlencoded
+
+BODY:
+email=bojan%40example.com
+
+        ↓
+
+PHP
+
+$_POST = [
+    'email' => 'bojan@example.com'
+];
+
+        ↓
+
+READ
+
+$email = $_POST['email'] ?? '';
+
+        ↓
+
+VALIDATE / PROCESS
+
+        ↓
+
+RESPONSE

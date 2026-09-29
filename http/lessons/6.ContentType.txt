@@ -1,0 +1,763 @@
+HTTP METHOD
++
+Content-Type
++
+BODY FORMAT
+        ↓
+PHP odlučuje kako da obradi body
+
+-----------------------------------
+
+Content-Type header govori serveru u kom formatu je sadržaj request body-ja. Kod web aplikacija ćeš stalno susretati tri formata:
+
+application/x-www-form-urlencoded
+multipart/form-data
+application/json
+
+PHP automatski popunjava $_POST za prva dva kada je u pitanju standardni POST request, dok se JSON body čita drugačije.
+
+-----------------------------------
+
+POST
+
+odgovara na pitanje:
+Šta želim da uradim?
+
+A:
+Content-Type
+
+odgovara:
+U kom formatu ti šaljem body?
+
+To su dve potpuno različite stvari.
+
+-----------------------------------
+
+Ovo je klasičan format obične HTML forme.
+
+Forma:
+<form method="POST" action="process.php">
+    <input
+        type="text"
+        name="name"
+        value="Bojan"
+    >
+
+    <input
+        type="email"
+        name="email"
+        value="bojan@example.com"
+    >
+
+    <button type="submit">
+        Send
+    </button>
+</form>
+
+Browser šalje otprilike:
+
+POST /process.php HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+name=Bojan&email=bojan%40example.com
+
+Body izgleda skoro identično query stringu:
+
+name=Bojan&email=bojan%40example.com
+
+PHP ga automatski parsira:
+
+$_POST = [
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+];
+
+To je default encoding standardne HTML forme kada ne navedeš drugi enctype. MDN Web Docs
+
+
+
+HTML FORM
+
+        ↓
+
+application/x-www-form-urlencoded
+
+        ↓
+
+BODY
+
+name=Bojan&email=...
+
+        ↓ PHP
+
+$_POST
+
+------------------------------------------------
+
+Zašto se zove URL encoded ako je u body-ju?
+
+Format koristi praktično ista encoding pravila kao query string:
+key=value&key=value
+
+na primer:
+city=Novi+Sad&framework=Laravel
+
+Ali ne znači da se nalazi u URL-u.
+Može biti:
+QUERY STRING
+?page=2&city=Novi+Sad
+
+ili isti stil encodinga u:
+POST BODY
+name=Bojan&city=Novi+Sad
+
+Dakle:
+x-www-form-urlencoded
+
+opisuje format podataka, ne njihovu lokaciju.
+
+-----------------------------------------------------
+
+multipart/form-data
+
+kada šaljemo:
+
+sliku
+PDF
+video
+binarni fajl
+
+---
+
+<form
+    method="POST"
+    enctype="multipart/form-data" // KLJUČ
+>
+    <input
+        type="text"
+        name="title"
+    >
+
+    <input
+        type="file"
+        name="photo"
+    >
+
+    <button type="submit">
+        Upload
+    </button>
+</form>
+
+
+struktura otprilike:
+
+BODY
+
+PART 1
+title
+Hotel Dunav
+
+PART 2
+photo
+hotel.jpg
+binary data
+
+PART 3
+...
+
+PHP multipart razdvaja na $_POST i $_FILES
+Za prethodnu formu:
+<input
+    name="title"
+>
+
+<input
+    type="file"
+    name="photo"
+>
+
+PHP radi:
+$_POST = [
+    'title' => 'Hotel Dunav',
+];
+
+dok fajl ide u:
+$_FILES['photo'];
+
+Dakle:
+multipart/form-data
+
+        ↓
+
+TEXT FIELDS
+        ↓
+$_POST
+
+
+FILES
+        ↓
+$_FILES
+
+PHP $_POST dokumentacija eksplicitno navodi da se $_POST popunjava za application/x-www-form-urlencoded i multipart/form-data.
+
+---------------------------------------------------------------------
+
+JSON 
+
+JS:
+
+fetch('/api/users', {
+    method: 'POST',
+
+    headers: {
+        'Content-Type': 'application/json',
+    },
+
+    body: JSON.stringify({
+        name: 'Bojan',
+        age: 40,
+        active: true,
+    }),
+});
+
+HTTP:
+
+POST /api/users HTTP/1.1
+Content-Type: application/json
+
+{
+    "name": "Bojan",
+    "age": 40,
+    "active": true
+}
+
+Jer PHP ne stavlja JSON body automatski u $_POST. 
+Za druge content type-ove poput application/json, 
+PHP dokumentacija upućuje na raw request body preko php://input.
+
+---
+
+Kako onda čitamo JSON u core PHP-u?
+Prvo uzmemo sirov body:
+$rawBody = file_get_contents('php://input');
+
+Recimo da je:
+{
+    "name": "Bojan",
+    "age": 40,
+    "active": true
+}
+
+$rawBody je za sada samo string.
+Možeš proveriti:
+var_dump($rawBody);
+
+Mentalno:
+HTTP BODY
+        ↓
+php://input
+        ↓
+STRING
+
+Onda JSON parsiramo:
+$data = json_decode(
+    $rawBody,
+    true
+);
+
+Drugi argument:
+true
+
+znači:
+pretvori JSON objects u PHP associative arrays.
+
+Dobijamo:
+$data = [
+    'name' => 'Bojan',
+    'age' => 40,
+    'active' => true,
+];
+
+PRIMER:
+
+<?php
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+
+    exit('Method Not Allowed');
+}
+
+$contentType =
+    $_SERVER['CONTENT_TYPE']
+    ?? '';
+
+if (!str_contains(
+    $contentType,
+    'application/json'
+)) {
+    http_response_code(415);
+
+    exit('Unsupported Media Type');
+}
+
+$rawBody = file_get_contents(
+    'php://input'
+);
+
+$data = json_decode(
+    $rawBody,
+    true
+);
+
+if (!is_array($data)) {
+    http_response_code(400);
+
+    exit('Invalid JSON');
+}
+
+$name = $data['name'] ?? null;
+
+echo htmlspecialchars(
+    (string) $name,
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+-----------------------------------------------------
+
+Važna stvar: Content-Type nije Accept
+Ljudi ih često pomešaju.
+Request:
+Content-Type: application/json
+Accept: application/json
+
+nisu ista stvar.
+Content-Type kaže:
+Ono što ti šaljem je JSON.
+
+Accept kaže:
+Voleo bih da mi response vratiš kao JSON.
+
+Mentalno:
+Content-Type
+REQUEST BODY format
+
+Accept
+DESIRED RESPONSE format
+
+---------------------------------------------------------
+
+| Content-Type                          | Tipična upotreba          | Core PHP |
+|----------------------------------------------------------------------------------------------------|
+| `application/x-www-form-urlencoded`   | obična HTML forma         | `$_POST` |
+| `multipart/form-data`                 | forma + fajlovi           | `$_POST` + `$_FILES` |
+| `application/json`                    | API / SPA                 | `php://input` + `json_decode()` |
+
+----------------------------------------------------------
+
+HTTP BODY
+↓
+php://input
+↓
+STRING
+
+Ovo je vrlo bitno:
+php://input ti ne daje PHP array. Daje sirov body.
+
+->
+
+$data = json_decode(
+    $rawBody,
+    true
+);
+
+Zašto true?
+Jer potpis funkcije dozvoljava da kažeš da želiš JSON objekte kao associative arrays.
+
+Bez true:
+$data = json_decode($rawBody);
+
+dobio bi objekat:
+$data->name;
+$data->age;
+
+--------------------------------------
+
+Problem sa klasičnim json_decode()
+Pogledaj:
+$data = json_decode($rawBody, true);
+
+Ako JSON nije validan:
+{
+    "name": "Bojan",
+}
+
+trailing comma čini JSON nevalidnim.
+Tradicionalno json_decode() može vratiti:
+null
+
+Ali postoji problem:
+validan JSON može biti i:
+null
+
+koji takođe daje PHP:
+null
+
+Zato samo:
+if ($data === null)
+
+nije idealna detekcija greške. PHP je upravo zbog toga dobio JSON_THROW_ON_ERROR: ---->>>
+
+try {
+    $data = json_decode(
+        $rawBody,
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+} catch (JsonException $e) {
+    //
+}
+
+--->>>
+
+I kod json_encode() može doći do greške
+Moderni pristup:
+try {
+    $json = json_encode(
+        $data,
+        JSON_THROW_ON_ERROR
+    );
+} catch (JsonException $e) {
+    //
+}
+
+Isti flag radi i za encoding i decoding
+
+------>>>>
+
+JSON_THROW_ON_ERROR + drugi flagovi
+Flags su bitmask, pa ih možeš kombinovati:
+$json = json_encode(
+    $data,
+    JSON_UNESCAPED_UNICODE
+    | JSON_THROW_ON_ERROR
+);
+
+ili:
+$json = json_encode(
+    $data,
+    JSON_UNESCAPED_UNICODE
+    | JSON_PRETTY_PRINT
+    | JSON_THROW_ON_ERROR
+);
+
+Ovaj operator:
+|
+
+ovde je bitwise OR i služi za kombinovanje flagova.
+
+----------------------------------------
+
+PRIMER malog API endpointa:
+
+<?php
+
+header('Content-Type: application/json; charset=UTF-8');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+
+    echo json_encode([
+        'error' => 'Method Not Allowed',
+    ]);
+
+    exit;
+}
+
+$contentType =
+    $_SERVER['CONTENT_TYPE']
+    ?? '';
+
+if (!str_contains(
+    strtolower($contentType),
+    'application/json'
+)) {
+    http_response_code(415);
+
+    echo json_encode([
+        'error' => 'Content-Type must be application/json',
+    ]);
+
+    exit;
+}
+
+$rawBody = file_get_contents(
+    'php://input'
+);
+
+try {
+    $data = json_decode(
+        $rawBody,
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+} catch (JsonException $e) {
+    http_response_code(400);
+
+    echo json_encode([
+        'error' => 'Invalid JSON',
+    ]);
+
+    exit;
+}
+
+http_response_code(200);
+
+echo json_encode([
+    'received' => $data,
+]);
+
+--------------------------------------------
+
+1. proveri method
+
+POST?
+
+↓ ne
+
+405
+
+2. proveri Content-Type
+
+application/json?
+
+↓ ne
+
+415
+
+3. pročitaj body
+
+php://input
+
+4. decode JSON
+
+json_decode()
+
+5. ako JSON nije validan:
+400 Bad Request
+
+na kraju:
+6. napravi JSON response
+
+------------------------------------------------
+
+json_encode() — PHP → JSON
+Obrnuta operacija.
+Imamo:
+$user = [
+    'id' => 15,
+    'name' => 'Bojan',
+    'active' => true,
+];
+
+radimo:
+$json = json_encode($user);
+
+dobijamo:
+{"id":15,"name":"Bojan","active":true}
+
+PHP json_encode() vraća JSON reprezentaciju prosleđene vrednosti; nizove i objekte serijalizuje rekurzivno. PHP
+Mentalno:
+json_decode()
+
+JSON STRING
+→ PHP
+
+
+json_encode()
+
+PHP
+→ JSON STRING
+
+------------------------------------------------
+
+JSON response mora imati pravi Content-Type
+Nemoj samo:
+echo json_encode($data);
+
+Bolje:
+header(
+    'Content-Type: application/json; charset=UTF-8'
+);
+
+echo json_encode($data);
+
+Jer body jeste JSON, pa response treba to jasno da kaže klijentu.
+Konceptualno:
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=UTF-8
+
+{"name":"Bojan"}
+
+--------------------------------------------------
+
+JSON_UNESCAPED_UNICODE
+Ako imaš:
+$data = [
+    'city' => 'Novi Sad',
+    'name' => 'Đorđe',
+];
+
+možeš:
+echo json_encode(
+    $data,
+    JSON_UNESCAPED_UNICODE
+);
+
+da bi Unicode karakteri ostali čitljivi.
+
+--------------------------------------------------
+
+JSON PARSING
+"Da li je ovo validan JSON?"
+
+nije isto što i
+
+VALIDATION
+"Da li su podaci dozvoljeni?"
+
+-----------------------------------
+
+AKO JE BODY PRAZAN:
+
+if ($rawBody === '') {
+    http_response_code(400);
+
+    echo json_encode([
+        'message' => 'Request body is required',
+    ]);
+
+    exit;
+}
+
+da izbegnem JsonException u izvršavanju jer prazan str nije valid json
+
+--------------------------------------
+
+Dakle ako endpoint očekuje JSON object, nakon decode-a je dobra ideja proveriti strukturu:
+if (!is_array($data)) {
+    //
+}
+
+I još preciznije, po potrebi proveriti očekivane ključeve.
+
+------------------------------------------
+
+Veliki integer brojevi
+JSON može sadržati veoma veliki integer.
+Za takve situacije json_decode() podržava flag:
+JSON_BIGINT_AS_STRING
+
+što sprečava gubitak preciznosti tako što velike integer vrednosti čuva kao string. PHP
+Nije svakodnevni CRUD slučaj, ali lepo je znati da postoji.
+
+CLIENT → SERVER
+
+JSON
+↓
+json_decode()
+↓
+PHP
+
+
+SERVER → CLIENT
+
+PHP
+↓
+json_encode()
+↓
+JSON
+
+-------------------------------------------
+
+JSON request:
+
+$raw = file_get_contents(
+    'php://input'
+);
+
+$data = json_decode(
+    $raw,
+    true,
+    512,
+    JSON_THROW_ON_ERROR
+);
+
+JSON Response:
+
+header(
+    'Content-Type: application/json'
+);
+
+http_response_code(200);
+
+echo json_encode(
+    $data,
+    JSON_THROW_ON_ERROR
+);
+
+PIPELINE:
+
+REQUEST
+
+Content-Type:
+application/json
+
+↓
+raw body
+
+↓
+php://input
+
+↓
+json_decode()
+
+↓
+PHP ARRAY / VALUE
+
+↓
+validation
+
+↓
+business logic
+
+↓
+json_encode()
+
+↓
+Content-Type:
+application/json
+
+↓
+HTTP RESPONSE
+
+TAČKE:
+
+$_POST nije svaki POST body.
+
+JSON body čitamo preko php://input.
+
+json_decode() pretvara JSON → PHP.
+
+json_encode() pretvara PHP → JSON.
+
+JSON_THROW_ON_ERROR
+je moderniji i sigurniji način
+obrade JSON grešaka.
+
+Valid JSON ≠ valid business input.
+
+Content-Type opisuje request/response body format.

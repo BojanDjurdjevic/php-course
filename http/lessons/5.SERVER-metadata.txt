@@ -1,0 +1,377 @@
+$_SERVER i request metadata
+$_SERVER je superglobalni niz koji PHP popunjava informacijama o requestu, 
+serveru i runtime okruženju. 
+Tu nalaziš stvari kao što su HTTP metoda, URI, query string, host, IP adresa klijenta, HTTPS status i user-agent. 
+Koji ključevi postoje može zavisiti od web servera i konfiguracije, 
+ali ključne vrednosti poput 
+REQUEST_METHOD, REQUEST_URI, QUERY_STRING, 
+REMOTE_ADDR i HTTPS su standardni deo svakodnevnog PHP rada. PHP
+
+---
+
+<?php
+
+echo '<pre>';
+
+print_r($_SERVER);
+
+echo '</pre>';
+
+Za web developera bih izdvojio ove:
+
+REQUEST_METHOD
+REQUEST_URI
+QUERY_STRING
+SCRIPT_NAME
+
+HTTP_HOST
+SERVER_NAME
+SERVER_PORT
+
+REMOTE_ADDR
+
+HTTP_USER_AGENT
+HTTP_ACCEPT
+HTTP_ACCEPT_LANGUAGE
+
+HTTPS
+
+REQUEST_TIME
+REQUEST_TIME_FLOAT
+
+----------------------------------------------------------------------------
+
+REQUEST_URI
+Recimo browser otvori:
+http://php-course.test/cars.php?page=2&sort=price
+
+onda:
+echo $_SERVER['REQUEST_URI'];
+
+može dati:
+/cars.php?page=2&sort=price
+
+Dakle REQUEST_URI obično sadrži:
+PATH
++
+QUERY STRING
+
+Mentalno:
+/cars.php?page=2&sort=price
+│         │
+│         └── query string
+│
+└── path
+
+PHP manual opisuje REQUEST_URI kao URI korišćen za pristup stranici
+
+-----------------------------------------------------------------------
+
+QUERY_STRING
+Za isti URL:
+/cars.php?page=2&sort=price
+
+echo $_SERVER['QUERY_STRING'];
+
+dobijaš:
+page=2&sort=price
+
+Dakle:
+REQUEST_URI
+/cars.php?page=2&sort=price
+
+QUERY_STRING
+page=2&sort=price
+
+$_GET
+[
+    'page' => '2',
+    'sort' => 'price'
+]
+
+To su tri nivoa istog requesta:
+raw URI
+↓
+raw query
+↓
+parsed query
+
+---------------------------------------------------------------------------
+
+SCRIPT_NAME
+Ako izvršavaš:
+/http/lesson-05/index.php
+
+onda:
+echo $_SERVER['SCRIPT_NAME'];
+
+može dati:
+/http/lesson-05/index.php
+
+Ovo govori koji PHP entry script se izvršava.
+PHP dokumentacija navodi SCRIPT_NAME upravo kao putanju trenutne skripte.
+
+----------------------------------------------------------------------------
+
+HTTP_HOST
+Ako otvoriš:
+http://php-course.test/products
+
+možeš dobiti:
+echo $_SERVER['HTTP_HOST'];
+
+rezultat:
+php-course.test
+
+Ako postoji nestandardni port:
+localhost:8000
+
+host vrednost može uključivati i port, zavisno od servera/requesta.
+Ali ovde dolazi veoma važna security stvar:
+Host vrednost dolazi iz HTTP requesta i ne treba je slepo tretirati kao pouzdanu.
+
+Laravel dokumentacija čak posebno ima TrustHosts middleware, jer vrednost Host headera može uticati na generisanje apsolutnih URL-ova.
+
+--------------------------------------------------------------------------------
+
+SERVER_NAME nije isto što i HTTP_HOST
+Konceptualno:
+HTTP_HOST
+→ Host header iz requesta
+
+SERVER_NAME
+→ ime hosta koje web server koristi
+
+Ali i ovde postoji konfiguraciona nijansa. PHP manual upozorava da pod određenim Apache konfiguracijama SERVER_NAME takođe može reflektovati hostname koji je poslao klijent i zato se ne treba oslanjati na njega za security-sensitive odluke. PHP
+Dakle:
+HTTP_HOST
+SERVER_NAME
+
+nisu dobre stvari na kojima samostalno gradiš security logiku bez kontrole hostova.
+
+-----------------------------------------------------------------------------------
+
+SERVER_PORT
+$port = $_SERVER['SERVER_PORT'];
+
+echo $port;
+
+Tipično:
+80  → HTTP
+443 → HTTPS
+
+Na development serveru možeš videti nešto poput:
+8000
+8080
+
+Ali nemoj kasnije koristiti samo port da zaključiš da li je originalni request bio HTTPS, naročito ako aplikacija stoji iza proxy-ja/load balancera.
+
+-----------------------------------------------------------------------------------
+
+HTTPS
+Direktan request prema PHP serveru može dati:
+$_SERVER['HTTPS']
+
+sa nekom nepraznom vrednošću kada je HTTPS aktivan. PHP manual upravo navodi da je HTTPS postavljen na nepraznu vrednost ako je skripta pozvana HTTPS protokolom. PHP
+Tipična provera:
+$isHttps =
+    isset($_SERVER['HTTPS'])
+    && $_SERVER['HTTPS'] !== 'off';
+
+Ali ovo postaje interesantnije iza:
+Cloudflare
+Load Balancer
+Reverse Proxy
+Nginx proxy
+
+jer se TLS možda završava pre PHP servera.
+Tada originalni klijent može biti na:
+HTTPS
+
+a tvoj PHP server između proxy-ja i aplikacije vidi:
+HTTP
+
+Tu dolaze trusted proxies i X-Forwarded-Proto / Forwarded headeri. MDN Web Docs
+Laravel zato ima:
+$request->secure();
+
+ali da bi iza proxy-ja radio ispravno, treba pravilno podesiti trusted proxies.
+
+------------------------------------------------------------------------------------
+
+REMOTE_ADDR
+$ip = $_SERVER['REMOTE_ADDR'];
+
+echo $ip;
+
+To je IP adresa peer-a koji je direktno povezan sa web serverom. PHP manual ga opisuje kao adresu sa koje korisnik pristupa stranici. PHP
+Na Laragonu ćeš verovatno videti nešto poput:
+127.0.0.1
+
+ili:
+::1
+
+što su localhost adrese.
+Ali production scenario je mnogo zanimljiviji.
+
+-----------------------------------------------------------------------------------
+
+Proxy problem sa IP adresom
+Zamisli:
+USER
+203.0.113.10
+
+   ↓
+
+CLOUDFLARE / LOAD BALANCER
+198.51.100.5
+
+   ↓
+
+YOUR PHP SERVER
+
+PHP može videti:
+$_SERVER['REMOTE_ADDR'];
+
+kao:
+198.51.100.5
+
+dakle proxy, ne originalnog korisnika.
+Zato proxy može dodati:
+X-Forwarded-For: 203.0.113.10
+
+ili standardni:
+Forwarded: for=203.0.113.10
+
+X-Forwarded-For je de-facto standard za prosleđivanje originalnog client IP-a kroz proxy chain.
+
+---------
+
+Ovo je potencijalno opasno:
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+
+Zašto?
+Jer ako tvoj server nije pravilno zaključan iza trusted proxy-ja, klijent može sam poslati:
+X-Forwarded-For: 1.2.3.4
+
+MDN eksplicitno upozorava da X-Forwarded-For ne sme biti bezuslovno korišćen za security stvari poput rate limiting-a ili IP access control-a osim ako je proxy chain pravilno konfigurisan i trusted. MDN Web Docs
+Dakle:
+REMOTE_ADDR
+→ direktni peer
+
+X-Forwarded-For
+→ može opisivati originalnog klijenta
+→ ali samo uz trusted proxy konfiguraciju
+
+--------------------------------------------------------------
+
+Request inspect:
+
+<?php
+
+$info = [
+    'method' => $_SERVER['REQUEST_METHOD'] ?? null,
+    'uri' => $_SERVER['REQUEST_URI'] ?? null,
+    'query_string' => $_SERVER['QUERY_STRING'] ?? null,
+    'script' => $_SERVER['SCRIPT_NAME'] ?? null,
+
+    'host' => $_SERVER['HTTP_HOST'] ?? null,
+    'server_name' => $_SERVER['SERVER_NAME'] ?? null,
+    'server_port' => $_SERVER['SERVER_PORT'] ?? null,
+
+    'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? null,
+
+    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
+
+    'https' => $_SERVER['HTTPS'] ?? null,
+
+    'request_time' => $_SERVER['REQUEST_TIME'] ?? null,
+];
+
+echo '<pre>';
+
+print_r($info);
+
+echo '</pre>'; // http://php-course.test/http/lesson-05/index.php?page=2&sort=price
+
+function requestInfo(): array
+{
+    return [
+        'method' =>
+            $_SERVER['REQUEST_METHOD']
+            ?? null,
+
+        'uri' =>
+            $_SERVER['REQUEST_URI']
+            ?? null,
+
+        'query' =>
+            $_SERVER['QUERY_STRING']
+            ?? null,
+
+        'ip' =>
+            $_SERVER['REMOTE_ADDR']
+            ?? null,
+
+        'host' =>
+            $_SERVER['HTTP_HOST']
+            ?? null,
+
+        'user_agent' =>
+            $_SERVER['HTTP_USER_AGENT']
+            ?? null,
+
+        'https' =>
+            isset($_SERVER['HTTPS'])
+            && $_SERVER['HTTPS'] !== 'off',
+    ];
+}
+
+
+CLIENT
+   │
+   │ može kontrolisati mnogo headera
+   ▼
+PROXY
+   │
+   │ može dodavati forwarded metadata
+   ▼
+SERVER
+   │
+   ▼
+PHP $_SERVER
+
+---------------------------------------------------------------------
+
+REQUEST_METHOD
+→ GET / POST / PUT / ...
+
+REQUEST_URI
+→ path + query
+
+QUERY_STRING
+→ raw deo posle ?
+
+HTTP_HOST
+→ host iz HTTP requesta
+
+REMOTE_ADDR
+→ direktni peer IP
+
+HTTP_USER_AGENT
+→ client-provided header
+
+HTTPS
+→ da li server vidi HTTPS request
+
+REQUEST_TIME
+→ početak obrade requesta
+
+Zamke:
+
+Host može biti user-controlled.
+
+User-Agent nije pouzdan identitet.
+
+X-Forwarded-* se ne sme slepo verovati
+bez trusted proxy konfiguracije.

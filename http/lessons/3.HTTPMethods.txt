@@ -1,0 +1,124 @@
+| Method            | Tipična namena            | Safe?          | Idempotent?   |
+|--------------------------------------------------------------------------------|
+| `GET`             | čitanje resursa           |       ✅      |       ✅ 
+| `POST`            | kreiranje / akcija        |       ❌      |       ❌        |
+| `PUT`             | kompletna zamena resursa  |       ❌      |       ✅        |
+| `PATCH`           | parcijalna izmena         |       ❌      | nije garantovano |
+| `DELETE`          | brisanje resursa          |       ❌      |       ✅          |
+| `HEAD`            | kao GET, bez body-ja      |       ✅      |       ✅          |
+| `OPTIONS` | koje su mogućnosti endpointa      |       ✅      |       ✅          |
+
+
+Safe ≠ idempotent
+
+Safe
+Safe znači:
+Klijent ne zahteva promenu server state-a.
+
+
+GET
+HEAD
+OPTIONS
+``` :chatgpt-content-reference{index="13"}
+
+
+### Idempotent
+
+Idempotent znači:
+
+> Više identičnih requestova ima isti intended effect kao jedan.
+
+Zato:
+
+
+GET -> safe + idempotent
+
+ALI 
+
+DELETE -> NOT safe - BUT idempotent
+
+------------------------------------------------
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+switch ($method) {
+    case 'GET':
+        echo 'Read resource';
+        break;
+
+    case 'POST':
+        echo 'Create resource';
+        break;
+
+    case 'PUT':
+        echo 'Replace resource';
+        break;
+
+    case 'PATCH':
+        echo 'Update resource';
+        break;
+
+    case 'DELETE':
+        echo 'Delete resource';
+        break;
+
+    default:
+        http_response_code(405);
+        echo 'Method Not Allowed';
+}
+
+MODERNIJE:
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+$message = match ($method) {
+    'GET' => 'Read resource',
+    'POST' => 'Create resource',
+    'PUT' => 'Replace resource',
+    'PATCH' => 'Update resource',
+    'DELETE' => 'Delete resource',
+    default => null,
+};
+
+if ($message === null) {
+    http_response_code(405);
+    exit('Method Not Allowed');
+}
+
+echo $message;
+
+-----------------------------------------------
+
+REZIME:
+
+GET
+"daj mi podatke"
+safe + idempotent
+
+POST
+"obradi ovo / napravi nešto"
+unsafe + non-idempotent
+
+PUT
+"zameni ovaj resurs"
+unsafe + idempotent
+
+PATCH
+"izmeni ovaj deo"
+unsafe + not guaranteed idempotent
+
+DELETE
+"ukloni resurs"
+unsafe + idempotent
+
+HEAD
+"GET, ali bez body-ja"
+
+OPTIONS
+"koje mogućnosti podržavaš?"
+
+----------------------------
+
+SAFE = da li request traži promenu state-a?
+
+IDEMPOTENT = da li 1 i N identičnih requestova imaju isti intended effect?

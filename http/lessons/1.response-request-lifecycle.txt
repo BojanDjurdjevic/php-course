@@ -1,0 +1,153 @@
+http://php-course.test/http/lesson-01/index.php?name=Bojan
+
+BROWSER
+   │
+   │ HTTP Request
+   ▼
+WEB SERVER
+Apache / Nginx
+   │
+   ▼
+PHP
+index.php
+   │
+   │ izvršavanje aplikacije
+   ▼
+HTTP Response
+   │
+   ▼
+BROWSER
+
+HTTP = protokol komunikacije
+
+PHP = program koji obrađuje request
+
+GET /products?page=2 HTTP/1.1
+Host: php-course.test
+User-Agent: Mozilla/5.0
+Accept: text/html
+
+<?php
+
+$method = $_SERVER['REQUEST_METHOD'];
+$uri = $_SERVER['REQUEST_URI'];
+
+$name = $_GET['name'] ?? 'Guest';
+
+echo "Method: {$method}<br>";
+echo "URI: {$uri}<br>";
+echo "Hello {$name}";
+
+<?php
+
+http_response_code(200);
+
+header('Content-Type: text/plain; charset=UTF-8');
+
+echo 'Hello from PHP';
+
+-----------------------------------------------------
+
+Request nosi:
+
+method
+URL/path
+query string
+headers
+cookies
+body
+uploaded files
+
+----
+
+Response nosi:
+
+status code
+headers
+cookies
+body
+
+-----------------------------------------------------
+
+<?php
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+$name = $_GET['name'] ?? null;
+
+if ($name === null) {
+    http_response_code(400);
+
+    header('Content-Type: text/plain; charset=UTF-8');
+
+    echo 'Missing name parameter';
+
+    exit;
+}
+
+http_response_code(200);
+
+header('Content-Type: text/plain; charset=UTF-8');
+
+echo "Request method: {$method}" . PHP_EOL;
+echo "Hello {$name}";
+
+-----------------------------------------------------
+
+LARAVEL PANDAN
+
+use Illuminate\Http\Request;
+
+public function index(Request $request)
+{
+    $method = $request->method();
+
+    $name = $request->query('name');
+}
+
+return response(
+    "Hello {$name}",
+    200
+)->header(
+    'Content-Type',
+    'text/plain'
+);
+
+------------------------------------- MAPA PAMĆENJA CIKLUSA -----------------------------------------
+
+1. CLIENT pravi HTTP REQUEST
+
+        ↓
+
+2. WEB SERVER prima request
+
+        ↓
+
+3. PHP dobija request podatke
+
+   $_SERVER
+   $_GET
+   $_POST
+   $_FILES
+   $_COOKIE
+   php://input
+
+        ↓
+
+4. PHP izvršava application logic
+
+        ↓
+
+5. PHP definiše RESPONSE
+
+   status code
+   headers
+   body
+
+        ↓
+
+6. SERVER šalje HTTP RESPONSE
+
+        ↓
+
+7. CLIENT ga obrađuje

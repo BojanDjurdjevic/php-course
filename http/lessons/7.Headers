@@ -1,0 +1,315 @@
+HTTP Headers
+HTTP headers su metadata HTTP poruke. Oni nisu ni URL, ni method, ni body; oni prenose dodatne informacije o requestu ili response-u.
+Najjednostavniji mentalni model:
+HTTP REQUEST
+
+POST /api/bookings HTTP/1.1
+Host: example.com
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer abc123
+User-Agent: Mozilla/5.0
+
+{
+    "room_id": 15
+}
+
+Ovde su:
+POST                    → method
+/api/bookings           → target
+
+Host
+Content-Type
+Accept
+Authorization
+User-Agent              → HEADERS
+
+{ "room_id": 15 }       → body
+
+HTTP header ime je case-insensitive; konceptualno Content-Type i content-type predstavljaju isti header. HTTP/2+ alati ih često prikazuju lowercase.
+
+--------------------------------------------
+
+Request headers vs Response headers
+Prvo ih jasno razdvojimo.
+Request headers
+Klijent ih šalje serveru:
+GET /api/rooms HTTP/1.1
+Host: example.com
+Accept: application/json
+Authorization: Bearer abc123
+User-Agent: Mozilla/5.0
+
+Server iz njih saznaje dodatni kontekst requesta.
+Response headers
+Server ih šalje nazad:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: no-cache
+X-Request-Id: abc-123
+
+{"data":[]}
+
+Dakle:
+CLIENT → SERVER
+request headers
+
+SERVER → CLIENT
+response headers
+
+-----------------------------------------------
+
+Authorization
+Jedan od najvažnijih request headera za API-je:
+Authorization: Bearer abc123xyz
+
+Authorization header služi da klijent pošalje credentials za pristup zaštićenom resursu. MDN Web Docs
+Najčešći API mentalni model:
+Authorization: Bearer TOKEN
+
+Na primer:
+GET /api/user
+Authorization: Bearer eyJ...
+Accept: application/json
+
+Server:
+uzmi token
+↓
+proveri ga
+↓
+identifikuj korisnika
+↓
+dozvoli ili odbij request
+
+----------------------------------------------
+
+Bearer token u core PHP-u
+Možeš prvo pročitati header:
+$headers = getallheaders();
+
+$authorization =
+    $headers['Authorization']
+    ?? null;
+
+Recimo dobiješ:
+Bearer abc123
+
+Možeš:
+if (
+    $authorization !== null
+    && str_starts_with(
+        $authorization,
+        'Bearer '
+    )
+) {
+    $token = substr(
+        $authorization,
+        7
+    );
+}
+
+Jer:
+"Bearer "
+
+ima 7 karaktera.
+
+Ali u frameworku obično ide automatsko parsiranje.
+
+------------------------------------------------
+
+Laravel pandan
+Laravel:
+$authorization =
+    $request->header('Authorization');
+
+ili direktno:
+$token =
+    $request->bearerToken();
+
+Laravel header() vraća vrednost request headera, hasHeader() proverava njegovo postojanje, a bearerToken() izvlači Bearer token iz Authorization headera.
+
+---------------------------------------------------
+
+Response headeri u core PHP-u
+Za slanje response headera koristiš:
+header(
+    'Content-Type: application/json'
+);
+
+Možeš i:
+header(
+    'Cache-Control: no-store'
+);
+
+ili custom:
+header(
+    'X-Request-ID: abc-123'
+);
+
+Pa body:
+echo json_encode([
+    'message' => 'OK',
+]);
+
+Konceptualni response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: no-store
+X-Request-ID: abc-123
+
+{"message":"OK"}
+
+---------------------------------------------------
+
+Veoma važna PHP zamka — headers must come before output
+Ovo:
+echo 'Hello';
+
+header(
+    'Content-Type: application/json'
+);
+
+može dati čuvenu grešku:
+Cannot modify header information -
+headers already sent
+
+Zašto?
+Jer je PHP već počeo da šalje response body klijentu, a HTTP headers moraju prethoditi body-ju.
+PHP dokumentacija naglašava da header(), setcookie() i session funkcije koje dodaju headere moraju biti korišćene pre nego što output počne. PHP
+Zato:
+header(
+    'Content-Type: application/json'
+);
+
+echo json_encode($data);
+
+a ne obrnuto.
+
+------------------------------------------------ MAPA HEADERS-a ------------------------------------
+
+| Header                    | Glavna svrha |
+|------------------------------------------
+| `Content-Type`            | format body-ja |
+| `Accept`                  | željeni response format |
+| `Authorization`           | authentication credentials |
+| `Host`                    | ciljani hostname |
+| `User-Agent`              | client software |
+| `Accept-Language`         | jezičke preference |
+| `Cookie`                  | cookies koje client šalje |
+| `Set-Cookie`              | server postavlja cookie |
+| `Location`                | redirect target |
+| `Cache-Control`           | caching pravila |
+| `Origin`                  | origin requesta / CORS |
+| `Referer`                 | prethodna stranica |
+
+SERVER
+
+WWW-Authenticate:
+Bearer ...
+
+        ↓
+
+CLIENT
+
+Authorization:
+Bearer token
+
+
+Content negotiation:
+
+CLIENT
+
+Accept:
+application/json
+
+        ↓
+
+SERVER
+
+Content-Type:
+application/json
+
+---
+
+REQUEST
+
+method + URL
+HEADERS
+body
+
+---
+
+RESPONSE
+
+status
+HEADERS
+body
+
+---
+
+Content-Type
+→ šta ŠALJEM
+
+Accept
+→ šta želim da DOBIJEM
+
+Authorization
+→ credentials
+
+User-Agent
+→ client info
+
+Host
+→ koji host tražim
+
+---
+
+PHP
+
+// svi request headers
+$headers = getallheaders();
+
+// određeni server-normalized header
+$_SERVER['HTTP_USER_AGENT'];
+
+// šaljem response header
+header(
+    'Content-Type: application/json'
+);
+
+// response headers koje sam pripremio
+headers_list();
+
+// da li je output već počeo
+headers_sent();
+
+LARAVEL 
+
+$request->header('Authorization');
+
+$request->hasHeader(
+    'Authorization'
+);
+
+$request->bearerToken();
+
+$request->accepts(
+    'application/json'
+);
+
+$request->expectsJson();
+
+return response($body)
+    ->header(
+        'Content-Type',
+        'text/plain'
+    );
+
+
+ZAMKA:
+
+header()
+MORA pre outputa
+
+inače dobijaš:
+headers already sent

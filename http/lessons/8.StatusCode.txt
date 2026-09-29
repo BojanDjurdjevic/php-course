@@ -1,0 +1,81 @@
+REQUEST
+   ↓
+server obrađuje zahtev
+   ↓
+RESPONSE
+
+STATUS CODE
+HEADERS
+BODY
+
+-------------------------------------
+
+PHP: http_response_code()
+Najdirektnije:
+http_response_code(404);
+
+echo 'Not Found';
+
+Ili:
+http_response_code(201);
+
+echo json_encode([
+    'message' => 'Created',
+]);
+
+Ako pozoveš bez argumenta:
+$current = http_response_code();
+
+dobijaš trenutni response status code; u web okruženju default je tipično 200
+
+------------------------------------- MAPA KODOVA --------------------------------
+
+| Code              | Značenje              | Tipičan primer |
+|------------------------------------------------------------|
+| `200`             | OK                    | GET uspešan |
+| `201`             | Created               | resource kreiran |
+| `202`             | Accepted              | queued/async job |
+| `204`             | No Content            | uspešan delete |
+| `301`             | Moved Permanently     | permanent redirect |
+| `302`             | Found                 | temporary redirect |
+| `304`             | Not Modified          | caching |
+| `400`             | Bad Request           | malformed JSON |
+| `401`             | Unauthenticated       | nema auth |
+| `403`             | Forbidden             | nema permission |
+| `404`             | Not Found             | resource ne postoji |
+| `405`             | Method Not Allowed    | pogrešan HTTP verb |
+| `409`             | Conflict              | state conflict |
+| `413`             | Content Too Large     | upload/body prevelik |
+| `415`             | Unsupported Media Type| pogrešan Content-Type |
+| `422`             | Unprocessable Content | validation errors |
+| `429`             | Too Many Requests     | rate limit |
+| `500`             | Internal Server Error | aplikacija/server error |
+| `502`             | Bad Gateway           | upstream problem |
+| `503`             | Service Unavailable   | maintenance/overload |
+| `504`             | Gateway Timeout       | upstream timeout |
+
+------------------------------------------------------------------------------
+
+200 vs 201
+OK vs upravo kreiran resource
+
+200 vs 204
+body postoji vs nema body-ja
+
+400 vs 422
+malformed request vs semantički nevalidan input
+
+401 vs 403
+nisam autentifikovan vs nemam dozvolu
+
+404 vs 410
+nije pronađen vs poznato da je trajno uklonjen
+
+409 vs 422
+konflikt sa trenutnim state-om
+vs invalid input
+
+500 vs 503
+neočekivana server greška
+vs servis privremeno nije dostupan
+
