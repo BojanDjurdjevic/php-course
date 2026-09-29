@@ -9,7 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- 2. Alpine.js CDN (Uvek ide sa 'defer' atributom) -->
-    <script src="https://jsdelivr.net" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     
     <!-- Opciono: Tailwind konfiguracija -->
     <script>
