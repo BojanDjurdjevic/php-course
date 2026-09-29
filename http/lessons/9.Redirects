@@ -1,0 +1,823 @@
+Redirect je zapravo samo HTTP response koji kaže klijentu: „Idi na drugi URL.“
+
+CLIENT
+
+GET /old-page
+      ↓
+SERVER
+
+302 Found
+Location: /new-page
+      ↓
+CLIENT
+
+GET /new-page
+      ↓
+SERVER
+
+200 OK
+
+---
+
+3xx status code
++
+Location header
+
+Browser primi redirect response, pročita Location, pa napravi nov HTTP request ka toj adresi.
+---
+
+Najjednostavniji redirect u PHP-u
+
+header('Location: /dashboard');
+
+exit;
+
+PHP ima poseban tretman za Location: header: 
+ako nisi prethodno postavio drugi 201 ili 3xx status, header('Location: ...') će podrazumevano napraviti 302 redirect. PHP
+
+Dakle:
+header('Location: /dashboard');
+exit;
+
+konceptualno vraća:
+HTTP/1.1 302 Found
+Location: /dashboard
+
+--------------------------------------
+
+Redirect nije „promena stranice unutar PHP-a“
+
+Ovo je jako važno !!!
+
+Kad PHP uradi:
+header('Location: /dashboard');
+
+PHP ne učitava dashboard.php.
+
+On samo odgovara browseru:
+„Idi tamo.“
+
+Browser zatim pravi potpuno novi request:
+REQUEST 1
+
+POST /login
+       ↓
+302 Location: /dashboard
+       ↓
+
+REQUEST 2
+
+GET /dashboard
+
+To su dva zasebna HTTP requesta.
+
+---------------------------------------
+
+Zašto skoro uvek ide exit?
+Ovo:
+header('Location: /dashboard');
+
+echo 'Hello';
+
+saveSomethingToDatabase();
+
+ne znači da je PHP prestao da radi.
+header() samo priprema response header.
+PHP će nastaviti da izvršava kod.
+Zato gotovo uvek:
+header('Location: /dashboard');
+
+exit;
+
+Ili:
+exit();
+
+Mentalno:
+header('Location: ...')
+→ pripremi redirect response
+
+exit
+→ prekini PHP izvršavanje
+
+PHP dokumentacija i sama u redirect primeru koristi exit upravo da spreči izvršavanje koda nakon redirecta.
+
+-------------------------------------
+
+Možemo eksplicitno odrediti status
+Umesto default 302:
+header(
+    'Location: /dashboard',
+    true,
+    303
+);
+
+exit;
+
+Treći argument header() može postaviti response status code. PHP
+Ili:
+http_response_code(303);
+
+header('Location: /dashboard');
+
+exit;
+
+Oba konceptualno daju:
+HTTP/1.1 303 See Other
+Location: /dashboard
+
+----------------------------------    MAPA -> Tabela redirect statusa --------------------------------------
+
+| Status                    | Značenje                  | Method posle redirecta |
+|----------------------------------------------------------------------------------------
+| `301`                     | permanent move            | istorijski može promeniti POST → GET |
+| `302`                     | temporary                 | istorijski može promeniti POST → GET |
+| `303`                     | See Other                 | **idi GET-om** |
+| `307`                     | temporary                 | **sačuvaj method + body** |
+| `308`                     | permanent                 | **sačuvaj method + body** |
+
+-------------------------------------------
+
+301 Moved Permanently
+header(
+    'Location: /new-url',
+    true,
+    301
+);
+
+exit;
+
+Značenje:
+Ovaj resource je trajno preseljen.
+
+Primer:
+/stari-blog-url
+      ↓
+301
+      ↓
+/articles/new-url
+
+Koristi se često kod:
+
+promene URL strukture
+promene slug-a
+migracije sajta
+SEO redirecta
+
+Klijenti/crawleri mogu tretirati novi URL kao trajnu zamenu starog. 
+
+Zato NE koristiti 301 za nešto što ćeš možda vratiti sutra.
+
+-----------------------------------------------
+
+302 Found
+Najčešći klasični privremeni redirect:
+header('Location: /dashboard');
+
+exit;
+
+PHP će ovde tipično poslati:
+
+302 Found
+
+Značenje:
+Resource je trenutno dostupan na drugoj lokaciji, ali originalni URL i dalje ostaje relevantan.
+
+MDN ga klasifikuje kao temporary redirect. MDN Web Docs
+Ali postoji istorijska komplikacija.
+
+----------------------------------------------
+
+Problem sa 301 i 302: method može da se promeni
+
+
+Zamisli:
+POST /bookings
+
+sa body-jem:
+room_id=15&guests=2
+
+server odgovori:
+302 Found
+Location: /booking-success
+
+Browseri tradicionalno često nastave:
+GET /booking-success
+
+umesto ponovnog:
+POST /booking-success
+
+To ponašanje postoji iz istorijskih razloga i upravo zato su kasnije uvedeni 303, 307 i 308 da bi namera bila nedvosmislena.
+
+----------------------------------------------
+
+303 See Other — jako važan za forme
+Ovo je odličan status nakon uspešnog POST requesta.
+Recimo:
+POST /bookings
+
+server kreira booking.
+Ne želiš da korisnik ostane na POST response-u.
+Vratiš:
+303 See Other
+Location: /bookings/123
+
+Browser zatim mora da uradi:
+GET /bookings/123
+
+303 eksplicitno znači da se redirect target učitava pomoću GET-a. MDN Web Docs
+Mentalno:
+POST
+↓
+server izvrši akciju
+↓
+303
+↓
+GET
+
+I tu dolazimo do vrlo važnog obrasca.
+
+-----------------------------------------------
+
+POST → Redirect → GET
+
+
+Poznat kao:
+
+PRG ->  Post / Redirect / Get
+
+Recimo imamo formu:
+
+<form
+    method="POST"
+    action="create-booking.php"
+>
+    ...
+</form>
+
+User klikne submit:
+POST /create-booking.php
+
+PHP:
+// validate
+
+// save booking
+
+header(
+    'Location: /booking-success.php',
+    true,
+    303
+);
+
+exit;
+
+Browser onda radi:
+GET /booking-success.php
+
+Cela sekvenca:
+FORM
+  ↓
+POST /create-booking.php
+  ↓
+INSERT INTO bookings
+  ↓
+303 Location
+  ↓
+GET /booking-success.php
+  ↓
+200 OK
+
+MDN upravo navodi 303 kao tipičan način da se nakon POST/PUT operacije pređe na GET stranicu sa rezultatom.
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Redirections
+
+------------------------------------------
+
+Zašto je PRG toliko koristan?
+
+Zamisli da uradiš:
+
+POST /booking
+↓
+INSERT booking
+↓
+odmah prikažeš HTML
+
+Browser i dalje „stoji“ na rezultatu POST requesta.
+User pritisne:
+F5
+
+Browser može pitati:
+
+Confirm form resubmission?
+
+Ako ponovo pošalje POST, možeš dobiti:
+
+booking #123
+booking #124
+
+od istog submit-a.
+
+Sa PRG:
+POST
+↓
+kreiraj booking
+↓
+REDIRECT
+↓
+GET /booking/123
+
+sada refresh radi samo:
+GET /booking/123
+
+i ne kreira novi booking.
+To je ogroman razlog zašto je PRG standardni obrazac kod klasičnih web formi.
+
+----------------------------------------------
+
+307 Temporary Redirect
+Sada potpuno druga filozofija.
+307 Temporary Redirect
+Location: /new-endpoint
+
+znači:
+Idi tamo, ali nemoj menjati HTTP method ni body.
+
+Ako originalno imaš:
+POST /old-endpoint
+
+{"name":"Bojan"}
+
+nakon 307 client treba da napravi:
+POST /new-endpoint
+
+{"name":"Bojan"}
+
+Isti method.
+Isti body. 
+
+Zato:
+303
+POST → GET
+
+dok:
+307
+POST → POST
+
+Kada ima smisla 307?
+
+Na primer API endpoint je privremeno premešten:
+POST /api/v1/process
+
+privremeno treba da ide na:
+POST /api/v2/process
+
+i moraš sačuvati payload.
+Tada:
+307
+
+jasno govori clientu:
+isti method
+isti body
+nova lokacija
+
+Za običan „forma uspešna → pokaži success page“ ne želiš 307.
+Tu želiš POST → GET, dakle 303.
+
+------------------------------------
+
+308 Permanent Redirect
+
+308 je praktično trajni pandan 307.
+
+307
+temporary
+preserve method/body
+
+308
+permanent
+preserve method/body
+
+Primer:
+POST /api/old/orders
+
+trajnim redirectom:
+308 Permanent Redirect
+Location: /api/orders
+
+client treba da ponovi:
+POST /api/orders
+
+sa istim body-jem
+
+---------------------------------------
+
+301 vs 308
+Oba su permanent redirect.
+Ali:
+301
+method behavior istorijski nije potpuno pouzdano
+
+dok:
+308
+garantuje preservation method + body
+
+Dakle ako ti je veoma važno da:
+POST ostane POST
+PUT ostane PUT
+
+onda je 308 precizniji permanent redirect.
+
+----------------------------------------
+
+302 vs 307
+Isto za temporary:
+302
+temporary
+ali method može istorijski preći u GET
+
+307
+temporary
+method/body ostaju isti
+
+Ako namerno želiš:
+POST → GET
+
+nemoj se oslanjati na istorijsko ponašanje 302.
+
+Koristi:
+303
+
+-----------------------------------------
+
+301
+PERMANENT
+method preservation nije idealno nedvosmislen
+
+
+302
+TEMPORARY
+method preservation nije idealno nedvosmislen
+
+
+303
+TEMPORARY / SEE OTHER
+→ GET
+
+
+307
+TEMPORARY
+→ SAME METHOD + BODY
+
+
+308
+PERMANENT
+→ SAME METHOD + BODY
+
+--------------------------------------------
+
+304 Not Modified nije običan redirect
+Pošto počinje sa 3, nalazi se u 3xx grupi.
+Ali:
+304 Not Modified
+
+ne znači:
+idi na URL iz Location.
+
+Koristi se kod HTTP caching-a:
+browser:
+Imam staru verziju, je li još važeća?
+
+server:
+304 Not Modified
+
+browser:
+OK, koristiću svoju cached verziju.
+
+Dakle 304 je poseban cache response, ne navigacioni redirect kao 301/302/303/307/308.
+
+---------------------------------------
+
+Location nije samo za redirects
+
+Zanimljivo:
+201 Created
+Location: /bookings/123
+
+je potpuno validno.
+To znači:
+Kreirao sam resource i ovo je njegova lokacija.
+
+MDN navodi da Location ima značenje i uz 201 Created, upravo za URL novokreiranog resursa. 
+Na primer:
+http_response_code(201);
+
+header(
+    'Location: /api/bookings/123'
+);
+
+echo json_encode([
+    'id' => 123,
+]);
+
+Ovde browser ne mora automatski da radi redirect kao kod 3xx.
+Location tada samo opisuje gde je kreirani resource.
+
+-------------------------------------
+
+Relative vs absolute URL
+
+Možeš:
+header(
+    'Location: /dashboard'
+);
+
+To je sasvim normalan relative redirect.
+Ili:
+header(
+    'Location: https://example.com/dashboard'
+);
+
+MDN dozvoljava da Location bude relativan ili apsolutan URL. 
+Za redirect unutar sopstvene aplikacije ja bih najčešće koristio:
+/dashboard
+
+umesto ručnog sklapanja:
+'https://' . $_SERVER['HTTP_HOST'] . '/dashboard'
+
+što je i jednostavnije i izbegava nepotrebno oslanjanje na user-controlled Host.
+
+------------------------------------
+
+Redirect sa query parametrima
+
+Možeš:
+header(
+    'Location: /search?page=2&sort=price'
+);
+
+exit;
+
+Ili sigurnije generisati query:
+
+$params = [
+    'page' => 2,
+    'sort' => 'price',
+];
+
+$query = http_build_query($params);
+
+header(
+    'Location: /search?' . $query
+);
+
+exit;
+
+-----------------------------------
+
+NE raditi open redirect
+
+Zamisli login URL:
+/login?redirect=https://evil.example
+
+A ti uradiš:
+$redirect =
+    $_GET['redirect']
+    ?? '/dashboard';
+
+header(
+    'Location: ' . $redirect
+);
+
+exit;
+
+Napadač onda može napraviti legitiman link sa tvog domena koji posle logina šalje usera na phishing sajt.
+
+To se zove:
+open redirect
+
+Zato ne treba naslepo redirectovati na URL koji korisnik kontroliše.
+Bolje dozvoliti samo interne putanje:
+$redirect =
+    $_GET['redirect']
+    ?? '/dashboard';
+
+if (
+    !str_starts_with(
+        $redirect,
+        '/'
+    )
+    || str_starts_with(
+        $redirect,
+        '//'
+    )
+) {
+    $redirect = '/dashboard';
+}
+
+header(
+    'Location: ' . $redirect
+);
+
+exit;
+
+U pravoj aplikaciji još bolje koristi frameworkove route/URL helper-e i eksplicitno dozvoljene destinacije.
+
+---------------------------------------------
+
+Klasika PHP login:
+
+<?php
+
+session_start();
+
+if (
+    $_SERVER['REQUEST_METHOD']
+    !== 'POST'
+) {
+    http_response_code(405);
+
+    exit;
+}
+
+$email =
+    $_POST['email']
+    ?? '';
+
+$password =
+    $_POST['password']
+    ?? '';
+
+// validate credentials...
+
+$_SESSION['user_id'] = 15;
+
+header(
+    'Location: /dashboard.php',
+    true,
+    303
+);
+
+exit;
+
+FLOW:
+
+POST /login.php
+
+↓ authentication
+
+session created
+
+↓ 303
+
+GET /dashboard.php
+
+-----------------------------------
+
+Forma + validation + redirect
+
+Recimo:
+$name =
+    trim(
+        $_POST['name']
+        ?? ''
+    );
+
+if ($name === '') {
+    header(
+        'Location: /form.php?error=name',
+        true,
+        303
+    );
+
+    exit;
+}
+
+Browser:
+POST /process.php
+↓
+validation fail
+↓
+303
+↓
+GET /form.php?error=name
+
+U čistom PHP-u bih kasnije ovo verovatno rešavao session podacima.
+
+Laravel sam već rešava dosta stvari.
+
+return redirect()->route('dashboard');
+
+--------------------------------------
+
+PRIMER:
+
+<?php
+
+if (
+    $_SERVER['REQUEST_METHOD']
+    !== 'POST'
+) {
+    http_response_code(405);
+
+    exit;
+}
+
+$name =
+    trim(
+        $_POST['name']
+        ?? ''
+    );
+
+if ($name === '') {
+    header(
+        'Location: /form.php?error=1',
+        true,
+        303
+    );
+
+    exit;
+}
+
+// Save to DB...
+
+header(
+    'Location: /success.php',
+    true,
+    303
+);
+
+exit;
+
+POST /process.php
+      ↓
+PHP obradi formu
+      ↓
+303 See Other
+Location: /success.php
+      ↓
+GET /success.php
+      ↓
+200 OK
+
+--------------------------------------------
+
+SERVER
+
+3xx status
++
+Location header
+
+↓ CLIENT
+
+novi HTTP request
+
+header(
+    'Location: /dashboard'
+);
+
+exit;
+
+PRECIZNIJE:
+
+header(
+    'Location: /dashboard',
+    true,
+    303
+);
+
+exit;
+
+301
+permanent
+
+302
+temporary
+
+303
+redirect kao GET
+
+307
+temporary + preserve method/body
+
+308
+permanent + preserve method/body
+
+A možda najvažnije:
+POST → Redirect → GET
+
+sprečava slučajni resubmit forme prilikom refresh-a.
+
+----------------------------- PITANJA:
+
+„Šta radi header('Location: ...')?“
+Odgovor:
+PHP šalje HTTP Location response header i redirect status. Browser zatim pravi novi request prema toj URL adresi. Kod u PHP-u se ne zaustavlja automatski, zato posle redirecta tipično pozivamo exit.
+
+
+„Razlika 302 i 307?“
+Oba su temporary redirects, ali 307 garantuje da HTTP method i body ostaju isti; kod 302 istorijski user-agent može promeniti POST u GET. MDN Web Docs
+
+„Razlika 303 i 307?“
+303 preusmerava na novi URL koristeći GET, dok 307 čuva originalni method i body. MDN Web Docs
+
+„Šta je PRG?“
+Post/Redirect/Get: nakon uspešnog POST-a server vraća redirect, browser zatim pravi GET, čime refresh više ne resubmituje originalnu formu.

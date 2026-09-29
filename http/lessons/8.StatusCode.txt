@@ -79,3 +79,44 @@ vs invalid input
 neočekivana server greška
 vs servis privremeno nije dostupan
 
+------------------------------------------
+
+2xx
+USPEH
+
+200 OK
+201 Created
+202 Accepted
+204 No Content
+
+
+3xx
+PREUSMERENJE
+
+301
+302
+304
+
+
+4xx
+REQUEST / CLIENT PROBLEM
+
+400 malformed
+401 unauthenticated
+403 forbidden
+404 missing
+405 wrong method
+409 conflict
+413 too large
+415 wrong media type
+422 validation
+429 rate limit
+
+
+5xx
+SERVER / INFRA PROBLEM
+
+500 app/server crash
+502 bad upstream response
+503 unavailable
+504 upstream timeout
