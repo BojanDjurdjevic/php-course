@@ -786,4 +786,258 @@ Ako napadač ukrade validan authenticated session ID, potencijalno može da se p
 
 ------------------------------------------------
 
-23 --->
+23 ---> Zato session cookie treba zaštititi !!!
+
+Za security-sensitive session cookie tipično želimo:
+
+Secure
+HttpOnly
+SameSite
+
+PHP omogućava da postavimo session-cookie parametre pre session_start(). (Dobra praksa) -> https://www.php.net/manual/en/function.session-set-cookie-params.php 
+
+---
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+session_start();
+---
+
+Secure
+→ samo HTTPS
+
+HttpOnly
+→ JS ne može da pročita ID
+
+SameSite
+→ ograničava cross-site slanje
+
+-----------------------------------------------
+
+Session fixation — samo uvod za sada !!!
+
+Zamislimo scenario:
+
+attacker uspe da nametne žrtvi session ID: ABC
+
+Žrtva se loginuje, ali aplikacija nastavi da koristi:
+
+ABC
+
+Attacker već zna taj ID.
+
+To je osnovna ideja:
+session fixation
+
+Zato posle uspešnog login-a treba promeniti session ID.
+U PHP-u postoji:
+
+session_regenerate_id();
+
+PHP security dokumentacija preporučuje regeneraciju session ID-a kada se privilege nivo poveća, posebno nakon autentikacije. 
+
+Konceptualno:
+pre login:
+SESSION_ID = ABC
+
+↓ successful authentication
+
+regenerate
+
+↓
+
+SESSION_ID = XYZ
+
+Attacker koji zna:
+ABC
+
+više nema novi authenticated identifier.
+
+Ovo ćemo detaljnije obraditi u pravom Sessions modulu kasnije.
+
+-------------------------------------------- LARAVEL PANDAN --------------------------------------
+
+return response(
+    'Hello'
+)->cookie(
+    'theme',
+    'dark',
+    60
+);
+
+Laravel takođe po default middleware konfiguraciji encryptuje i potpisuje cookies koje generiše aplikacija, 
+kako klijent ne bi mogao jednostavno da pročita ili modifikuje vrednosti.
+
+SESSION U Laravelu:
+
+$request
+    ->session()
+    ->put(
+        'user_id',
+        15
+);
+
+Čitamo:
+
+$userId =
+    $request
+        ->session()
+        ->get('user_id');
+
+-------------------------------------------------- MAPA PAMĆENJA ---------------------------------------------------------
+
+|                                   | Cookie                                    | Session |
+|-------------------------------------------------------------------------------------------------------------------------|
+| Gde su podaci?                    | browser/client                            | uglavnom server-side backend |
+| Šta browser šalje?                | samu cookie vrednost                      | tipično session ID cookie |
+| PHP API                           | `$_COOKIE`, `setcookie()`                 | `$_SESSION`, `session_start()` |
+| User može menjati vrednost?       | da, tretiraj kao untrusted                | session data nije direktno kod klijenta |
+| Pogodno za                        | preference, identifikator                 | auth state, cart, flash data |
+| Sensitive auth state              | ne kao raw trusted vrednost               | tipičan izbor |
+
+Eksperiment:
+
+set.php 
+
+<?php
+
+setcookie(
+    'framework',
+    'Laravel',
+    [
+        'expires' =>
+            time() + 3600,
+
+        'path' => '/',
+
+        'httponly' => true,
+
+        'samesite' => 'Lax',
+    ]
+);
+
+echo 'Cookie response sent.';
+
+read.php:
+
+<?php
+
+echo '<pre>';
+
+print_r($_COOKIE);
+
+echo '</pre>';
+
+set -> read pa otvorim Application / storage -> Cookies
+
+Network
+→ Request Headers
+→ Cookie
+
+Network
+→ Response Headers
+→ Set-Cookie
+
+---
+
+session-set.php:
+
+<?php
+
+session_start();
+
+$_SESSION['user_id'] = 15;
+
+$_SESSION['name'] =
+    'Bojan';
+
+echo 'Session saved.';
+
+session-read.php:
+
+<?php
+
+session_start();
+
+echo '<pre>';
+
+print_r($_SESSION);
+
+echo '</pre>';
+
+Pregledati PHPSESSID za session ID
+
+Summary:
+
+Cookie?
+
+SERVER
+Set-Cookie
+↓
+BROWSER stores
+↓
+next request
+Cookie
+↓
+PHP $_COOKIE
+
+---
+
+Session?
+
+session_start()
+
+↓
+browser:
+SESSION ID cookie
+
+↓
+server:
+session data
+
+↓
+next request:
+SESSION ID cookie
+
+↓
+session_start()
+
+↓
+$_SESSION restored
+
+-------------------
+
+setcookie(
+    'theme',
+    'dark'
+);
+
+$theme =  $_COOKIE['theme']  ?? null;
+
+
+session_start();
+
+$_SESSION['user_id'] = 15;
+
+$userId =  $_SESSION['user_id']  ?? null;
+
+---
+
+Cookie value
+→ client-controlled
+→ never blindly trust
+
+Session ID
+→ secret bearer identifier
+→ protect with:
+Secure
+HttpOnly
+SameSite
+
+after login
+→ regenerate session ID
