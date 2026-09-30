@@ -1,6 +1,6 @@
 <?php
 
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD']; 
 
 if($method !== 'POST') {
     header('Allow: POST');
@@ -96,5 +96,29 @@ echo '<pre>';
 print_r($file);
 
 echo '</pre>'; */
+
+/**
+ * TAČAN FLOW KODA:
+
+ *   1. POST?
+ *   ↓
+ *   2. postoji file?
+ *   ↓
+ *   3. upload error?
+ *   ↓
+ *   4. size?
+ *   ↓
+ *   5. MIME iz stvarnog sadržaja?
+ *   ↓
+ *   6. MIME dozvoljen?
+ *   ↓
+ *   7. generiši filename
+ *   ↓
+ *   8. napravi directory ako treba
+ *   ↓
+ *   9. move_uploaded_file()
+ *   ↓
+ *   10. sačuvaj path / vrati response
+ */
 
 ?>

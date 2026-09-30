@@ -1,0 +1,789 @@
+$_COOKIE + uvod u $_SESSION sa HTTP stanovišta
+
+Sve počinje od jednog problema:
+
+HTTP je stateless.
+
+Server dobije request, vrati response i sam HTTP protokol ne podrazumeva da server 
+„pamti“ da je sledeći request došao od istog korisnika. 
+Sessions upravo služe da povežu više odvojenih requestova u jedno korisničko stanje.
+
+------------
+
+REQUEST 1
+GET /login
+↓
+response
+
+REQUEST 2
+POST /login
+↓
+response
+
+REQUEST 3
+GET /dashboard
+
+BEZ dodatnog mehanizma, server mora nekako da odgovori na pitanje:
+
+---
+Kako znam da request #3
+pripada istom browseru
+koji se loginovao u requestu #2?
+---
+
+Tu nam u priču dolaze:
+
+COOKIE + SESSION
+
+---------------------------------
+
+Šta je cookie?
+
+Cookie je mala vrednost koju server pošalje browseru, browser je sačuva, 
+a zatim je šalje serveru u narednim odgovarajućim requestovima.
+
+SERVER
+↓
+Set-Cookie response header
+↓
+BROWSER čuva cookie
+↓
+sledeći request
+↓
+Cookie request header
+↓
+SERVER
+
+Dakle imamo dva različita headera:
+
+Set-Cookie
+SERVER → BROWSER
+
+i:
+
+Cookie
+BROWSER → SERVER
+
+Set-Cookie je response header kojim server traži od browsera da sačuva cookie.
+
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie
+
+-------------------------------
+
+Prvi request — server postavlja cookie
+
+setcookie(
+    'theme',
+    'dark'
+);
+
+PHP zapravo priprema nešto konceptualno poput:
+
+HTTP/1.1 200 OK
+Set-Cookie: theme=dark
+
+Browser dobije response i zapamti:
+theme = dark
+
+setcookie() šalje cookie kroz HTTP headere, pa kao i header() mora biti pozvan pre outputa. 
+
+Dakle ovo je dobro:
+
+<?php
+
+setcookie(
+    'theme',
+    'dark'
+);
+
+?>
+
+<html>
+...
+
+A ovo može dati:
+headers already sent
+
+echo 'Hello';
+
+setcookie(
+    'theme',
+    'dark'
+);
+
+https://www.php.net/setcookie
+
+----------------------------------
+
+Browser ga šalje u sledećem requestu
+
+Kasnije:
+GET /profile HTTP/1.1
+Host: example.com
+Cookie: theme=dark
+
+PHP to automatski parsira u:
+$_COOKIE = [
+    'theme' => 'dark',
+];
+
+pa možeš:
+$theme = $_COOKIE['theme'] ?? 'light';
+
+PHP automatski iz incoming Cookie headera popunjava $_COOKIE.
+
+---->
+
+Veoma važna zamka: setcookie() ne menja odmah $_COOKIE
+
+Recimo:
+setcookie(
+    'theme',
+    'dark'
+);
+
+var_dump(
+    $_COOKIE['theme']
+    ?? null
+);
+
+Ako cookie nije postojao u requestu koji je upravo stigao, ovde nećeš automatski dobiti:
+dark
+
+Zašto?
+Zato što:
+$_COOKIE
+
+predstavlja cookies koji su stig­li u trenutnom requestu.
+Dok:
+setcookie()
+
+pravi:
+Set-Cookie
+
+za response koji tek odlazi browseru.
+
+Tek sledeći request browser vraća cookie. 
+PHP manual upravo navodi da će cookie postavljen preko setcookie() biti dostupan u $_COOKIE pri sledećem requestu/page load-u.
+
+REQUEST #1
+
+$_COOKIE
+nema theme
+
+↓ PHP
+
+setcookie('theme', 'dark')
+
+↓ RESPONSE
+
+Set-Cookie: theme=dark
+
+
+──────── novi HTTP request ────────
+
+
+REQUEST #2
+
+Cookie: theme=dark
+
+↓ PHP
+
+$_COOKIE['theme']
+=== 'dark'
+
+Ovo je jako važno.
+
+-------------------------------------------------
+
+Moderni setcookie() syntax
+
+Preporučeno options array:
+
+setcookie(
+    'theme',
+    'dark',
+    [
+        'expires' => time() + 86400,
+        'path' => '/',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]
+);
+
+PHP podržava između ostalog:
+
+expires
+path
+domain
+secure
+httponly
+samesite
+
+a noviji PHP podržava i partitioned.
+
+---
+
+expires:
+
+'expires' => time() + 86400
+
+znači:
+
+sada  +  86400 sekundi  =  1 dan
+
+Ako ne postaviš trajanje/expiry, cookie je tipično session cookie browsera i traje do završetka browser session-a, u zavisnosti od browser ponašanja.
+
+Primer:
+
+setcookie(
+    'theme',
+    'dark',
+    [
+        'expires' => time() + 60 * 60 * 24 * 30,
+    ]
+);
+
+30 dana.
+
+---
+
+path
+
+Recimo:
+'path' => '/'
+
+znači da cookie važi za:
+/
+
+i praktično sve pathove tog hosta.
+Ako:
+'path' => '/admin'
+
+browser ga šalje na:
+/admin
+/admin/users
+/admin/settings
+
+ali ne nužno na:
+/profile
+
+Path određuje URL path scope cookie-ja. MDN naglašava da Path nije security boundary već pravilo kada browser šalje cookie.
+
+Za application-wide cookie često želiš:
+'path' => '/'
+
+---
+
+domain
+
+Može kontrolisati kojim hostovima cookie pripada.
+
+Na primer:
+example.com
+
+i eventualno subdomaini u zavisnosti od konfiguracije.
+
+Za običnu aplikaciju često je najbolje ne širiti domain nepotrebno.
+Što uži scope:
+manje mesta gde cookie putuje
+
+---
+
+secure
+
+'secure' => true
+
+kaže browseru:
+Šalji ovaj cookie samo preko HTTPS veze.
+
+MDN navodi da Secure ograničava cookie na HTTPS requestove, osim posebnog localhost ponašanja u browserima. 
+
+Production:
+'secure' => true
+
+je ono što želimo za session/auth cookies.
+
+Na lokalnom Laragon HTTP setup-u za vežbu ćemo koristiti:
+'secure' => false
+
+jer nemamo lokalni HTTPS.
+
+---
+
+httponly
+'httponly' => true
+
+je veoma bitan za auth/session cookies.
+
+To znači da browser cookie i dalje šalje kroz HTTP:
+Cookie: session_id=...
+
+ali JavaScript ne može normalno da ga pročita kroz:
+document.cookie
+
+MDN navodi da HttpOnly sprečava JavaScript pristup cookie-ju, dok se cookie i dalje normalno šalje uz fetch()/XHR requeste 
+kada request ispunjava cookie pravila. Ovo smanjuje rizik krađe cookie-ja kroz XSS. MDN Web Docs
+
+HttpOnly
+
+browser sme da pošalje cookie
+✅
+
+JavaScript sme da ga pročita
+❌
+
+Ovo je direktno relevantno za session-based auth.
+
+---
+
+SameSite
+
+Ovo je veoma važno za CSRF i Sanctum mentalni model.
+
+Tri glavne vrednosti:
+Strict
+Lax
+None
+
+SameSite=Strict
+Vrlo restriktivno:
+cross-site request
+→ cookie se ne šalje
+
+SameSite=Lax
+Nešto fleksibilnije i često dobar default za klasične web sessione.
+
+SameSite=None
+Dozvoljava slanje i u cross-site kontekstu, ali zahteva:
+Secure
+
+MDN navodi da SameSite kontroliše slanje cookie-ja u cross-site requestovima i time pruža određenu CSRF zaštitu; SameSite=None zahteva Secure.
+
+---
+
+setcookie(
+    'preferences',
+    'dark',
+    [
+        'expires' => time() + 60 * 60 * 24 * 30,
+
+        'path' => '/',
+
+        'secure' => true,
+
+        'httponly' => true,
+
+        'samesite' => 'Lax',
+    ]
+);
+
+Response (približno):
+
+Set-Cookie: preferences=dark;
+    Path=/;
+    Secure;
+    HttpOnly;
+    SameSite=Lax
+
+----------------------------------
+
+Cookie je user-controlled podatak !!!
+
+Ovo je veoma važno!
+
+Ako browser ima:
+role=admin
+
+to nije dokaz da je korisnik admin.
+
+Korisnik može da menja obične cookie vrednosti.
+Zato je ovo strašno loša auth ideja:
+
+if (
+    ($_COOKIE['role'] ?? null) === 'admin'
+) {
+    // admin access
+}
+
+Jer klijent kontroliše request.
+
+
+$_GET
+$_POST
+headers
+cookies
+JSON body
+
+↓
+sve je incoming client data
+↓
+ne veruj mu bez validacije/verifikacije
+
+Cookie nije magično trusted samo zato što ga je tvoja aplikacija ranije postavila.
+
+--------------------------------------
+
+Brisanje cookie-ja
+
+Browseru zapravo kažeš:
+
+Ovaj cookie je istekao.
+
+Na primer:
+setcookie(
+    'theme',
+    '',
+    [
+        'expires' => time() - 3600,
+
+        'path' => '/',
+    ]
+);
+
+Response govori browseru da cookie ukloni.
+
+Važno je da path/domain scope odgovara cookie-ju koji pokušavaš da ukloniš.
+
+I opet:
+unset(
+    $_COOKIE['theme']
+);
+
+samo menja PHP niz u trenutnom requestu.
+
+To samo po sebi ne govori browseru da izbriše cookie.
+
+Dakle:
+unset($_COOKIE)
+→ PHP memory ovog requesta
+
+Set-Cookie expired
+→ browser storage
+
+Potpuno različite stvari.
+
+
+--------------------------------------------------- SESSION -------------------------------------
+
+Recimo posle logina želimo da zapamtimo:
+
+user_id = 15
+
+Možemo teoretski staviti:
+user_id=15
+
+u cookie.
+
+Ali onda klijent može promeniti:
+
+15
+->
+u:
+1
+
+Ne želimo da identitet korisnika zavisi od raw user-controlled vrednosti.
+
+Zato koristimo session.
+
+BROWSER
+
+ima samo nasumični SESSION ID
+
+abc123xyz
+        ↓
+SERVER
+
+abc123xyz
+→ [
+    'user_id' => 15,
+    'role' => 'supplier',
+    ...
+]
+
+Dakle:
+Cookie identifikuje session. Session data ostaje na serveru.
+
+PHP session sistem čuva state između requestova pomoću session ID-a; 
+session ID se tipično propagira cookie-jem, a session_start() na osnovu tog ID-a učitava prethodno sačuvane podatke u $_SESSION.
+
+---------------
+
+Prvi session_start()
+
+Core PHP:
+session_start();
+
+$_SESSION['name'] = 'Bojan';
+
+Ako browser još nema session ID:
+
+session_start()
+↓
+PHP kreira novi session
+↓
+generiše session ID
+↓
+šalje cookie browseru
+---
+
+Po default PHP konfiguraciji ime session cookie-ja je:
+
+PHPSESSID
+
+PHP-ov session.name podrazumevano je PHPSESSID. 
+
+Response može konceptualno izgledati:
+HTTP/1.1 200 OK
+Set-Cookie: PHPSESSID=q8s7df92...
+
+---------------------
+
+A gde je zapravo 'Bojan'?
+
+Ne u tom cookie-ju.
+
+Browser ima:
+PHPSESSID=q8s7df92...
+
+A server ima nešto konceptualno:
+
+session id:
+q8s7df92...
+
+session data:
+[
+    'name' => 'Bojan'
+]
+
+PHP-ov default session save handler je trenutno:
+
+files
+
+mada session backend može biti promenjen. 
+
+Dakle konceptualno na serveru može postojati file koji odgovara tom session ID-u.
+
+Framework može koristiti i:
+
+files
+database
+Redis
+Memcached
+...
+
+---
+
+Sledeći request
+
+Browser kasnije šalje:
+
+GET /dashboard HTTP/1.1
+Cookie: PHPSESSID=q8s7df92...
+
+U dashboard.php:
+session_start();
+
+echo $_SESSION['name'];
+
+PHP radi približno:
+1. pročitaj PHPSESSID cookie
+
+2. pronađi session q8s7df92...
+
+3. učitaj session podatke
+
+4. napravi:
+
+$_SESSION = [
+    'name' => 'Bojan'
+];
+
+I dobiješ:
+
+Bojan
+
+session_start() upravo kreira novu ili nastavlja postojeću session na osnovu session identifier-a i popunjava $_SESSION sa prethodno sačuvanim podacima.
+
+---
+
+-------------------------------------
+
+KOMPLET Session HTTP FLOW:
+
+REQUEST #1
+
+POST /login
+bez session cookie-ja
+
+        ↓
+
+PHP
+
+session_start()
+
+generiše:
+abc123
+
+$_SESSION['user_id'] = 15
+
+        ↓
+
+SERVER čuva:
+
+abc123
+→ user_id = 15
+
+        ↓
+
+RESPONSE
+
+Set-Cookie:
+PHPSESSID=abc123
+
+        ↓
+
+BROWSER čuva cookie
+
+
+──────── NEXT REQUEST ────────
+
+
+REQUEST #2
+
+GET /dashboard
+
+Cookie:
+PHPSESSID=abc123
+
+        ↓
+
+PHP
+
+session_start()
+
+        ↓
+
+server pronalazi:
+
+abc123
+→ user_id = 15
+
+        ↓
+
+$_SESSION[
+    'user_id'
+] === 15
+
+------------------------------
+
+MINI LOGIN Primer:
+
+login.php:
+
+<?php
+
+session_start();
+
+// Pretpostavimo da smo već
+// proverili email/password.
+
+$_SESSION['user_id'] = 15;
+
+header(
+    'Location: /dashboard.php',
+    true,
+    303
+);
+
+exit;
+
+---
+
+dashboard.php:
+
+<?php
+
+session_start();
+
+$userId =  $_SESSION['user_id']  ?? null;
+
+if ($userId === null) {
+    http_response_code(401);
+
+    exit('Unauthenticated');
+}
+
+echo "Authenticated user: {$userId}";
+
+---
+
+POST/login
+↓
+session
+↓
+redirect
+↓
+GET dashboard
+↓
+session restored
+
+---------------------------------------
+
+Zašto session_start() mora na svakom requestu gde koristiš session?
+
+Zato što svaki PHP request počinje praktično od nule.
+
+Ovo iz prethodnog requesta:
+$_SESSION['user_id'] = 15;
+
+ne ostaje magično kao PHP promenljiva u memoriji sledeće stranice.
+
+Sledeći request mora:
+session_start();
+
+da bi PHP:
+session ID
+↓
+session storage
+↓
+$_SESSION
+
+ponovo sastavio.
+
+-------------------------------------------
+
+Session ID je praktično ključ
+
+Možeš ga zamisliti kao:
+
+SESSION STORE
+
+a81k2...
+→ {
+    user_id: 15,
+    cart: [...]
+}
+
+z91pm...
+→ {
+    user_id: 27,
+    cart: [...]
+}
+
+Browser A šalje:
+PHPSESSID=a81k2...
+
+Browser B šalje:
+PHPSESSID=z91pm...
+
+I server zna čije podatke da učita.
+
+Zato je session ID osetljiva vrednost.
+
+Ako napadač ukrade validan authenticated session ID, potencijalno može da se predstavi kao taj korisnik.
+
+------------------------------------------------
+
+23 --->
