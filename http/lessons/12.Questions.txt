@@ -1,0 +1,275 @@
+pitanje 1
+
+Objasni svojim rečima kompletan HTTP request/response lifecycle u PHP aplikaciji.
+Zamisli da browser pošalje:
+GET /products?page=2
+
+Šta se redom dešava od trenutka kada browser pošalje request do trenutka kada dobije response?
+
+---
+
+CLIENT
+↓
+šalje HTTP REQUEST
+
+request sadrži:
+- method
+- URL/path + eventualni query string
+- headers
+- opcioni body
+
+↓
+WEB SERVER
+
+prima request i prosleđuje obradu PHP-u
+
+↓
+PHP
+
+dobija request podatke kroz:
+$_SERVER
+$_GET
+$_POST
+$_FILES
+$_COOKIE
+php://input
+itd.
+
+↓
+APPLICATION / BUSINESS LOGIC
+
+↓
+PHP definiše RESPONSE:
+- status code
+- headers
+- body
+
+↓
+WEB SERVER
+
+šalje HTTP RESPONSE
+
+↓
+CLIENT
+
+obrađuje response
+
+-----------------------------------------------------------------------
+
+2. 
+
+Objasni razliku između:
+
+GET
+POST
+PUT
+PATCH
+DELETE
+
+ali ne samo CRUD mapiranje.
+
+Posebno:
+1. šta znači da je metoda safe,
+2. šta znači da je idempotent,
+3. zašto je DELETE idempotentan iako menja state,
+4. i koja je glavna semantička razlika između PUT i PATCH.
+
+---
+
+GET
+read
+safe + idempotent
+
+POST
+process/create/action
+unsafe + non-idempotent
+
+PUT
+replace resource
+unsafe + idempotent
+
+PATCH
+partial modification
+unsafe + not guaranteed idempotent
+
+DELETE
+remove resource
+unsafe + idempotent
+
+--------------------------------------------------------
+
+Pitanje 3:
+
+Imamo URL:
+/products?page=2&sort=price&filters[city]=Novi+Sad
+
+Objasni:
+1. šta je query string,
+2. kako ga PHP predstavlja kroz $_GET,
+3. kog su tipa vrednosti poput page=2,
+4. da li $_GET postoji samo kod HTTP GET metode,
+5. i koja je razlika između:
+
+---
+
+Query string je sve ono što se nalazi iza znaka ?
+
+U zadatom primeru gore, nakon products (koji je url path) počinje query string:
+
+?page=2&sort=price&filters[city]=Novi+Sad
+
+Parametri se pišu kao key=value a međusobno se odvajaju sa &, dok se white space između npr 2 reči u value prevazilazi najčešće sa + ili %20.
+
+U suštini, mi ove podatke u PHP kroz superglobal $_GET dobijamo kao array. U ovom konkretnom primeru:
+$_GET = [
+  'page' => '2',
+  'sort' => 'price',
+  'filters' => [ 'city' => 'Novi Sad',]
+];
+
+Sve ove vrednosti dolaze kao string, iako vidimo page=2, 2 je ovde string, nije integer. doduše, 'filters' je array, ali niz stringova.
+
+Inače, $_GET može da se koristi i kod POST metode, on nije samo vezan za GET metodu, nego $_GET predstavlja URL query parameters a ne telo GET requesta.
+
+Primer: /orders?send_email=1
+$_GET['send_email'];
+
+Za razliku od $_GET, koji daje parsiran query string u vidu niza, 
+$_SERVER['QUERY_STRING'] daje sirovi (raw) query string, dakle bukvalno ovo: ?page=2&sort=price&filters[city]=Novi+Sad
+
+Za kraj bih dodao, da nikad ne treba verovati $_GET inputu jer je client controlled i zato treba podatke uvek:
+
+VALIDATION
+Da li je vrednost dozvoljena?
+
+CASTING
+Koji PHP tip želim?
+
+SANITIZATION
+Da li i kako menjamo/čistimo input?
+
+OUTPUT ESCAPING
+Kako ga bezbedno prikazujemo?
+
+--------------------------------------------------
+
+Pitanje 4:
+
+Objasni razliku između ova tri requesta:
+
+1. application/x-www-form-urlencoded
+2. multipart/form-data
+3. application/json
+
+Posebno:
+
+1. kada se koji format tipično koristi,
+2. gde PHP stavlja podatke kod svakog od njih,
+3. zašto JSON POST request ne mora da popuni $_POST,
+4. i šta tada koristimo umesto $_POST.
+
+---
+
+Content-Type(s):
+
+application/x-www-form-urlencoded
+
+koristimo kod najobičnije HTML forme i to kada šaljemo stringove i obične data. Ovde PHP popunjava automatski $_POST.
+
+Ipak, kada imamo multipart/form-data, tj kada kroz formu šaljemo i slike ili fajlove, 
+tada PHP popunjava $_POST (sa string podacima - ne fajlovima) i $_FILES isključivo podacima o fajlu.
+
+Međutim, ako JS pošalje application/json, 
+PHP-ov POST neće sadržati taj JSON (najčešće će sadržati nešto poput []), 
+dok ćemo ovde koristiit raw body preko php://input.
+
+->
+
+application/x-www-form-urlencoded
+→ obična HTML forma
+→ PHP tipično popunjava $_POST
+
+multipart/form-data
+→ forma sa fajlovima
+→ obična polja idu u $_POST
+→ fajlovi i njihovi metadata podaci idu u $_FILES
+
+application/json
+→ API / SPA request
+→ PHP ne popunjava automatski $_POST tim JSON payload-om
+→ čitamo raw body preko php://input
+→ zatim json_decode()
+
+Dakle poslednji deo bih izgovorio ovako:
+$raw = file_get_contents('php://input');
+
+$data = json_decode(
+    $raw,
+    true,
+    512,
+    JSON_THROW_ON_ERROR
+);
+
+Još jedna bitna nijansa: multipart/form-data se ne koristi samo zato što „ima slika“, 
+nego generalno kada šaljemo fajlove/binarne podatke uz ostala form polja.
+
+-------------------------------------------------------
+
+Pitanje 5:
+
+Objasni razliku između:
+Content-Type: application/json
+
+i:
+Accept: application/json
+
+Posebno me zanima:
+1. šta opisuje Content-Type,
+2. šta opisuje Accept,
+3. da li oba mogu postojati u istom requestu,
+4. i šta bi značio ovaj request:
+POST /api/users
+Content-Type: application/json
+Accept: application/json
+
+uz JSON body.
+
+---
+
+Content-Txpe opisuje ono što se u requestu (ili response-u) šalje kroz telo zahteva. Dakle Content-Type -> ja ti u telu šaljem: application/json ILI multipart/form-data...
+
+Dok je Accept ustvari negotiation. Naravno da može stajati u istom requestu uz Content-Type ali on znači: "voleo bih da nazad primim ovo...".
+
+Content-Type -> šaljem ti ovo
+Accept -> voleo bih da nazad primim isto to ili ono...
+
+Zadati request bi značio:
+
+Metod POST -> gađam api/users
+
+Content-Type -> šaljem ti json format 
+
+Accept -> Molim te da mi vratiš, ako je moguće json.
+
+Ovo Accept naravno neće i odlučiti u kom će se formatu kroz response vratiti, tu odluku donosi server (tj PHP definiše response).
+
+------------------------------------------------------
+
+Pitanje 6:
+
+Objasni razliku između ova dva:
+
+$_POST
+
+i:
+
+file_get_contents('php://input')
+
+Posebno:
+
+1. kada koristiš jedno, a kada drugo,
+2. šta tačno vraća php://input,
+3. zašto php://input nije odmah PHP array,
+4. i šta radiš ako očekuješ JSON body.
+
+---
