@@ -1,0 +1,194 @@
+Coding challenge 1 — JSON API endpoint
+Krećemo sada coding zadatke, opet jedan po jedan.
+Frontend šalje:
+POST /users.php
+Content-Type: application/json
+Accept: application/json
+
+body:
+{
+    "name": "  Bojan  ",
+    "email": "bojan@example.com",
+    "age": 40
+}
+
+Napiši users.php koji treba da:
+1. prihvati samo POST; za drugo vrati 405 i Allow: POST,
+2. zahteva application/json; inače 415,
+3. pročita raw body preko php://input,
+4. koristi JSON_THROW_ON_ERROR; malformed JSON → 400,
+5. proveri da je root decoded vrednost array,
+6. name mora biti neprazan string nakon trim(),
+7. email mora biti validan email,
+8. age mora biti pravi PHP int i između 18 i 100,
+9. validation failure → 422,
+10. ako je sve dobro, vrati 201 Created i JSON:
+{
+    "data": {
+        "name": "Bojan",
+        "email": "bojan@example.com",
+        "age": 40
+    }
+}
+
+Ne mora baza. Samo HTTP + JSON + validation pipeline.
+
+---
+
+<?php 
+
+header('Content-Type: application/json; charset=UTF-8');
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+if($method !== 'POST') {
+    header('Allow: POST');
+
+    http_response_code(405);
+
+    echo json_encode([
+        'error' => 'Method not allowed!'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+$content = $_SERVER['CONTENT_TYPE'] ?? '';
+
+$contentType = strtolower(
+    trim(explode(';', $content)[0])
+);
+
+if($contentType !== 'application/json') {
+    http_response_code(415);
+
+    echo json_encode([
+        'error' => 'Invalid content, expected JSON.'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+$raw = file_get_contents('php://input');
+
+try {
+    $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+} catch (JsonException $e) {
+    http_response_code(400);
+
+    // opciono: logovati $e->message() 
+
+    echo json_encode([
+        'error' => 'Invalid JSON sent.'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+if(!is_array($data)) {
+    http_response_code(422);
+
+    echo json_encode([
+        'error' => 'JSON object expected!'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+$name = $data['name'] ?? null;
+$email = $data['email'] ?? null;
+
+if(!is_string($name) || trim($name) === '') {
+    http_response_code(422);
+
+    echo json_encode([
+        'error' => 'Name is required and must be string.'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+$name = trim($name);
+
+if(!is_string($email)) {
+    http_response_code(422);
+
+    echo json_encode([
+        'error' => 'The email is required and must be valid email address!'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+$email = trim($email);
+
+if(!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    http_response_code(422);
+
+    echo json_encode([
+        'error' => 'The email is required and must be valid email address!'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+if(!isset($data['age']) || !is_int($data['age']) || $data['age'] < 18 || $data['age'] > 100) 
+{
+    http_response_code(422);
+
+    echo json_encode([
+        'error' => 'Age must be valid number with range from 18 to 100.'
+    ], JSON_UNESCAPED_UNICODE);
+
+    exit;
+}
+
+http_response_code(201);
+
+echo json_encode([
+    'data' => [
+        'name' => $name,
+        'email' => $email,
+        'age' => $data['age']
+    ]
+], JSON_UNESCAPED_UNICODE);
+
+exit;
+
+--------------------------------------------------------
+
+Coding challenge 2 — File upload endpoint
+
+Napravi upload.php koji:
+
+<form method="POST" enctype="multipart/form-data">
+    <input type="file" name="photo">
+</form>
+
+treba da obradi ovako:
+
+1. prihvata samo POST, inače 405 + Allow: POST,
+2. očekuje $_FILES['photo'],
+3. proverava upload error,
+4. maksimalna veličina je 3 MB,
+5. dozvoljeni MIME tipovi su samo:
+   - image/jpeg
+   - image/png
+   - image/webp
+6. MIME proveri preko finfo, ne preko $file['type'],
+7. generiše random filename preko random_bytes(),
+8. čuva u:uploads/15/
+   
+   gde za sada možemo hardkodovati:$userId = 15;
+9. kreira direktorijum ako ne postoji,
+10. koristi move_uploaded_file(),
+11. ako upload uspe, vrati 201 i JSON tipa:
+{
+    "data": {
+        "path": "uploads/15/a1b2c3d4.webp"
+    }
+}
+
+12. ako MIME nije dozvoljen → 415,
+13. ako je fajl prevelik → 413,
+14. ostale validation/upload greške možeš vratiti kao 422.
