@@ -273,3 +273,394 @@ Posebno:
 4. i šta radiš ako očekuješ JSON body.
 
 ---
+
+$_POST se automatski popunjava od strane PHP-a prilikom slanja obične html forme i običnih podataka.
+
+Međutim kada frontend šalje JSON, dobijamo raw request body preko php://input.
+
+I dok je $_POST automatski parsiran u array, JSON je zapravo string,
+
+Dakle, da bismo ga koristili. moramo da parsiramo taj raw string:
+
+$raw = file_get_contents('php://input');
+
+$data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+
+za obrnuti smer, kada želimo recimo u našem API-u da array pošaljemo kao JSON nazad, radimo json_encode($niz, NEKI_FLAG);
+
+----------------------------------------------------------
+
+Pitanje 7:
+
+Objasni razliku između:
+
+$_SERVER['REQUEST_METHOD']
+$_SERVER['REQUEST_URI']
+$_SERVER['QUERY_STRING']
+$_SERVER['REMOTE_ADDR']
+$_SERVER['HTTP_USER_AGENT']
+
+Šta svaki predstavlja i kojim od tih vrednosti treba biti posebno oprezan 
+jer mogu biti client-controlled ili nepouzdane.
+
+---
+
+REQUEST_METHOD
+→ HTTP metoda requesta
+
+REQUEST_URI
+→ path + eventualni query string
+
+QUERY_STRING
+→ raw deo posle ?
+
+REMOTE_ADDR
+→ IP direktnog peer-a koji je povezan sa serverom
+
+HTTP_USER_AGENT
+→ client-provided header sa informacijama o client software-u
+→ nije pouzdan identitet
+
+------------------------------------------------------
+
+400
+request/payload je malformed
+
+422
+razumem request, ali podaci nisu validni
+
+401
+ne znam ko si / nisi autentifikovan
+
+403
+znam ko si, ali nemaš dozvolu
+
+409
+request je validan, ali se sukobljava
+sa trenutnim stanjem sistema
+
+415
+ne podržavam format body-ja
+
+500
+problem je kod mene, na serveru/aplikaciji
+
+--------------------------------------------------------
+
+pitanje 9
+
+Objasni kako radi HTTP redirect.
+
+Posebno me zanima:
+
+1. šta zapravo radi:
+header('Location: /dashboard');
+
+2. zašto posle toga tipično ide:
+exit;
+
+3. razlika između 302, 303, 307 i 308,
+4. šta je POST → Redirect → GET obrazac i zašto je koristan kod formi.
+
+---
+
+header('Location: /dashboard');  - PHP šalje http location response header i defaultni 302 status 
+-> browser pravi novi request prema toj URL adresi a kod se posle redirecta ne zaustavlja automatski 
+pa je uvek potrebno da posle ove linije dodamo exit; kako bismo prekinuli izvršavanje.
+
+302 i 307 su oba temporary redirect (302 se postavlja automatski uz 
+'Location: ...' ukoliko ne dodamo sami status), 
+ali 307 garantuje da HTTP metod i body ostaju isti, dok 302 može promeniti POST u GET.
+
+303 preusmerava na novi URL ali koristi GET. 
+Dok je 308 takođe permanent ali čuva metod i body.
+
+PRG obrazac -> Post -> Redirect -> Get: 
+Nakon uspešnog post-a server vraća redirect, 
+zatim browser pravi Get, samim tim refresh više ne resubmituje originalnu formu.
+
+->
+
+header('Location: /dashboard')
+→ postavlja Location header
+→ PHP tipično koristi 302
+→ browser pravi novi request ka /dashboard
+-> obavezan exit;
+
+302
+temporary
+method može istorijski preći POST → GET
+
+303
+See Other
+sledeći request ide GET metodom
+
+307
+temporary
+čuva method + body
+
+308
+permanent
+čuva method + body
+
+----------------------------------------------------------
+
+Pitanje 10
+
+Objasni kompletan PHP file upload flow.
+
+Zamisli:
+<form method="POST" enctype="multipart/form-data">
+    <input type="file" name="photo">
+</form>
+
+Zanima me:
+
+1. zašto mora multipart/form-data,
+2. šta PHP stavlja u $_FILES['photo'],
+3. šta znače tmp_name, error, size, name, type,
+4. kojim vrednostima ne treba verovati,
+5. zašto koristimo finfo,
+6. i šta radi move_uploaded_file().
+
+---
+
+Kada šaljemo fajlove, html enctype atribut mora biti podešen na multipart/form-data, kad god šaljemo:
+
+sliku, pdf, video, binarni zapis.
+
+Nakon form submit, PHP automatski popunjava superglobal $_FILES sa ključem koji smo stavili u inputu pod name a to je u ovom slučaju photo. Tako će $_FILES['photo'] dobiti:
+
+name -> ime fajla poslato sa klijenta (ne možemo mu verovati jer je client controlled i zato pravimo generated name)
+
+full_path -> putanja, na primer image.jpg - Takođe nikako mu ne verujemo jer je client controlled
+
+type -> koji je mime, npr 'image/jpeg' -> takođe mu ne možemo verovati jer ga je prijavio client/browser,
+a napadač može poslati lažni format, i zato koristimo finfo() da bi PHP sam proverio type fajla a ne da verujemo klijentu.
+
+tmp_name -> predstavlja privremenu lokaciju fajla na serveru, ako ovde ostane, neće biti sačuvan i zato ga je potrebno odatle premestiti na stalnu lokaciju a nakon svih validacija.
+
+error -> govori o erroru prilikomuploada, ako je sve u redu onda je vrednost 0, a kada proveravamo, bolje je koristiti PHP-ovu konstantu UPLOAD_ERR_OK, jer je semantički jasnija od 0.
+
+size -> ovo predstavlja veličinu fajla u bytes.
+
+Dakle, najbolje je smestiti ove podatke u varijablu (pre toga proveriti metodu requesta), onda proverimo da li fajl zaista postoji, 
+pa da li imamo upload error, zatim da li je veličina veća od dozvoljene, potom proverimo MIME, 
+zatim generišemo file name, onda uz pomoć mkdir() previmo direktorijum gde će fajl biti smešten, 
+ukoliko je potrebno da se napravim tek tada možemo koristiti:
+
+move_uploaded_file() koji premešta fajl iz tmp u direktorijum gde želimo da bude, a dodatno proverava da li je source zaista fajl poslat HTTP metodom.
+
+ako destination već postoji, pregaziće ga, zato pravimo unique name, osim ako se recimo radi o avataru korisnika koji je uvek samo jedan na primer.
+
+Nakon ovoga, razmišljamo šta čuvamo u bazi?
+
+Najbolja praksa da file path se upiše u bazu a da se fajl čuva u našem fajl sistemu.
+
+------------------------------------------------------------------------------------
+
+Pitanje 11
+
+Sada cookies i sessions.
+
+Objasni svojim rečima kompletan flow:
+Set-Cookie
+Cookie
+$_COOKIE
+session_start()
+$_SESSION
+session ID
+
+Posebno me zanima:
+
+1. zašto kažemo da je HTTP stateless,
+2. koja je razlika između cookie-ja i session-a,
+3. gde se stvarni session podaci tipično čuvaju,
+4. šta browser zapravo čuva kod klasične PHP session,
+5. zašto setcookie() ne znači da će novi cookie odmah postojati u $_COOKIE u istom requestu,
+6. i čemu služe Secure, HttpOnly i SameSite.
+
+---
+
+HTTP je stateless tj ne može sam po sebi bez dodatnih alata da pamti ko je onaj koji šalje podatke na server. 
+
+Tu u priču ulaze cookies & session.
+
+Osnovna razlika je u tome što se sesija čuva na serveru (odnosno najvažniji podaci, 
+neki deo kao session ID, može se setovati u cookie), 
+dok se cookie čuva u browser-u, iako se setuje na backendu.
+
+ako uradimo setcookie(), cookie će biti setovan i poslat browser-u ali u superglobalnos $_COOKIE nećemo odmah imati dostupne te podatke, 
+nego tek prilikom sledećeg dolazećeg request-a, kada browser automatski šalje cookies.
+
+Međutim, mi ovde uglavnom postavljamo preference ali za neku auth logiku, stvarne podatke čuvamo u session -> 
+$_SESSION['user_id'] = 12 ili ['user_id' => 12, 'user_name' => 'Bojan'], 
+zatim setujemo cookie kroz koji PHP šalje session ID (PHPSESSID) koji se čuva u browseru.
+
+Pa sad, svaka sesija ima svoj ID i onda klijent 1 ima php123 a klijent2 ima php568, 
+browser pošalje cookie sa ID na primer php123 -> PHP kaže aha to je ta i ta sesija i povuče podatke iz sesije.
+
+Moderni cookie set u php pored orametara key=value ima i dodatni options array [] unutar koga storujemo:
+
+trajanje (expire)
+
+Secure -> u produkciji ćemo želeti true https
+HttpOnly -> true // kako bi cookie bio čitljiv samo kroz http protokol ali da ga JS ne vidi
+
+HttpOnly
+→ browser i dalje automatski šalje cookie uz HTTP requeste
+→ JavaScript ne može da ga pročita kroz document.cookie
+
+SameSite -> najčešće koristimo Lax, a samesite ograničava cross-site slanje. → pomaže protiv CSRF-a
+
+--------------------------------------------------------
+
+Pitanje 12:
+
+Objasni razliku između ova četiri pojma:
+
+Validation
+Sanitization
+Casting
+Output escaping
+
+I daj po jedan mali PHP primer za svaki.
+
+Posebno:
+
+filter_var(..., FILTER_VALIDATE_EMAIL)
+(int) $value
+trim($value)
+htmlspecialchars(...)
+
+odnosno šta od toga proverava, šta menja tip, šta menja input, a šta štiti output.
+
+---
+
+Validation je validacija podataka, tj da li je podatak pravilan, na primer: 
+validan, ne prazan string, pa da li je mail ispravan:
+
+$email = $_POST['email'] ?? '';
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    echo "Email nije ispravan.";
+} else {
+    echo "Email je ispravan.";
+}
+
+Dakle, validacija kaže: "Da li je ovo u redu"? 
+
+Dok sanitizacija kaže: "Hajde da to učinimo, da bude u redu".
+
+Na priemr:
+
+$email = filter_var($_POST['email'] ?? '', FILTER_SANITIZE_EMAIL);
+
+PS. Obično se prvo sanitizuje npr trim(ime) pa se onda validira -> da li je ovo ime string
+
+VAŽNO: SQL injection se ne preventira ovim, nego prepared statments-om
+
+Casting je kada nešto želimo da konvertujemo po tipu, na primer $count = '5' -> (int)$count
+
+A output escaping radimo da se zaštitimo od xss i JS napada, 
+na primer ako korisnik pošalje <script>alert('You are hacked')
+</script>, funkcija htmlspecialchars($ime, ENT_QUOTES, 'UTF-8'); 
+nam pomaže jer uklanja tagove, pa je output bezbedan.
+
+-----> ISPRAVKA
+
+Najvažnija: htmlspecialchars() ne uklanja tagove. 
+Ona specijalne HTML karaktere pretvara u HTML entities, tako da browser više ne interpretira input kao HTML/JavaScript.
+
+Na primer:
+$input = "<script>alert('XSS')</script>";
+
+echo htmlspecialchars(
+    $input,
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+browser dobija nešto konceptualno kao:
+&lt;script&gt;alert(&#039;XSS&#039;)&lt;/script&gt;
+
+i zato ga prikazuje kao tekst umesto da izvrši <script>.
+
+Dakle:
+strip_tags()
+→ uklanja HTML tagove
+
+htmlspecialchars()
+→ escape-uje HTML output
+
+Za zaštitu pri HTML outputu htmlspecialchars() je mnogo važniji mentalni alat.
+
+Druga nijansa je sanitization. Ovo:
+„Hajde da podatak učinimo da bude u redu“
+
+je dobar početni mentalni model, ali može malo da zavara.
+
+Preciznije:
+VALIDATION
+→ proverava podatak
+→ prihvati ili odbij
+
+SANITIZATION / NORMALIZATION
+→ menja podatak u željeni/normalizovani oblik
+
+Recimo:
+$name = trim($_POST['name'] ?? '');
+
+je uglavnom normalizacija:
+"   Bojan   "
+↓
+"Bojan"
+
+A:
+filter_var(
+    $email,
+    FILTER_SANITIZE_EMAIL
+);
+
+može ukloniti određene karaktere.
+Ali kod emaila bih u pravoj aplikaciji češće radio:
+
+$email = trim($_POST['email'] ?? '');
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    // reject
+}
+
+nego da korisnikov email tiho „popravljam“, 
+jer sanitization može promeniti podatak u nešto što korisnik zapravo nije uneo.
+
+
+validation / sanitization
+≠
+SQL injection protection
+
+Za SQL:
+PDO prepared statements
+bound parameters
+
+su ključ.
+Dakle finalno:
+VALIDATION
+"Da li je ovo dozvoljeno/ispravno?"
+
+filter_var($email, FILTER_VALIDATE_EMAIL)
+
+NORMALIZATION / SANITIZATION
+"Kako želim da podatak izgleda?"
+
+trim($name)
+
+CASTING
+"Koji PHP tip želim?"
+
+$count = (int) $count;
+
+OUTPUT ESCAPING
+"Kako ga bezbedno ubacujem u HTML?"
+
+htmlspecialchars($value, ENT_QUOTES, 'UTF-8')

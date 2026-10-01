@@ -810,7 +810,9 @@ sprečava slučajni resubmit forme prilikom refresh-a.
 
 „Šta radi header('Location: ...')?“
 Odgovor:
-PHP šalje HTTP Location response header i redirect status. Browser zatim pravi novi request prema toj URL adresi. Kod u PHP-u se ne zaustavlja automatski, zato posle redirecta tipično pozivamo exit.
+PHP šalje HTTP Location response header i redirect status. 
+Browser zatim pravi novi request prema toj URL adresi. 
+Kod u PHP-u se ne zaustavlja automatski, zato posle redirecta tipično pozivamo exit.
 
 
 „Razlika 302 i 307?“
