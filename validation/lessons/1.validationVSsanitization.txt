@@ -1,0 +1,318 @@
+Validation nije Sanitization
+Ovo smo već dotakli, ali sada ćemo ga zakucati.
+Pretpostavimo da korisnik šalje:
+$_POST['name'] = '   Bojan   ';
+
+Imamo nekoliko potpuno različitih operacija.
+Normalization
+Želimo podatak u standardnom obliku:
+$name = trim($_POST['name']);
+
+Dobijamo:
+"   Bojan   "
+↓
+"Bojan"
+
+Nismo utvrdili da je ime validno. Samo smo ga normalizovali.
+Isto može biti:
+$email = strtolower(trim($email));
+
+mada ćemo kasnije pričati zašto čak ni strtolower() nad email adresom nije uvek nešto što treba raditi potpuno bez razmišljanja.
+Validation
+Sada pitamo:
+„Da li prihvatam ovu vrednost?“
+
+if($name === '') {
+    $errors['name'] = 'Name is required.';
+}
+
+ili:
+if(mb_strlen($name) > 100) {
+    $errors['name'] = 'Name is too long.';
+}
+
+Validation ne pokušava da popravi pogrešan podatak.
+Ona kaže:
+PASS
+ili
+FAIL
+
+To je veoma važna ideja.
+Sanitization
+Sanitization menja podatak pokušavajući da ukloni ili modifikuje određene karaktere.
+Na primer:
+$email = filter_var(
+    $email,
+    FILTER_SANITIZE_EMAIL
+);
+
+Ako dobije nešto nepoželjno, može promeniti originalni input.
+Tu nastaje važan problem.
+Pretpostavimo da korisnik pošalje pogrešnu email adresu.
+Često je bolje:
+$email = trim($email);
+
+if(!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    // reject
+}
+
+nego da kažeš:
+„Ja ću nekako popraviti ono što je korisnik uneo.“
+
+Za dosta business inputa pravilo je:
+minimalna normalizacija
++
+stroga validacija
+
+umesto agresivne sanitizacije.
+Casting
+Casting odgovara na sasvim drugo pitanje:
+„Koji PHP tip želim?“
+
+$count = (int) $count;
+
+Ali tu postoji ogromna zamka.
+Ako korisnik pošalje:
+$count = 'banana';
+
+onda:
+$count = (int) $count;
+
+daje:
+0
+
+I upravo si nevalidan input pretvorio u naizgled validan podatak.
+Zato se vrlo često radi:
+validate
+↓
+cast
+
+a ne slepo:
+cast
+↓
+pretvaraj se da je sve u redu
+
+Na primer:
+$age = $_POST['age'] ?? null;
+
+if(
+    !is_string($age) ||
+    !ctype_digit($age)
+) {
+    // validation error
+}
+
+$age = (int) $age;
+
+HTML forme će ti, kao što već znaš, uglavnom dati string:
+"40"
+
+pa onda ima smisla validirati reprezentaciju broja i tek onda kastovati.
+Kod JSON-a je drugačije jer:
+{"age": 40}
+
+i:
+{"age": "40"}
+
+nisu isti tip.
+To smo već lepo videli u prethodnom challenge-u.
+Output escaping je potpuno druga faza
+Pretpostavimo da imamo savršeno validno ime:
+$name = "Bojan";
+
+Kada ga stavljamo u HTML:
+<?= htmlspecialchars(
+    $name,
+    ENT_QUOTES,
+    'UTF-8'
+) ?>
+
+To nije validation.
+Nije sanitization inputa.
+To je:
+bezbedno kodiranje podatka za konkretan output kontekst.
+
+I ovo je ekstremno važan mentalni model:
+INPUT
+nije isto što i
+OUTPUT CONTEXT
+
+Podatak može legitimno sadržati:
+Tom & Jerry
+
+Ne želiš da mu prilikom unosa ukloniš &.
+Ali kada ga prikazuješ u HTML-u, želiš pravilno escaping ponašanje.
+Zato je često pametnije čuvati originalan, validan podatak i escape-ovati ga kada izlazi.
+Jedan konkretan pipeline
+Recimo obična forma:
+<input name="age">
+
+Korisnik unese:
+ 40 
+
+PHP dobije:
+$_POST['age'] === ' 40 ';
+
+Prvo bezbedno uzmemo podatak:
+$age = $_POST['age'] ?? null;
+
+Proverimo tip:
+if(!is_string($age)) {
+    // invalid
+}
+
+Normalizujemo:
+$age = trim($age);
+
+Validiramo:
+if(!ctype_digit($age)) {
+    // invalid
+}
+
+Kastujemo:
+$age = (int) $age;
+
+Business validation:
+if($age < 18 || $age > 100) {
+    // invalid
+}
+
+I tek onda:
+DB / business logic
+
+Kasnije kada vrednost prikazujemo u HTML-u, radimo escaping prema output kontekstu.
+To je pipeline koji želim da ti postane automatski.
+Prva mala zamka modula
+Šta misliš o ovom kodu?
+$age = (int) ($_POST['age'] ?? 0);
+
+if($age < 18) {
+    $errors['age'] = 'You must be at least 18.';
+}
+
+Deluje sasvim normalno.
+Ali pošaljem:
+age=banana
+
+PHP uradi:
+(int) 'banana'
+
+i dobije:
+0
+
+Validation kaže:
+„Mlađi si od 18.“
+
+Ali pravi problem nije to.
+Pravi problem je:
+Nisi mi uopšte poslao validan broj.
+
+Dakle izgubili smo informaciju o vrsti greške jer smo prerano kastovali.
+To je jedna od glavnih tema ovog modula:
+Nemoj transformacijom uništiti dokaz da je input bio nevalidan.
+
+Za početak Modula 3, evo ti prvo pitanje — bez koda, samo mentalni model:
+Ako HTML forma pošalje:
+age="  40  "
+
+kojim redosledom bi ti obradio tu vrednost od $_POST['age'] do finalnog PHP integera 40?
+
+---
+
+$age = $_POST['age'] ?? null;
+
+if (!is_string($age)) {
+    // invalid type
+}
+
+$age = trim($age);
+
+if ($age === '') {
+    // required
+}
+
+if (!ctype_digit($age)) {
+    // must be integer
+}
+
+$age = (int) $age;
+
+if ($age < 18 || $age > 100) {
+    // invalid range
+}
+
+Zašto is_string() pre trim()? Zato što napadač može poslati:
+age[]=40
+
+pa dobiješ array. Ako odmah uradiš:
+trim($age)
+
+možeš dobiti TypeError.
+A za tvoje pitanje is_numeric() ili ctype_digit() — oba mogu, ali ne znače isto.
+is_numeric() je širi:
+is_numeric('40');      // true
+is_numeric('40.5');    // true
+is_numeric('-40');     // true
+is_numeric('+40');     // true
+is_numeric('4e2');     // true
+
+Dakle pita:
+„Da li ovo PHP prepoznaje kao broj?“
+
+ctype_digit() je mnogo stroži:
+ctype_digit('40');     // true
+ctype_digit('040');    // true
+
+ctype_digit('40.5');   // false
+ctype_digit('-40');    // false
+ctype_digit('+40');    // false
+ctype_digit('4e2');    // false
+
+Pita praktično:
+„Da li se ovaj string sastoji samo od cifara 0–9?“
+
+Za age iz HTML forme, gde očekujemo pozitivan ceo broj, ja bih izabrao:
+ctype_digit($age)
+
+jer tačno opisuje naš zahtev.
+Ako validiraš nešto gde negativan broj ima smisla:
+temperature = -5
+
+onda ctype_digit() više nije dovoljan.
+Tu možeš koristiti filter_var():
+$temperature = filter_var(
+    $value,
+    FILTER_VALIDATE_INT
+);
+
+ili neku drugu eksplicitnu validaciju.
+Još jedna važna stvar: nemoj za required proveru koristiti:
+if (empty($age))
+
+jer:
+empty('0') // true
+
+a "0" može biti sasvim legitiman input u drugim poljima.
+Zato je preciznije:
+$age = trim($age);
+
+if ($age === '') {
+    // stvarno prazan string
+}
+
+Dakle tvoj mentalni pipeline za ovakav HTML input neka bude:
+?? null
+↓
+type check
+↓
+trim / normalization
+↓
+required check
+↓
+format validation
+↓
+cast
+↓
+business/range validation
+
+I ovo poslednje je važno: ctype_digit() kaže da je "150" validan integer-format, ali business pravilo tek kaže da 150 nije prihvatljiva starost za naš slučaj.

@@ -1,0 +1,322 @@
+Odlično. Idemo na Lekciju 5 — Validation array-a i nested inputa.
+Ovo je veoma bitno jer čim forma ima checkbox grupe, više adresa, room IDs, tagove ili kompleksniji JSON, više ne validiraš samo jednu scalar vrednost nego strukturu + svaki element unutar nje.
+Pretpostavimo HTML:
+<input type="checkbox" name="features[]" value="wifi">
+<input type="checkbox" name="features[]" value="spa">
+<input type="checkbox" name="features[]" value="parking">
+
+Ako user čekira wifi i spa, PHP dobija:
+$_POST['features'] = [
+    'wifi',
+    'spa',
+];
+
+Prvo pitanje nije:
+„Da li je wifi dozvoljen?“
+
+nego:
+„Da li je features uopšte array?“
+
+Znači:
+$features = $_POST['features'] ?? [];
+
+if (!is_array($features)) {
+    $errors['features'] = 'Features must be an array.';
+}
+
+Zašto?
+Jer client može ručno poslati:
+features=banana
+
+i tada dobiješ:
+$_POST['features'] === 'banana';
+
+Ako odmah uradiš:
+foreach ($features as $feature) {
+
+imaćeš problem.
+Mentalni model je:
+STRUCTURE VALIDATION
+↓
+ELEMENT VALIDATION
+
+Dakle prvo:
+is_array($features)
+
+pa tek onda:
+foreach ($features as $feature) {
+    // validiraj svaki element
+}
+
+Recimo da dozvoljavamo samo:
+$allowedFeatures = [
+    'wifi',
+    'spa',
+    'parking',
+];
+
+Možemo:
+$features = $_POST['features'] ?? [];
+
+if (!is_array($features)) {
+    $errors['features'] = 'Features must be an array.';
+} else {
+    foreach ($features as $feature) {
+        if (
+            !is_string($feature) ||
+            !in_array($feature, $allowedFeatures, true)
+        ) {
+            $errors['features'] = 'Invalid feature selected.';
+            break;
+        }
+    }
+}
+
+Obrati pažnju na:
+in_array(
+    $feature,
+    $allowedFeatures,
+    true
+)
+
+Ovo true uključuje strict comparison.
+Dakle:
+in_array('1', [1], true); // false
+
+dok bez strict:
+in_array('1', [1]); // može biti true
+
+Za validation uglavnom želimo:
+strict comparison
+
+Nested input
+Recimo forma:
+<input name="address[city]">
+<input name="address[zip]">
+
+PHP napravi:
+$_POST['address'] = [
+    'city' => 'Novi Sad',
+    'zip' => '21000',
+];
+
+Opet prvo struktura:
+$address = $_POST['address'] ?? null;
+
+if (!is_array($address)) {
+    $errors['address'] = 'Address must be an object-like structure.';
+}
+
+Tek onda pojedinačna polja:
+$city = $address['city'] ?? null;
+$zip = $address['zip'] ?? null;
+
+pa:
+if (!is_string($city) || trim($city) === '') {
+    $errors['city'] = 'City is required.';
+}
+
+i:
+if (
+    !is_string($zip) ||
+    !preg_match('/^\d{5}$/', $zip)
+) {
+    $errors['zip'] = 'Invalid ZIP code.';
+}
+
+Dakle:
+address
+↓
+is_array?
+↓
+city / zip postoje?
+↓
+tip svakog polja
+↓
+normalization
+↓
+format/business validation
+
+Array of objects / nested rows
+Sada nešto realnije.
+Recimo JSON:
+{
+  "rooms": [
+    {
+      "room_id": 5,
+      "guests": 2
+    },
+    {
+      "room_id": 8,
+      "guests": 3
+    }
+  ]
+}
+
+Ovo je vrlo slično nečemu što možeš imati u booking sistemu.
+Prvo:
+$rooms = $data['rooms'] ?? null;
+
+if (!is_array($rooms)) {
+    $errors['rooms'] = 'Rooms must be an array.';
+}
+
+Onda svaki element:
+foreach ($rooms as $index => $room) {
+    if (!is_array($room)) {
+        $errors["rooms.$index"] = 'Invalid room structure.';
+        continue;
+    }
+
+    $roomId = $room['room_id'] ?? null;
+    $guests = $room['guests'] ?? null;
+
+    if (!is_int($roomId)) {
+        $errors["rooms.$index.room_id"] = 'Room ID must be integer.';
+    }
+
+    if (
+        !is_int($guests) ||
+        $guests < 1 ||
+        $guests > 10
+    ) {
+        $errors["rooms.$index.guests"] =
+            'Guests must be between 1 and 10.';
+    }
+}
+
+Ovo je već veoma blizu Laravel error bag konceptu:
+rooms.0.room_id
+rooms.0.guests
+rooms.1.guests
+
+Važna zamka: prazan array
+Recimo:
+$rooms = [];
+
+Da li je to validno?
+Zavisi od poslovnog pravila.
+Ako je rooms optional:
+[]
+možda je OK
+
+Ako booking mora imati makar jednu sobu:
+if ($rooms === []) {
+    $errors['rooms'] = 'At least one room is required.';
+}
+
+ili:
+if (count($rooms) < 1) {
+
+Dakle:
+is_array()
+
+proverava samo tip/strukturu.
+Ne proverava business rule:
+minimum 1 element
+maximum 5 elemenata
+unique values
+...
+
+Duplikati
+Recimo:
+$features = [
+    'wifi',
+    'wifi',
+    'spa',
+];
+
+Svi elementi pojedinačno jesu validni.
+Ali možda business rule kaže da duplikati nisu dozvoljeni.
+Možeš:
+if (count($features) !== count(array_unique($features))) {
+    $errors['features'] = 'Duplicate features are not allowed.';
+}
+
+I opet vidiš razliku:
+ELEMENT VALIDATION
+≠
+ARRAY-LEVEL BUSINESS VALIDATION
+
+Još jedan važan primer: ID lista
+Recimo HTML šalje:
+room_ids[]=5
+room_ids[]=8
+room_ids[]=11
+
+Pošto je HTML forma, vrednosti dolaze kao stringovi:
+[
+    '5',
+    '8',
+    '11',
+]
+
+Tu ne bi radio:
+is_int($roomId)
+
+jer će pasti.
+Možeš:
+foreach ($roomIds as $roomId) {
+    if (
+        !is_string($roomId) ||
+        !ctype_digit($roomId)
+    ) {
+        // invalid
+    }
+
+    $roomId = (int) $roomId;
+}
+
+Ili:
+$validatedRoomId = filter_var(
+    $roomId,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+        ]
+    ]
+);
+
+Kod JSON-a bi možda tražio pravi integer:
+is_int($roomId)
+
+Opet ista priča:
+HTML form
+→ string representation
+
+JSON
+→ tip je deo payload-a
+
+Laravel paralela
+Laravel ovde daje vrlo elegantne rule-ove:
+$request->validate([
+    'features' => ['required', 'array'],
+    'features.*' => ['string', 'in:wifi,spa,parking'],
+]);
+
+ili:
+$request->validate([
+    'rooms' => ['required', 'array', 'min:1'],
+    'rooms.*.room_id' => ['required', 'integer'],
+    'rooms.*.guests' => ['required', 'integer', 'between:1,10'],
+]);
+
+Tačka * znači:
+validiraj svaki element kolekcije.
+
+Mi sada praktično ručno pravimo isti mentalni model.
+Pitanje
+Imamo HTML formu koja šalje:
+room_ids[]=5
+room_ids[]=8
+room_ids[]=banana
+
+i zahtev:
+room_ids mora biti array sa najmanje jednim elementom, a svaki ID mora biti pozitivan integer.
+
+Kako bi ti redom validirao ovaj input?
+Ne treba ceo kod ako nećeš — zanima me prvenstveno redosled provera i šta bi uradio sa svakim elementom.
+
+----
+

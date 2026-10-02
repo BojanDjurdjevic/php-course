@@ -1,0 +1,291 @@
+filter_var(): validation nije univerzalni validator
+Već smo koristili:
+filter_var($email, FILTER_VALIDATE_EMAIL)
+
+i to je vrlo zgodno.
+Na primer:
+$email = $_POST['email'] ?? null;
+
+if (!is_string($email)) {
+    $errors['email'] = 'Email must be a string.';
+} else {
+    $email = trim($email);
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['email'] = 'Invalid email.';
+    }
+}
+
+Ali važno je da filter_var() ne posmatramo kao:
+„PHP funkciju koja validira bilo šta.“
+
+Ona ima konkretne filtere.
+Na primer:
+FILTER_VALIDATE_EMAIL
+FILTER_VALIDATE_URL
+FILTER_VALIDATE_INT
+FILTER_VALIDATE_BOOLEAN
+FILTER_VALIDATE_IP
+
+I svaki ima svoju semantiku.
+Posebno opasan primer — boolean
+Pretpostavimo HTML/API input:
+$value = 'false';
+
+Ako uradiš:
+(bool) $value
+
+dobijaš:
+true
+
+jer je skoro svaki neprazan string truthy u PHP-u.
+To smo već dotakli ranije.
+Ali:
+filter_var(
+    $value,
+    FILTER_VALIDATE_BOOLEAN,
+    FILTER_NULL_ON_FAILURE
+);
+
+može lepo razlikovati vrednosti poput:
+true
+false
+1
+0
+yes
+no
+on
+off
+
+i vratiti pravi boolean ili null za nešto neprepoznatljivo.
+Na primer:
+$active = filter_var(
+    $_POST['active'] ?? null,
+    FILTER_VALIDATE_BOOLEAN,
+    FILTER_NULL_ON_FAILURE
+);
+
+if ($active === null) {
+    $errors['active'] = 'Invalid boolean.';
+}
+
+Ovde je === null važno jer:
+false
+
+može biti potpuno validan rezultat.
+Pitanje
+Šta nije dobro u ovom kodu?
+$active = (bool) ($_POST['active'] ?? false);
+
+if (!$active) {
+    $errors['active'] = 'Active must be true or false.';
+}
+
+Posebno razmisli šta se dešava ako frontend pošalje:
+active=false
+
+i zašto if (!$active) nije dobra validacija boolean vrednosti.
+
+---
+
+$active = filter_var(
+    $_POST['active'] ?? null,
+    FILTER_VALIDATE_BOOLEAN,
+    FILTER_NULL_ON_FAILURE
+);
+
+if ($active === null) {
+    $errors['active'] = 'Invalid boolean.';
+}
+
+'true'  → true
+'false' → false
+'1'     → true
+'0'     → false
+'yes'   → true
+'no'    → false
+'banana'→ null
+
+Zato je bolje $active === null a ne: if (!$active)
+
+-------------------------------------------------------
+
+Sledeće pitanje, i dalje u okviru filter_var():
+Šta očekuješ da se desi sa ovim kodom?
+$age = filter_var(
+    $_POST['age'] ?? null,
+    FILTER_VALIDATE_INT
+);
+
+if (!$age) {
+    $errors['age'] = 'Invalid age.';
+}
+
+Šta ako korisnik pošalje:
+age=0
+
+i zašto je ova provera problematična?
+
+---
+
+Ako dobro razumem, ovde bi $age nakon filter_var trebalo da bude validan integer = 0 ?
+
+I onda pošto je nula (0) falsy, kod kaže -> greška...
+
+A šta ako je u pitanju beba i ima 0 celih godina?
+
+Onda je bolje napravati poređenje $age === false, prema tipu.
+
+---
+
+FILTER_VALIDATE_INT
+
+validno:
+"0"  → int 0
+"15" → int 15
+
+nevalidno:
+"banana" → false
+"15.5"   → false
+
+Zato:
+$age === false
+
+a ne:
+!$age
+
+I ovo je isti širi princip koji smo već videli kod strpos():
+strpos($text, 'abc')
+
+može vratiti:
+0
+
+što je validna pozicija, pa proveravamo:
+$result === false
+
+Drugim rečima:
+Kada funkcija ima validnu falsy povratnu vrednost, nemoj koristiti običnu truthiness proveru.
+
+Range validation uz FILTER_VALIDATE_INT
+Možemo čak spojiti format i range:
+$age = filter_var(
+    $_POST['age'] ?? null,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 0,
+            'max_range' => 120,
+        ]
+    ]
+);
+
+if ($age === false) {
+    $errors['age'] = 'Age must be an integer between 0 and 120.';
+}
+
+To proverava i:
+da li je validan integer
++
+da li je u dozvoljenom rasponu
+
+Ali obrati pažnju na jednu stvar koju smo već imali u JSON zadatku:
+FILTER_VALIDATE_INT
+
+i:
+is_int()
+
+ne odgovaraju na isto pitanje.
+Kod HTML forme:
+age=40
+
+PHP ti daje string:
+'40'
+
+pa je FILTER_VALIDATE_INT veoma zgodan jer validira string reprezentaciju integera i vraća int 40.
+Kod JSON-a:
+{
+  "age": "40"
+}
+
+možda poslovno želiš da kažeš:
+Ne. Očekivao sam JSON number, a ti si mi poslao JSON string.
+
+Tada:
+is_int($data['age'])
+
+bolje opisuje contract.
+Dakle validator zavisi i od transportnog formata, ne samo od business podatka.
+
+---------------------------------
+
+Sledeće pitanje
+Imamo HTML formu:
+<input name="quantity">
+
+i zahtev:
+quantity mora biti ceo broj od 1 do 100.
+
+Da li bi za ovo radije koristio:
+ctype_digit()
+
+- cast + range proveru
+ili:
+filter_var(..., FILTER_VALIDATE_INT, ...)
+
+sa min_range / max_range?
+Nema samo jednog dozvoljenog odgovora — zanima me koji pristup bi ti izabrao i zašto.
+
+---
+
+Pa ja bih ovde radije koristio filter_var sa rangeom jer bih sa ctype_digit morao rucno da proveravam range makar iznad 120, dakle npr ako korisnik posalje 150.
+
+Filter var bi svakako odbacio vrednosti koje nisu celobrojne i ispod 0 jer imam range
+
+---
+
+Za ovakav zahtev:
+quantity = integer od 1 do 100
+
+FILTER_VALIDATE_INT sa range opcijama je vrlo čitljiv jer u jednom mestu kažeš i:
+mora biti integer
++
+mora biti između 1 i 100
+
+Na primer:
+$quantity = filter_var(
+    $_POST['quantity'] ?? null,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+            'max_range' => 100,
+        ],
+    ]
+);
+
+if ($quantity === false) {
+    $errors['quantity'] = 'Quantity must be an integer from 1 to 100.';
+}
+
+I dobro si rekao: sa ctype_digit() bi morao još:
+$quantity = (int) $quantity;
+
+if ($quantity < 1 || $quantity > 100) {
+    // error
+}
+
+Dakle nije loš pristup, samo je za ovaj slučaj malo više ručnog rada.
+Jedina sitna korekcija tvoje poslednje rečenice: nije poenta samo da filter odbija vrednosti „ispod 0“, nego konkretno sve van definisanog range-a. Kod nas je:
+min = 1
+max = 100
+
+pa će pasti i:
+0
+-1
+101
+150
+
+kao i:
+"banana"
+"1.5"
+-------------------------------------------

@@ -1,0 +1,294 @@
+Required vs Optional vs Nullable
+Najpre mentalni model.
+Pretpostavimo da imamo formu za user profil:
+name
+email
+phone
+bio
+
+Ne moraju sva polja da imaju ista pravila.
+1. Required
+required znači:
+Polje mora da postoji i mora imati prihvatljivu vrednost.
+
+Na primer:
+$name = $_POST['name'] ?? null;
+
+if (!is_string($name)) {
+    $errors['name'] = 'Name is required.';
+}
+
+Ali samo is_string() nije dovoljno, jer:
+$name = '';
+
+jeste string.
+Zato:
+$name = $_POST['name'] ?? null;
+
+if (!is_string($name)) {
+    $errors['name'] = 'Name is required.';
+} else {
+    $name = trim($name);
+
+    if ($name === '') {
+        $errors['name'] = 'Name is required.';
+    }
+}
+
+Dakle required obično podrazumeva:
+ključ postoji
++
+tip je očekivan
++
+vrednost nije prazna
+
+2. Optional
+optional znači:
+Polje ne mora uopšte da bude poslato.
+
+Na primer bio.
+Ako ga nema:
+$_POST = [
+    'name' => 'Bojan',
+    'email' => 'bojan@test.com',
+];
+
+to je potpuno validno.
+Možeš:
+$bio = $_POST['bio'] ?? null;
+
+if ($bio !== null) {
+    if (!is_string($bio)) {
+        $errors['bio'] = 'Bio must be a string.';
+    } else {
+        $bio = trim($bio);
+    }
+}
+
+Mentalno:
+optional:
+nema polja → OK
+
+ima polja → validiraj ga
+
+To je vrlo bitno.
+3. Nullable
+nullable znači nešto drugo:
+Polje sme da postoji sa vrednošću null.
+
+Na primer kod JSON API-ja:
+{
+    "phone": null
+}
+
+To može biti potpuno validno.
+Dakle:
+$phone = $data['phone'] ?? null;
+
+ali ovde postoji jedna zamka.
+Ovim:
+$phone = $data['phone'] ?? null;
+
+ne možeš razlikovati:
+{}
+
+od:
+{
+    "phone": null
+}
+
+u oba slučaja dobiješ:
+$phone === null
+
+Ako ti ta razlika nije bitna, nema problema.
+Ako jeste bitna, koristiš:
+array_key_exists('phone', $data)
+
+Na primer:
+if (!array_key_exists('phone', $data)) {
+    // field missing
+}
+
+naspram:
+if ($data['phone'] === null) {
+    // field explicitly sent as null
+}
+
+Ovo je jedna od lepih situacija gde se vraća ono što smo već učili:
+isset($data['phone'])
+
+i:
+array_key_exists('phone', $data)
+
+nisu isto.
+isset() vs array_key_exists()
+Recimo:
+$data = [
+    'phone' => null,
+];
+
+onda:
+isset($data['phone']); // false
+
+ali:
+array_key_exists('phone', $data); // true
+
+Dakle:
+isset()
+→ postoji i nije null
+
+array_key_exists()
+→ ključ postoji čak i ako je vrednost null
+
+Za nullable API input ovo ume da bude veoma važno.
+Optional nije isto što i Nullable
+Ovo je glavna poenta lekcije.
+Pretpostavimo pravila:
+phone: optional + nullable + string
+
+To znači da su sva ova tri requesta validna:
+{}
+
+{
+    "phone": null
+}
+
+{
+    "phone": "+381641234567"
+}
+
+Ali ovo nije:
+{
+    "phone": 12345
+}
+
+jer ako postoji i nije null, mora biti string.
+Required + Nullable
+I ovo je moguće.
+Na primer:
+middle_name: required + nullable
+
+Znači:
+ključ mora postojati, ali vrednost sme biti null.
+
+Validno:
+{
+    "middle_name": null
+}
+
+Nevalidno:
+{}
+
+Provera:
+if (!array_key_exists('middle_name', $data)) {
+    $errors['middle_name'] = 'Field is required.';
+}
+
+A onda:
+if (
+    $data['middle_name'] !== null &&
+    !is_string($data['middle_name'])
+) {
+    $errors['middle_name'] = 'Must be string or null.';
+}
+
+To je vrlo čest API koncept.
+Empty string nije isto što i null
+Ovo je još jedna važna stvar.
+''
+
+i:
+null
+
+nisu isto.
+Na primer:
+{
+    "phone": ""
+}
+
+možeš odlučiti da tretiraš kao:
+empty string
+
+ili da normalizuješ u:
+null
+
+na primer:
+$phone = trim($phone);
+
+if ($phone === '') {
+    $phone = null;
+}
+
+Ali to je poslovna odluka.
+Nemoj automatski pretpostaviti da:
+''
+=
+null
+
+Laravel paralela
+Laravel ovde lepo pokazuje razliku.
+Na primer:
+$request->validate([
+    'name' => ['required', 'string'],
+    'bio' => ['sometimes', 'nullable', 'string'],
+]);
+
+Konceptualno:
+required
+→ mora postojati
+
+sometimes
+→ validiraj samo ako je poslato
+
+nullable
+→ null je dozvoljen
+
+I to je tačno ono što mi sada ručno pravimo u vanilla PHP-u.
+Mini primer
+Recimo da očekujemo:
+name
+→ required string
+
+phone
+→ optional nullable string
+
+Vanilla PHP mentalno:
+$name = $data['name'] ?? null;
+
+if (!is_string($name) || trim($name) === '') {
+    $errors['name'] = 'Name is required.';
+}
+
+if (array_key_exists('phone', $data)) {
+    $phone = $data['phone'];
+
+    if ($phone !== null && !is_string($phone)) {
+        $errors['phone'] = 'Phone must be string or null.';
+    }
+}
+
+To je cela razlika u praksi.
+Pitanje
+Imamo JSON:
+{
+    "name": "Bojan",
+    "phone": null
+}
+
+i pravila:
+name → required string
+phone → optional nullable string
+
+Objasni mi svojim rečima:
+- zašto je ovaj request validan,
+- šta bi bilo da phone uopšte nije poslat,
+- i zašto ovde array_key_exists() može biti korisniji od isset().
+
+---
+
+Ovaj request je validan jer je name validan string i nije prazan a phone je opcional+nullable+string i samim tim što je null ispunjava uslov nullable
+da phone uopšte nije poslat, bio bi takođe validan jer imamo rule optional (može i ne mora biti poslat)
+isset() by default pita da li ključ postoji i da li je null dakle isset($phone) bi dao false, 
+u gore navedenom primeru jer je null a nama treba da proverimo da li uopšte postoji ključ 'phone' 
+pa je zato bolje !array_key_exists($phone, array) -> pa ako kaže da ne postoji OK, jer je optional,
+a ako kaže postoji, idemo u proveru dalje da vidimo da li je null ili validan string - ako nije - error.

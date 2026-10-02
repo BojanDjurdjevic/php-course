@@ -1,0 +1,162 @@
+String validation: length, format i Unicode
+Sada prelazimo na veoma čestu stvar: validaciju stringova.
+Pretpostavimo:
+$name = "Bojan";
+
+Obično imamo više različitih pitanja:
+Da li je string?
+Da li je prazan?
+Koliko je dug?
+Da li sadrži dozvoljene karaktere?
+Da li odgovara određenom formatu?
+
+To nisu ista pravila.
+Na primer:
+$name = $_POST['name'] ?? null;
+
+if (!is_string($name)) {
+    $errors['name'] = 'Name must be a string.';
+}
+
+$name = trim($name);
+
+if ($name === '') {
+    $errors['name'] = 'Name is required.';
+}
+
+if (mb_strlen($name) > 100) {
+    $errors['name'] = 'Name may not exceed 100 characters.';
+}
+
+Ovde namerno koristim:
+mb_strlen()
+
+a ne:
+strlen()
+
+jer strlen() meri bytes, dok mb_strlen() meri multibyte karaktere kako očekujemo kod UTF-8 teksta.
+Na primer ime:
+Đorđe
+
+ili grčki:
+Γιώργος
+
+može imati drugačiji broj bytes od broja karaktera.
+Za user-facing UTF-8 tekst zato je često pravi izbor:
+mb_strlen($value)
+
+Još važnije: nemoj automatski praviti regex tipa:
+/^[A-Za-z]+$/
+
+za ljudska imena.
+Time bi odbacio sasvim legitimna imena kao:
+Đorđe
+Jean-Luc
+O'Connor
+José
+Γιώργος
+
+Validation treba da bude onoliko stroga koliko poslovno pravilo zaista zahteva, ne stroža „za svaki slučaj“.
+Za ime je često dovoljno:
+required
+string
+trimmed
+reasonable max length
+
+dok za nešto kao postal code, slug ili SKU može imati smisla striktan format.
+Malo pitanje
+Šta nije dobro u ovom validation kodu?
+$username = trim($_POST['username'] ?? '');
+
+if (
+    strlen($username) < 3 ||
+    strlen($username) > 20
+) {
+    $errors['username'] = 'Username must contain 3-20 characters.';
+}
+
+Pretpostavi da aplikacija dozvoljava Unicode username-e, npr:
+Ђорђе
+
+Pored strlen() problema, vidiš li još neku malu robustness stvar u prvom redu?
+
+---
+
+$username = $_POST['username'] ?? null;
+
+if (!is_string($username)) {
+    $errors['username'] = 'Username must be a string.';
+} else {
+    $username = trim($username);
+
+    $length = mb_strlen($username);
+
+    if ($length < 3 || $length > 20) {
+        $errors['username'] = 'Username must contain 3-20 characters.';
+    }
+}
+
+PS. prvi red bi pukao u slučaju da je poslat drugi podatak a ne string -> username[]=banana.
+
+--------------------------------------------
+
+Format validatioon i regex:
+
+Sada dolazimo do pitanja:
+Kada je dovoljno proveriti type/length, a kada treba proveravati i format?
+
+Za ime osobe smo rekli da često nije pametno praviti previše strog regex.
+Ali za username može imati smisla da poslovno pravilo kaže:
+dozvoljena su:
+slova
+brojevi
+underscore
+3–20 karaktera
+
+Tada regex ima smisla.
+Na primer:
+if (!preg_match('/^[A-Za-z0-9_]{3,20}$/', $username)) {
+    $errors['username'] = 'Invalid username format.';
+}
+
+Ali ovaj regex ima ograničenje:
+A-Z
+a-z
+
+znači samo ASCII slova.
+Dakle:
+Bojan_92
+
+prolazi, ali:
+Đorđe
+Γιώργος
+
+ne.
+Ako aplikacija želi Unicode slova, regex mora to eksplicitno da podrži, npr. preko Unicode character properties i u modifier-a.
+Tu dolazimo do važnog pravila:
+Regex ne treba da bude „što stroži“, nego da tačno opisuje poslovno pravilo.
+
+Pitanje
+Imamo dva polja:
+full_name
+username
+
+Zašto bi za full_name često bilo dovoljno:
+required
+string
+trim
+max length
+
+dok bi za username imalo više smisla dodati i format validation preko regex-a?
+Odgovori svojim rečima — zanima me prvenstveno razlika u prirodi ta dva podatka.
+
+---
+
+full_name
+→ opisuje čoveka
+→ treba da bude fleksibilan
+
+username
+→ identifikator unutar sistema
+→ format je deo poslovnog/tehničkog ugovora
+
