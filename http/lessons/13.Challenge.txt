@@ -431,7 +431,9 @@ exit;
 --------------------------------------------------------------------
 
 Coding challenge 4 — Request inspector
-Za završni challenge ovog HTTP modula napravi jedan request.php koji vraća JSON sa informacijama o trenutnom requestu.
+
+Napravi jedan request.php koji vraća JSON sa informacijama o trenutnom requestu.
+
 Treba da vrati nešto ovakvo:
 {
     "method": "GET",
@@ -453,4 +455,20 @@ Zahtevi:
 - nemoj izmišljati IP iz X-Forwarded-For; koristi REMOTE_ADDR,
 - json_encode() sa JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT,
 - endpoint neka radi za bilo koju HTTP metodu.
-Ovo je mali zadatak, ali dobro proverava da li ti je ceo request mental model seo.
+
+
+---
+
+<?php
+
+header('Content-Type: application/json; charset=UTF-8');
+
+echo json_encode([
+    'method' => $_SERVER['REQUEST_METHOD'] ?? null,
+    'uri' => $_SERVER['REQUEST_URI'] ?? null,
+    'query_string' => $_SERVER['QUERY_STRING'] ?? null,
+    'query' => $_GET,
+    'content_type' => $_SERVER['CONTENT_TYPE'] ?? null,
+    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
+    'ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
