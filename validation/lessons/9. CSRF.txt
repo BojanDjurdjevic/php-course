@@ -1,0 +1,205 @@
+Cross-Site Request Forgery
+
+CSRF i zašto validation nije dovoljna
+
+Sada dolazimo do jedne veoma važne stvari za forme.
+Pretpostavimo da si ulogovan u svoju aplikaciju i browser ima session cookie:
+PHPSESSID=abc123
+
+Tvoja aplikacija ima endpoint:
+POST /delete-account.php
+
+Browser automatski šalje session cookie ka tvom sajtu.
+Problem nastaje ako te napadač navede da posetiš drugi sajt koji napravi formu:
+<form
+    method="POST"
+    action="https://example.com/delete-account.php"
+>
+    <button>Click me</button>
+</form>
+
+ili čak automatski submituje formu.
+Browser može poslati request ka tvojoj aplikaciji sa tvojim cookie-jem.
+Server vidi:
+validna session
+authenticated user
+validan POST
+
+ali user zapravo nije nameravao da izvrši tu akciju.
+To je:
+Cross-Site Request Forgery
+CSRF
+
+Suština:
+Napadač ne mora da zna session cookie. Dovoljno je da prevari browser žrtve da pošalje authenticated request.
+
+CSRF token
+Zato server generiše tajnu/random vrednost vezanu za korisnikovu session.
+Na primer:
+session_start();
+
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(
+        random_bytes(32)
+    );
+}
+
+U formu ubacimo:
+<input
+    type="hidden"
+    name="csrf_token"
+    value="<?= htmlspecialchars(
+        $_SESSION['csrf_token'],
+        ENT_QUOTES,
+        'UTF-8'
+    ) ?>"
+>
+
+Browser tada šalje:
+csrf_token=neki_random_token
+
+Na serveru:
+$token = $_POST['csrf_token'] ?? null;
+
+if (
+    !is_string($token) ||
+    !hash_equals(
+        $_SESSION['csrf_token'] ?? '',
+        $token
+    )
+) {
+    http_response_code(403);
+    exit('Invalid CSRF token.');
+}
+
+Zašto napadač ne može samo da stavi token?
+Zato što token nije nešto što drugi sajt zna.
+Napadač može da napravi:
+<input
+    type="hidden"
+    name="csrf_token"
+    value="banana"
+>
+
+ali server očekuje, recimo:
+7c842af9...
+
+koji je vezan za tvoju session.
+Njegov sajt ne može normalno da pročita sadržaj tvoje stranice i izvuče token zbog browser same-origin pravila.
+Dakle request mora imati oba:
+session cookie
++
+valid CSRF token
+
+Zašto hash_equals()?
+Mogao bi napisati:
+if ($token !== $_SESSION['csrf_token']) {
+
+i za većinu običnih aplikacija funkcionalno bi radio.
+Ali za poređenje sigurnosnih tajni koristimo:
+hash_equals()
+
+jer radi poređenje na način koji je otporniji na timing side-channel analizu.
+Mentalno:
+hash_equals($known, $userProvided)
+
+poznata/server vrednost prva.
+Kada CSRF ima smisla?
+Posebno kod cookie/session authentication.
+Jer browser automatski šalje cookie.
+To je upravo model koji koristi klasična PHP session autentifikacija i Laravel session-based auth.
+Kod Bearer token API-ja situacija može biti drugačija jer drugi sajt obično ne može da natera browser da automatski pošalje:
+Authorization: Bearer ...
+
+Ali ne želim da zapamtiš pravilo:
+„API nema CSRF.“
+
+To zavisi od načina autentifikacije.
+Ako SPA koristi cookie-based session auth, kao Laravel Sanctum SPA mode, CSRF je i dalje relevantan.
+To si već praktično video kroz:
+/sanctum/csrf-cookie
+
+mentalni model.
+CSRF nije isto što i XSS
+Ovo se često meša.
+CSRF
+→ nateram tvoj browser da pošalje neželjeni request
+
+XSS
+→ ubacim JavaScript koji se izvršava u tvojoj stranici
+
+Ako napadač već ima uspešan XSS na tvom domenu, situacija postaje mnogo ozbiljnija i često može da zaobiđe razne zaštite.
+Zato su ovo zasebni security slojevi.
+GET ne treba da menja state
+Ovo je još jedan razlog zašto smo u HTTP modulu insistirali da je GET safe.
+Loše:
+GET /delete-user.php?id=15
+
+jer browser, crawler, link preview ili <img src> može aktivirati GET.
+Bolje:
+POST /users/15/delete
+
+ili REST:
+DELETE /users/15
+
+uz odgovarajuću CSRF zaštitu kada koristiš session-cookie auth.
+Laravel paralela
+Laravel ovo uglavnom radi automatski za web middleware grupu.
+Blade:
+<form method="POST" action="/profile">
+    @csrf
+</form>
+
+generiše hidden token.
+Framework middleware zatim proverava token pre nego što request dođe do tvoje business logike.
+Dakle kada napišeš:
+@csrf
+
+ispod toga konceptualno stoji isti flow koji smo upravo ručno napravili.
+Pitanje
+Imamo ovu formu:
+<form method="POST" action="change-email.php">
+    <input
+        type="email"
+        name="email"
+        value="new@example.com"
+    >
+
+    <button>Change email</button>
+</form>
+
+Backend savršeno validira email i koristi prepared statement.
+Zašto je endpoint i dalje ranjiv ako user koristi session-cookie autentifikaciju, ali nema CSRF token?
+I objasni mi ukratko šta CSRF token dokazuje serveru što sama session cookie ne dokazuje.
+
+---
+
+SESSION COOKIE
+→ dokazuje serveru:
+"ovaj request ima credential autentifikovanog browser session-a"
+
+CSRF TOKEN
+→ daje dodatni dokaz:
+"request poseduje tajnu vrednost koju očekuje legitimna aplikacija/session"
+
+Ne dokazuje matematički da je korisnik želeo akciju, 
+ali sprečava običan drugi sajt da samo sastavi formu 
+i iskoristi činjenicu da browser automatski šalje tvoju session cookie.
+
+Dakle:
+validacija emaila
+→ da li je email ispravan
+
+prepared statement
+→ SQL injection
+
+session
+→ ko je user
+
+authorization
+→ da li user sme da menja email
+
+CSRF
+→ zaštita od forged cross-site authenticated requesta
+
+To su sve zasebni slojevi.
