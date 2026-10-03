@@ -320,3 +320,93 @@ Ne treba ceo kod ako nećeš — zanima me prvenstveno redosled provera i šta b
 
 ----
 
+rvo bih proverio da li je niz:
+
+$roomIds = $_POST['room_ids'] ?? [];
+
+if(!is_array($roomIds)) { // invalid}
+
+Pa da li ima minimum 1 element?
+
+if(count($roomIds) < 1) // invalid
+
+Onda svaki po na osob da li je validan, pozitivan broj (koji inace iz forme dolazi kao string):
+
+foreach($roomIds as $id) {
+   if(!is_string($id) || !ctype_digit($id) // error;
+
+  Onda cast:
+  $id = (int) $id;
+}
+
+---
+
+Redosled ti je dobar:
+1. uzmi input
+2. proveri da je array
+3. proveri minimum 1 element
+4. proveri svaki element
+5. cast tek posle uspešne validacije
+
+Jedina bitna dopuna je ovo: ctype_digit() prihvata i:
+'0'
+
+jer je to string sastavljen od cifara.
+A zahtev kaže:
+pozitivan integer
+
+što znači > 0.
+Dakle posle cast-a treba još:
+$id = (int) $id;
+
+if ($id < 1) {
+    // invalid
+}
+
+Ili možeš sve spojiti preko FILTER_VALIDATE_INT:
+$validatedId = filter_var(
+    $id,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+        ]
+    ]
+);
+
+if ($validatedId === false) {
+    // invalid
+}
+
+Ali tvoj ctype_digit() + cast + range pristup je sasvim legitiman.
+Još jedna dobra praksa: nemoj samo kastovati lokalnu $id promenljivu ako ti kasnije treba normalizovan niz. Umesto:
+foreach ($roomIds as $id) {
+    $id = (int) $id;
+}
+
+napravi:
+$validatedRoomIds = [];
+
+foreach ($roomIds as $id) {
+    if (!is_string($id) || !ctype_digit($id)) {
+        // error
+        continue;
+    }
+
+    $id = (int) $id;
+
+    if ($id < 1) {
+        // error
+        continue;
+    }
+
+    $validatedRoomIds[] = $id;
+}
+
+Na kraju dobiješ čist array:
+[5, 8]
+
+umesto originalnog:
+['5', '8', 'banana']
+
+To je važna ideja: validacija + normalizacija često treba da proizvedu novi, trusted-ish podatak za dalju business logiku.

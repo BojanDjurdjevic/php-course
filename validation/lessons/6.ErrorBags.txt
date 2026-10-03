@@ -1,0 +1,305 @@
+Error bags i više validation grešaka
+Pretpostavimo formu:
+<input name="name">
+<input name="email">
+<input name="age">
+
+Početnički pristup često izgleda ovako:
+if (...) {
+    exit('Invalid name');
+}
+
+if (...) {
+    exit('Invalid email');
+}
+
+if (...) {
+    exit('Invalid age');
+}
+
+Problem je UX:
+submit
+→ popravi name
+→ submit
+→ popravi email
+→ submit
+→ popravi age
+
+Mnogo je bolje:
+submit
+→ vidi sve greške odjednom
+
+Zato pravimo error bag:
+$errors = [];
+
+i onda svako polje upisuje svoju grešku:
+$errors['name'] = 'Name is required.';
+$errors['email'] = 'Email is invalid.';
+$errors['age'] = 'Age must be between 18 and 100.';
+
+Na kraju:
+if ($errors !== []) {
+    // validation failed
+}
+
+Osnovni primer
+$errors = [];
+
+$name = $_POST['name'] ?? null;
+$email = $_POST['email'] ?? null;
+$age = $_POST['age'] ?? null;
+
+Name
+if (!is_string($name)) {
+    $errors['name'] = 'Name must be a string.';
+} else {
+    $name = trim($name);
+
+    if ($name === '') {
+        $errors['name'] = 'Name is required.';
+    } elseif (mb_strlen($name) > 100) {
+        $errors['name'] = 'Name may not exceed 100 characters.';
+    }
+}
+
+Obrati pažnju na elseif.
+Ako je name prazan, nema smisla da korisniku još kažeš:
+Name may not exceed 100 characters.
+
+Za jedno polje često želiš jednu najrelevantniju grešku.
+Email
+if (!is_string($email)) {
+    $errors['email'] = 'Email must be a string.';
+} else {
+    $email = trim($email);
+
+    if ($email === '') {
+        $errors['email'] = 'Email is required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['email'] = 'Email must be valid.';
+    }
+}
+
+Age
+Kod HTML forme:
+
+if (!is_string($age)) {
+    $errors['age'] = 'Age is required.';
+} else {
+    $age = trim($age);
+
+    if ($age === '') {
+        $errors['age'] = 'Age is required.';
+    } else {
+        $validatedAge = filter_var(
+            $age,
+            FILTER_VALIDATE_INT,
+            [
+                'options' => [
+                    'min_range' => 18,
+                    'max_range' => 100,
+                ],
+            ]
+        );
+
+        if ($validatedAge === false) {
+            $errors['age'] = 'Age must be an integer between 18 and 100.';
+        } else {
+            $age = $validatedAge;
+        }
+    }
+}
+
+Na kraju:
+
+if ($errors !== []) {
+    // ne idi u DB
+}
+
+Ako nema grešaka:
+// $name
+// $email
+// $age
+
+// sada su validirani / normalizovani
+
+-----------------------------------------------
+
+Error bag po polju
+Najčešći oblik:
+$errors = [
+    'name' => 'Name is required.',
+    'email' => 'Email is invalid.',
+];
+
+Prednost je što view može lako:
+<?= htmlspecialchars($errors['name'] ?? '') ?>
+
+ispod konkretnog inputa.
+To je mnogo bolje nego jedan generički:
+$errors[] = 'Something is wrong.';
+
+jer ne znaš kojoj kontroli pripada.
+
+------------------------------------------------
+
+A šta ako jedno polje ima više grešaka?
+
+Postoje dva pristupa.
+Jedna greška po polju
+$errors['password'] = 'Password must contain at least 8 characters.';
+
+Ovo je jednostavno i vrlo često dovoljno.
+Više grešaka po polju
+$errors['password'][] = 'Password must contain at least 8 characters.';
+$errors['password'][] = 'Password must contain a number.';
+$errors['password'][] = 'Password must contain a symbol.';
+
+Onda dobiješ:
+[
+    'password' => [
+        'Password must contain at least 8 characters.',
+        'Password must contain a number.',
+        'Password must contain a symbol.',
+    ]
+]
+
+Ovo može biti korisno za kompleksna pravila.
+Ali za obične forme često je bolji UX da korisniku pokažeš prvu relevantnu grešku po polju.
+Laravel paralela
+Kada Laravel validacija padne, framework praktično pravi error bag za tebe.
+Na primer:
+$request->validate([
+    'name' => ['required', 'string', 'max:100'],
+    'email' => ['required', 'email'],
+    'age' => ['required', 'integer', 'between:18,100'],
+]);
+
+U Blade-u:
+@error('email')
+    {{ $message }}
+@enderror
+
+iza toga konceptualno postoji upravo:
+errors['email']
+
+što sada ručno pravimo.
+Važna odluka: fail-fast ili collect-all
+Postoje dva nivoa.
+Na nivou cele forme
+Ne želimo:
+if invalid name → exit
+
+nego:
+validiraj name
+validiraj email
+validiraj age
+→ skupi sve
+
+To je collect-all.
+Ali unutar jednog polja često koristimo fail-fast.
+Na primer:
+if (!is_string($email)) {
+    $errors['email'] = 'Email must be a string.';
+} elseif (trim($email) === '') {
+    $errors['email'] = 'Email is required.';
+} elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors['email'] = 'Email is invalid.';
+}
+
+Nema smisla da posle:
+email = []
+
+proveravamo trim(), pa email format itd.
+Znači:
+FORMA
+→ collect all field errors
+
+JEDNO POLJE
+→ često fail-fast kroz svoja pravila
+
+To je dobar mentalni model.
+Old input + errors
+Ovo se lepo spaja sa prethodnim PRG zadatkom.
+Ako imamo:
+if ($errors !== []) {
+    $_SESSION['errors'] = $errors;
+
+    $_SESSION['old'] = [
+        'name' => is_string($name) ? $name : '',
+        'email' => is_string($email) ? $email : '',
+        'age' => is_string($_POST['age'] ?? null)
+            ? $_POST['age']
+            : '',
+    ];
+
+    header('Location: create.php', true, 303);
+    exit;
+}
+
+Na GET-u:
+$errors = $_SESSION['errors'] ?? [];
+$old = $_SESSION['old'] ?? [];
+
+i prikaz:
+<input
+    name="email"
+    value="<?= htmlspecialchars(
+        $old['email'] ?? '',
+        ENT_QUOTES,
+        'UTF-8'
+    ) ?>"
+>
+
+pa:
+<?php if (isset($errors['email'])): ?>
+    <p>
+        <?= htmlspecialchars(
+            $errors['email'],
+            ENT_QUOTES,
+            'UTF-8'
+        ) ?>
+    </p>
+<?php endif; ?>
+
+To je već potpuno realan form validation flow.
+
+Jedna važna dizajnerska stvar
+Ne bih radio:
+$errors['name'] = 'Invalid.';
+$errors['name'] = 'Too long.';
+
+jer drugi upis pregazi prvi.
+Ako želiš jednu grešku po polju, koristi if/elseif.
+Ako želiš više:
+$errors['name'][] = '...';
+
+Namerno odluči koji model koristiš.
+Pitanje za tebe
+Imamo tri polja:
+name
+email
+age
+
+i user pošalje:
+name = ""
+email = "banana"
+age = "150"
+
+Objasni mi kako bi error bag izgledao nakon validacije ako želimo jednu grešku po polju, 
+i zašto ne bismo radili exit čim pronađemo grešku u name.
+
+---
+
+Dakle error bag bi bio assoc niz koji bi otprilike imao:
+
+[
+ 'name' => 'Name is required',
+'email' => ...
+'age' => ...
+]
+
+A exit ne radimo iz prostog razloga zbog UI da ne vraćamo korisnika 100 puta, nego on lepo popuni, 
+mi pokupimo sve greške i vratimo mu tačno grešku za svako polje ako ima grešaka. Onda on zna šta treba popraviti...
+
+PS -> pogledati validation/errors folder
