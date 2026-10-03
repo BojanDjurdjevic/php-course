@@ -1,0 +1,155 @@
+Client-side vs Server-side validation
+Ovo je vrlo bitna razlika.
+Recimo HTML:
+<input
+    type="email"
+    name="email"
+    required
+    maxlength="100"
+>
+
+Browser već može da proverava:
+required
+type="email"
+min / max
+minlength / maxlength
+pattern
+
+To je client-side validation.
+Veoma je korisna za UX jer korisnik odmah dobije feedback bez odlaska na server.
+Ali postoji ključno pravilo:
+Client-side validation nikada nije security/business granica.
+
+Zašto? Zato što klijent kontroliše request.
+Korisnik ne mora uopšte da koristi tvoju HTML formu. Može poslati request preko:
+Postman
+curl
+JavaScript
+DevTools
+drugi frontend
+ručno napravljen HTTP request
+
+Može čak promeniti HTML u browseru i ukloniti:
+required
+
+Zato čak i ako imamo:
+<input type="number" min="18" max="100">
+
+backend i dalje mora:
+$age = $_POST['age'] ?? null;
+
+// validation ponovo na serveru
+
+Mentalni model:
+CLIENT VALIDATION
+→ UX / convenience
+
+SERVER VALIDATION
+→ authority / security / data integrity
+
+type="email" nije dovoljna zaštita
+Na primer:
+<input type="email" name="email">
+
+ne znači da backend može samo:
+$email = $_POST['email'];
+
+i verovati vrednosti.
+I dalje:
+$email = $_POST['email'] ?? null;
+
+if (!is_string($email)) {
+    // error
+}
+
+$email = trim($email);
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    // error
+}
+
+Browser validation je samo prvi sloj.
+Frontend validation može biti stroža — ali backend je izvor istine
+Pretpostavimo Vue aplikaciju.
+Frontend kaže:
+password:
+minimum 8 karaktera
+
+Backend kaže isto.
+Ako sutra promeniš backend na:
+minimum 12
+
+a frontend još nije update-ovan, backend mora biti taj koji ima poslednju reč.
+Zato se često kaže:
+Backend validation je canonical validation.
+
+Frontend može replicirati pravila radi UX-a, ali ne sme biti jedino mesto gde pravila postoje.
+Još jedna važna stvar: disabled input
+HTML:
+<input
+    name="role"
+    value="admin"
+    disabled
+>
+
+disabled polje se normalno ne šalje sa formom.
+Ali to ne znači:
+korisnik ne može poslati role=admin.
+
+Može ručno napraviti request:
+role=admin
+
+Zato backend nikad ne treba da kaže:
+$role = $_POST['role'];
+
+i slepo prihvati privileged vrednost samo zato što UI nije dozvoljavao edit.
+To već dodiruje authorization i mass-assignment mentalni model.
+Recimo registration forma dozvoljava:
+name
+email
+password
+
+Ako napadač pošalje:
+name=Bojan
+email=...
+password=...
+role=admin
+
+backend treba da whitelist-uje ono što očekuje:
+$userData = [
+    'name' => $validatedName,
+    'email' => $validatedEmail,
+    'password' => $hashedPassword,
+];
+
+a ne:
+$userData = $_POST;
+
+To je isti princip koji si već intuitivno primenio kada si u JSON API zadatku vraćao samo poznata polja umesto celog $data.
+Pitanje
+Imamo:
+<input
+    type="number"
+    name="age"
+    min="18"
+    max="100"
+    required
+>
+
+Zašto backend i dalje mora da validira age, i koje bi konkretne provere uradio nad $_POST['age'] pre nego što ga koristiš u business logici?
+
+---
+
+Backend svakako jeste izvor istine i on uvek mora da proveri podatke iz forme, jer u ovom konkretnom primeru, korisnik može da izmeni podatak i pošalje ga drugim alatima (postman, devtools, javascript itd).
+
+Pa dovoljno je da samo pošalje podatak age=15 ako bismo slepo verovali, bila bi narušena bussines politika.
+
+Dakle, izvršio bih svakako sve one provere koje sam i uradio u prethodnoj vežbi koju sam ti poslao:
+
+da li je string,
+trimuj,
+proveri da li je prazan, ako jeste error - upiši u error bag,
+proveri da li može biti validan broj i da li je u opsegu zadatom,
+normalizuj podatak,
+
+Tek kada sve ovo prođe može se upisivati u bazu i vratiti success (ako su ostala polja u redu)
