@@ -1,0 +1,88 @@
+Lekcija 15 — FILTER_SANITIZE_*: koristiti oprezno
+PHP ima filtere kao:
+FILTER_SANITIZE_EMAIL
+FILTER_SANITIZE_URL
+FILTER_SANITIZE_NUMBER_INT
+
+Ali želim da ih posmatraš oprezno.
+Na primer:
+$value = 'abc12kg';
+
+$clean = filter_var(
+    $value,
+    FILTER_SANITIZE_NUMBER_INT
+);
+
+možeš dobiti nešto nalik:
+12
+
+Ali pitanje je:
+Da li je korisnik zaista uneo validan integer?
+
+Nije.
+Zato za input koji mora biti broj češće želimo:
+FILTER_VALIDATE_INT
+
+nego:
+FILTER_SANITIZE_NUMBER_INT
+
+Isto za email. Ako korisnik pošalje pogrešan email, mnogo je sigurnije da ga odbijemo nego da pokušavamo da ga „popravimo“.
+Pitanje
+Šta bi ti pre izabrao za polje quantity koje mora biti integer 1–100:
+FILTER_SANITIZE_NUMBER_INT
+
+pa cast,
+ili:
+FILTER_VALIDATE_INT
+
+sa min_range / max_range?
+
+---
+
+Ako business pravilo kaže:
+quantity mora biti integer između 1 i 100
+
+onda želimo da pitamo:
+„Da li je input već validna reprezentacija takvog integera?“
+
+a ne:
+„Mogu li iz ovog inputa nekako izvući broj?“
+
+Zato je ovo bolji izbor:
+$quantity = filter_var(
+    $_POST['quantity'] ?? null,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+            'max_range' => 100,
+        ],
+    ]
+);
+
+if ($quantity === false) {
+    $errors['quantity'] = 'Quantity must be an integer between 1 and 100.';
+}
+
+Jer recimo:
+"25"       → 25       ✅
+"0"        → false    ❌ zbog range-a
+"101"      → false    ❌
+"25kg"     → false    ❌
+"banana25" → false    ❌
+"25.5"     → false    ❌
+
+Dok sanitization može da napravi upravo ono što ne želimo:
+"banana25kg"
+↓ FILTER_SANITIZE_NUMBER_INT
+"25"
+
+i onda si loš input pretvorio u validan podatak.
+To je jedna od najvažnijih razlika ovog modula:
+VALIDATE
+→ "Da li mogu da prihvatim ono što si poslao?"
+
+SANITIZE
+→ "Promeniću ono što si poslao."
+
+Za većinu strukturiranih business podataka — quantity, age, price, email, ID, booking dates — uglavnom želimo validation + kontrolisanu normalization, ne agresivnu sanitization.
