@@ -1,0 +1,107 @@
+Cross-field validation
+Neka pravila ne možeš proveriti gledajući jedno polje izolovano.
+Primeri:
+password_confirmation === password
+
+check_out > check_in
+
+min_price <= max_price
+
+end_time > start_time
+
+discount_price < regular_price
+
+Tu generički validator tipa:
+validateRequiredString()
+
+nije dovoljan.
+Prvo validiraš svako polje pojedinačno:
+$checkIn = validateDate(...);
+$checkOut = validateDate(...);
+
+pa tek ako su oba validna:
+if (
+    $checkIn !== null &&
+    $checkOut !== null &&
+    $checkOut <= $checkIn
+) {
+    $errors['check_out'] =
+        'Check-out must be after check-in.';
+}
+
+To je važan obrazac:
+FIELD VALIDATION
+↓
+ako oba polja postoje i validna su
+↓
+CROSS-FIELD VALIDATION
+
+Jer nema smisla porediti datume ako je jedan od njih već "banana".
+Pitanje
+Imamo:
+password
+password_confirmation
+
+Kako bi ti organizovao validaciju?
+Posebno me zanima redosled:
+1. šta proveravaš na svakom polju pojedinačno,
+2. kada radiš poređenje između njih,
+3. i gde bi upisao grešku ako se ne poklapaju.
+
+---
+
+1. password
+→ type
+→ required
+→ strength rules
+
+2. password_confirmation
+→ type
+→ required
+
+3. tek ako su oba validna
+→ compare
+
+4. mismatch
+→ errors['password_confirmation']
+
+Na primer:
+$password = $_POST['password'] ?? null;
+$confirmation = $_POST['password_confirmation'] ?? null;
+
+// pojedinačna validacija...
+
+if (
+    !isset($errors['password']) &&
+    !isset($errors['password_confirmation']) &&
+    $password !== $confirmation
+) {
+    $errors['password_confirmation'] =
+        'Password confirmation does not match.';
+}
+
+Ovo je važno:
+!isset($errors['password'])
+
+jer nema smisla raditi cross-field poređenje ako je password već nevalidan.
+I da, za strong password policy regex može biti deo validacije, mada često je preglednije razdvojiti pravila umesto jednog ogromnog regex-a. Recimo:
+if (mb_strlen($password) < 12) {
+    // too short
+}
+
+if (!preg_match('/[A-Z]/', $password)) {
+    // missing uppercase
+}
+
+if (!preg_match('/[0-9]/', $password)) {
+    // missing number
+}
+
+Lakše je održavati i možeš dati precizniju grešku.
+Laravel paralela je upravo:
+'password' => ['required', 'string', 'min:12', 'confirmed'],
+
+gde confirmed očekuje:
+password_confirmation
+
+Dakle opet vidiš šta framework abstrahuje ispod haube.
