@@ -1,0 +1,219 @@
+Separacija validation i business validation
+Do sada smo validirali uglavnom:
+tip
+format
+dužinu
+range
+required
+email
+
+Ali postoji još jedna vrsta validacije koja ne zavisi samo od inputa.
+Na primer user šalje:
+$email = 'bojan@example.com';
+
+Ovo može biti potpuno validan email:
+filter_var($email, FILTER_VALIDATE_EMAIL)
+
+prolazi.
+Ali registration business rule može reći:
+Email mora biti unique.
+
+To više ne možemo utvrditi gledajući samo string.
+Moramo pitati bazu:
+SELECT id
+FROM users
+WHERE email = ?
+
+Isto važi za booking:
+check_in  = 2026-10-10
+check_out = 2026-10-15
+room_id   = 12
+
+Svi inputi mogu pojedinačno biti savršeno validni.
+Ali business validation može reći:
+Soba 12 nema availability za ceo period.
+
+Zato je korisno mentalno odvojiti:
+INPUT VALIDATION
+"Da li request ima pravilan oblik i vrednosti?"
+
+BUSINESS VALIDATION
+"Da li je zahtev dozvoljen u trenutnom stanju sistema?"
+
+Na primer:
+$email = validateEmail(
+    $_POST['email'] ?? null,
+    'email',
+    $errors
+);
+
+Ako nema input greške:
+if ($email !== null) {
+    $existingUser = $userRepository->findByEmail($email);
+
+    if ($existingUser !== null) {
+        $errors['email'] = 'Email is already registered.';
+    }
+}
+
+Prva funkcija ne treba da zna ništa o bazi.
+To je važno za reusable dizajn.
+Ne želimo:
+validateEmail()
+
+da istovremeno radi:
+trim
+filter_var
+SQL query
+unique check
+authorization
+send email
+
+jer onda više nije mali validator nego svašta u jednom.
+Kod Laravela vidiš istu razliku:
+'email' => ['required', 'email']
+
+su input pravila.
+Dok:
+Rule::unique('users', 'email')
+
+već zavisi od persistence/business stanja.
+A kod rezervacija često ni Laravel validation rule nije dovoljno mesto za kompleksnu availability logiku; 
+to često ide u service/domain sloj.
+Mini pitanje
+Imamo registration formu sa:
+username = "bojan92"
+
+Pravila su:
+required
+string
+3–20 karaktera
+dozvoljeni samo slova, brojevi i _
+username mora biti unique
+
+Kako bi ti podelio ova pravila između:
+generic/input validation
+
+i:
+business/database validation
+
+i zašto ne bi stavio proveru baze direktno u naš validateRequiredString()?
+
+---
+
+Za username = "bojan92" bih podelio ovako:
+GENERIC / INPUT VALIDATION
+→ required
+→ string
+→ trim
+→ 3–20 karaktera
+→ dozvoljeni karakteri, npr. slova/brojevi/_
+
+Na primer regex:
+if (!preg_match('/^[A-Za-z0-9_]{3,20}$/', $username)) {
+    $errors['username'] = 'Invalid username format.';
+}
+
+A zatim:
+BUSINESS / DATABASE VALIDATION
+→ da li username već postoji?
+
+na primer:
+if ($username !== null && $userRepository->existsByUsername($username)) {
+    $errors['username'] = 'Username is already taken.';
+}
+
+I potpuno si u pravu za razlog: validateRequiredString() treba da ostane generička. 
+Ako u nju ubacimo SQL proveru, više ne možemo lepo da je koristimo za:
+name
+city
+title
+country
+description
+...
+
+jer bi funkcija odjednom znala za users tabelu i username business pravila.
+Kod emaila je slično:
+validateEmail()
+→ format emaila
+
+unique check
+→ da li već postoji u bazi
+
+Ali ovo što si dodao:
+„da li je email pravi i postojeći, a ne neki billgates@test.com“
+
+to je treća stvar i nije obična validation funkcija.
+FILTER_VALIDATE_EMAIL može da kaže:
+"ova vrednost ima validan email format"
+
+ali ne može pouzdano da kaže:
+"ovo sanduče zaista postoji i osoba ima pristup njemu"
+
+Najbolji standardni dokaz za to je email verification flow:
+registracija
+↓
+sačuvaj usera kao unverified
+↓
+pošalji verification link/token
+↓
+korisnik klikne
+↓
+email_verified_at = ...
+
+Dakle čak ni billgates@test.com ne moraš pokušavati da „pogodiš“ unapred kao lažan. 
+Ako korisnik nema pristup tom inboxu, neće moći da ga verifikuje.
+Mentalni model:
+EMAIL FORMAT VALIDATION
+→ izgleda li kao email?
+
+EMAIL UNIQUENESS
+→ postoji li već u našoj bazi?
+
+EMAIL OWNERSHIP VERIFICATION
+→ može li korisnik da primi i potvrdi verification link?
+
+Tri različite odgovornosti.
+Sledeće pitanje
+Imamo booking:
+room_id = 12
+check_in = 2026-10-10
+check_out = 2026-10-15
+
+Kako bi razdvojio input validation od business validation?
+Na primer: gde proveravamo da su datumi validnog formata i da je check_out > check_in, 
+a gde proveravamo da li soba stvarno postoji i ima availability za taj period?
+
+---
+
+INPUT / REQUEST VALIDATION
+→ room_id ima pravilan tip/format
+→ check_in je validan datum
+→ check_out je validan datum
+→ check_out > check_in
+
+Dok:
+BUSINESS / DATABASE VALIDATION
+→ soba sa room_id=12 stvarno postoji
+→ soba pripada aktivnom hotelu / može da se bookira
+→ postoji inventory za svaki dan u periodu
+→ availability je > 0
+→ eventualno minimal stay / max stay / closed-to-arrival pravila
+
+Dakle tvoj:
+checkDates()
+
+ima smisla za format i odnos između datuma.
+A:
+checkInventory()
+
+već mora da zna trenutno stanje sistema, najverovatnije bazu.
+Jedina zanimljiva nijansa je:
+check_out > check_in
+
+To nije obična validacija jednog polja, nego cross-field validation jer pravilo zavisi od dve vrednosti odjednom.
+Na primer:
+if ($checkOut <= $checkIn) {
+    $errors['check_out'] =
+        'Check-out must be after check-in.';
+}
