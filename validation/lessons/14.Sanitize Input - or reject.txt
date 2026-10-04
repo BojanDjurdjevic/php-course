@@ -1,0 +1,170 @@
+Sanitization: kada menjati input, a kada ga odbiti?
+Sada se vraćamo baš na ono što si rekao da želiš da refreshujemo.
+Pretpostavimo:
+$name = '   Bojan   ';
+
+Ovo:
+$name = trim($name);
+
+je uglavnom bezazlena normalizacija.
+Ali pretpostavimo email:
+bojan@@test..com
+
+Da li treba da pokušamo da ga „popravimo“?
+Najčešće — ne.
+Bolje:
+$email = trim($email);
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors['email'] = 'Invalid email.';
+}
+
+nego da agresivno menjamo korisnikov podatak dok slučajno ne postane validan.
+Mentalno:
+NORMALIZATION
+→ očekivana, kontrolisana transformacija
+
+VALIDATION
+→ prihvati / odbij
+
+SANITIZATION
+→ uklanjanje/promena određenih delova inputa
+
+I često je najbolja politika:
+minimalna normalizacija
++
+stroga validation
+
+Dobar primer normalizacije
+Username:
+$username = trim($username);
+
+Možda business pravilo kaže da je case-insensitive:
+$username = mb_strtolower($username);
+
+To je namerna transformacija definisana pravilima sistema.
+Phone možeš možda normalizovati:
+" +381 64 123-4567 "
+→ "+381641234567"
+
+ali samo ako si jasno definisao format koji želiš da čuvaš.
+Opasan pristup
+Recimo:
+$quantity = preg_replace('/\D/', '', $_POST['quantity']);
+
+Korisnik pošalje:
+banana5kg
+
+a tvoj „sanitizer“ napravi:
+5
+
+Odjednom si nevalidan input pretvorio u savršeno validnu količinu.
+To je isti problem kao prerani cast:
+(int) 'banana'
+→ 0
+
+Transformacija ti je uništila informaciju da je input bio pogrešan.
+Zato za quantity radije:
+$quantity = $_POST['quantity'] ?? null;
+
+if (!is_string($quantity)) {
+    // error
+}
+
+$quantity = trim($quantity);
+
+$validatedQuantity = filter_var(
+    $quantity,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+            'max_range' => 100,
+        ],
+    ]
+);
+
+if ($validatedQuantity === false) {
+    // reject
+}
+
+Pravilo koje bih voleo da zapamtiš
+Ako transformacija može da pretvori očigledno pogrešan input u naizgled validan podatak, dobro razmisli da li uopšte treba da je radiš.
+Na primer:
+"  Bojan  "
+→ "Bojan"
+
+razumna normalizacija.
+Ali:
+"Bojan123!!!"
+→ "Bojan"
+
+možda već menja značenje inputa i prikriva grešku.
+Pitanje
+Imamo polje:
+product_code
+
+koje po business pravilu mora biti:
+ABC-1234
+
+dakle tri velika slova, crtica, četiri cifre.
+Korisnik pošalje:
+" abc-1234 "
+
+Da li bi ti:
+1. trim()-ovao,
+2. pretvorio abc u uppercase,
+3. pa validirao format,
+ili bi odmah odbio zato što original nije bio ABC-1234?
+Ovde nema univerzalno tačnog odgovora — zanima me kako bi odlučio šta je normalizacija, a šta previše agresivno „popravljanje“ inputa.
+
+---
+
+ključ nije samo:
+„Da li menjam input?“
+
+nego:
+„Da li je ta promena deo jasno definisane normalizacije sistema?“
+
+Za product_code bih sasvim legitimno uradio:
+$code = $_POST['product_code'] ?? null;
+
+if (!is_string($code)) {
+    $errors['product_code'] = 'Product code must be a string.';
+} else {
+    $code = strtoupper(trim($code));
+
+    if (!preg_match('/^[A-Z]{3}-\d{4}$/', $code)) {
+        $errors['product_code'] = 'Invalid product code.';
+    }
+}
+
+Tako:
+" abc-1234 "
+→ trim
+→ "abc-1234"
+→ uppercase
+→ "ABC-1234"
+→ valid
+
+To je okej ako business rule kaže da su abc-1234 i ABC-1234 isti kod.
+Ali ako je case značajan, onda uppercase ne bi bio normalizacija nego menjanje podatka.
+Dakle mentalni model:
+NORMALIZATION
+→ pretvara različite dozvoljene reprezentacije
+  u jednu canonical reprezentaciju
+
+SANITIZATION / "repair"
+→ pokušava da popravi input koji možda
+  uopšte nije trebalo prihvatiti
+
+Primer dobre normalizacije:
+"  ABC-1234  "
+→ "ABC-1234"
+
+Primer potencijalno lošeg popravljanja:
+"AB!!!C---12x34"
+→ nekim regex čišćenjem
+→ "ABC-1234"
+
+Tu si već možda sakrio činjenicu da je korisnik poslao očigledno pogrešan format.
