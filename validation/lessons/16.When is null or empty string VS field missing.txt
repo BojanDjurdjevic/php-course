@@ -1,0 +1,103 @@
+Kada je null, kada '', a kada field missing?
+Pre nego što krenemo na završni checkpoint Modula 3, hoću još ovo da zakucamo jer pravi mnogo realnih bugova.
+Pretpostavimo JSON PATCH za profil:
+{
+    "phone": null
+}
+
+To potencijalno znači:
+„Želim da obrišem postojeći broj telefona.“
+
+Ali:
+{}
+
+može da znači:
+„Ne želim uopšte da menjam phone.“
+
+A:
+{
+    "phone": ""
+}
+
+može biti treća stvar:
+„Poslao sam prazan string.“
+
+Ta tri stanja nisu nužno ista:
+field missing
+≠
+null
+≠
+""
+
+Kod update endpointa ovo je posebno važno.
+Ako napišeš:
+$phone = $data['phone'] ?? null;
+
+onda si izgubio razliku između:
+{}
+
+i:
+{"phone": null}
+
+jer oba daju:
+$phone === null;
+
+Ako ti je razlika važna, prvo pitaš:
+if (array_key_exists('phone', $data)) {
+    // user je eksplicitno poslao phone
+}
+
+pa tek onda gledaš vrednost.
+To je naročito bitno kod PATCH requesta, gde „nije poslato“ često znači:
+ostavi postojeću vrednost kakva jeste
+
+dok eksplicitni null može značiti:
+obriši postojeću vrednost.
+
+Pitanje
+Imamo PATCH endpoint za profil i trenutno u bazi:
+phone = "+381641234567"
+
+Objasni šta bi po tvom dizajnu trebalo da znači svaki od ova tri requesta:
+{}
+
+{"phone": null}
+
+{"phone": ""}
+
+I posebno: da li bi "" automatski pretvorio u null, ili bi to zavisilo od business pravila?
+
+{}
+→ field nije poslat
+→ ne diraj postojeću vrednost
+
+{"phone": null}
+→ field jeste poslat
+→ eksplicitno ukloni postojeću vrednost
+
+{"phone": ""}
+→ field jeste poslat kao prazan string
+→ značenje određuje business rule
+
+---
+
+I zato je kod PATCH-a često bitnije:
+array_key_exists('phone', $data)
+
+nego:
+$data['phone'] ?? null
+
+jer ?? null spaja dva različita stanja u jedno:
+missing
+null
+
+Ako odlučimo da prazan string znači „ukloni telefon“, možemo ga eksplicitno normalizovati:
+if (is_string($phone)) {
+    $phone = trim($phone);
+
+    if ($phone === '') {
+        $phone = null;
+    }
+}
+
+Ali kao što si rekao — to nije univerzalno pravilo, nego business odluka.
