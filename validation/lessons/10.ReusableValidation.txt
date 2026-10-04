@@ -1,0 +1,298 @@
+Reusable validation: od if blokova ka validatoru
+Do sada smo namerno pisali ručno:
+if (!is_string($name)) {
+    ...
+} else {
+    $name = trim($name);
+
+    if ($name === '') {
+        ...
+    }
+}
+
+To je odlično za razumevanje.
+Ali zamisli formu sa:
+name
+email
+age
+phone
+city
+country
+password
+password_confirmation
+
+Vrlo brzo dobiješ 150 linija ponovljenih if blokova.
+Tu počinje pitanje:
+Kako da validation logiku učinimo reusable, a da ne izgubimo kontrolu?
+
+Najjednostavniji korak nije odmah pravljenje „mini Laravela“, nego izdvajanje malih funkcija.
+Na primer:
+function requiredString(
+    mixed $value,
+    string $field,
+    array &$errors
+): ?string {
+    if (!is_string($value)) {
+        $errors[$field] = "$field must be a string.";
+        return null;
+    }
+
+    $value = trim($value);
+
+    if ($value === '') {
+        $errors[$field] = "$field is required.";
+        return null;
+    }
+
+    return $value;
+}
+
+Onda:
+$errors = [];
+
+$name = requiredString(
+    $_POST['name'] ?? null,
+    'name',
+    $errors
+);
+
+Ako je validno:
+$name === 'Bojan';
+
+Ako nije:
+$name === null;
+
+$errors = [
+    'name' => 'name is required.'
+];
+
+Možemo napraviti i:
+function validateEmail(
+    mixed $value,
+    string $field,
+    array &$errors
+): ?string {
+    if (!is_string($value)) {
+        $errors[$field] = "$field must be a string.";
+        return null;
+    }
+
+    $value = trim($value);
+
+    if ($value === '') {
+        $errors[$field] = "$field is required.";
+        return null;
+    }
+
+    if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+        $errors[$field] = "$field must be a valid email.";
+        return null;
+    }
+
+    return $value;
+}
+
+Onda glavni request kod postaje:
+$errors = [];
+
+$name = requiredString(
+    $_POST['name'] ?? null,
+    'name',
+    $errors
+);
+
+$email = validateEmail(
+    $_POST['email'] ?? null,
+    'email',
+    $errors
+);
+
+if ($errors !== []) {
+    // redirect with errors
+}
+
+Mnogo čistije.
+Ali ovde počinje arhitektonska odluka.
+Možemo ići ka:
+$validator = new Validator($_POST, [
+    'name' => ['required', 'string', 'max:100'],
+    'email' => ['required', 'email'],
+    'age' => ['required', 'integer', 'between:18,100'],
+]);
+
+što već jako liči na Laravel.
+Za naš PHP kurs ćemo kasnije napraviti jednostavan reusable validator, ali je važno da ne preskočimo ono što si upravo ručno naučio.
+Jer sada, kada vidiš:
+'required|string|max:100'
+
+ti više ne vidiš magiju.
+U glavi znaš da ispod toga otprilike mora da postoji:
+key exists?
+↓
+expected type?
+↓
+empty?
+↓
+length?
+↓
+error bag
+↓
+stop remaining rules for this field where appropriate
+
+To je poenta ovog refreshera.
+Malo pitanje pre nego krenemo da pravimo reusable validator
+Imamo:
+function validateName(mixed $value): string|false
+
+koja vraća validirano ime ili false.
+Šta misliš o tom API dizajnu?
+Da li vidiš potencijalni problem sa korišćenjem:
+false
+
+kao oznake da validation nije prošla, i da li bi ti više voleo:
+?string
+
+gde validno ime vraća string, a greška null?
+Nema zamke sa jednim „tačnim“ odgovorom — zanima me kako sada razmišljaš o return tipu validator funkcije.
+
+---
+
+if (!$result) {
+    // validation failed?
+}
+
+opet možeš pomešati legitimne falsy vrednosti sa neuspehom.
+Kod ?string validatora je bolje:
+if ($result === null) {
+    // validation failed
+}
+
+Dakle i dalje koristimo strict comparison. Razlika je više u semantici API-ja nego u tome što je null bezbedniji od false.
+Za funkciju:
+function validateName(mixed $value): ?string
+
+meni je null lepši izbor jer return type praktično čitaš kao:
+string → uspešno validirano ime
+null   → nema validirane vrednosti
+
+dok:
+string|false
+
+više liči na tradicionalni PHP API stil poput strpos(), filter_var(), file_get_contents() itd.
+I pošto validator za name ionako ne dozvoljava prazan string, nema dvosmislenosti između:
+''
+
+i:
+null
+
+To je bitno.
+Ali evo gde postaje zanimljivo. Pretpostavimo validator:
+function validatePhone(mixed $value): ?string
+
+a phone je:
+nullable
+
+Tada:
+null
+
+može značiti dve stvari:
+1. validan phone = null
+2. validation failed
+
+I odjednom ?string više nije dovoljan API.
+Tu dolazimo do važnog arhitektonskog principa:
+Return vrednost ne bi trebalo da pokušava istovremeno da predstavlja i validirani podatak i validation status ako se te dve stvari mogu sudariti.
+
+Zato je naš trenutni pristup sa error bag-om veoma praktičan:
+$errors = [];
+
+$phone = validatePhone(
+    $data['phone'] ?? null,
+    'phone',
+    $errors
+);
+
+Onda možeš imati:
+$phone === null;
+
+i to biti validna vrednost, a validation failure proveravaš kroz:
+isset($errors['phone'])
+
+Dakle imaš dva odvojena kanala:
+RETURN VALUE
+→ validirani / normalizovani podatak
+
+ERROR BAG
+→ da li je validation pala i zašto
+
+To je mnogo čistiji dizajn.
+Još ozbiljniji pristup bi jednog dana bio neki rezultat tipa:
+$result->isValid();
+$result->value();
+$result->errors();
+
+ali za vanilla PHP kurs trenutno nam ne treba da pravimo framework. 😄
+Hajde sada da napravimo prvi reusable validator
+Krenućemo malim korakom, bez klase.
+Želim da napišeš ove tri funkcije:
+validateRequiredString(...)
+validateEmail(...)
+validateInteger(...)
+
+Predloženi potpisi:
+function validateRequiredString(
+    mixed $value,
+    string $field,
+    array &$errors,
+    int $maxLength = 255
+): ?string
+
+function validateEmail(
+    mixed $value,
+    string $field,
+    array &$errors
+): ?string
+
+function validateInteger(
+    mixed $value,
+    string $field,
+    array &$errors,
+    int $min,
+    int $max
+): ?int
+
+Pravila:
+- validateRequiredString() → type check, trim, required, mb_strlen, vrati normalizovan string ili null.
+- validateEmail() → type check, trim, required, FILTER_VALIDATE_EMAIL.
+- validateInteger() pretpostavlja HTML form input, dakle očekuje string, trim, required, FILTER_VALIDATE_INT sa range-om; vraća pravi int ili null.
+- Svaka funkcija sme da upiše najviše jednu grešku za svoje polje.
+- Nemoj exit; samo napuni $errors.
+Onda bi korišćenje trebalo da izgleda otprilike:
+$errors = [];
+
+$name = validateRequiredString(
+    $_POST['name'] ?? null,
+    'name',
+    $errors,
+    100
+);
+
+$email = validateEmail(
+    $_POST['email'] ?? null,
+    'email',
+    $errors
+);
+
+$age = validateInteger(
+    $_POST['age'] ?? null,
+    'age',
+    $errors,
+    18,
+    100
+);
+
+Ovo će biti prvi trenutak gde ćemo od ručnih if blokova krenuti ka sopstvenom malom validation sloju.
+
+---
+
+Pogledati fajl /validation/errors/validator.php 
