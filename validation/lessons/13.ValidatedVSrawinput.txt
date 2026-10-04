@@ -1,0 +1,101 @@
+Validated data vs raw input
+Ovo je sledeći važan korak.
+Pretpostavimo da user pošalje:
+$_POST = [
+    'name' => '  Bojan  ',
+    'email' => ' bojan@example.com ',
+    'age' => '40',
+    'role' => 'admin',
+];
+
+A forma zapravo dozvoljava samo:
+name
+email
+age
+
+Posle validation-a ne bih dalje prosleđivao:
+$_POST
+
+nego bih napravio eksplicitni validated payload:
+$validated = [
+    'name' => $name,
+    'email' => $email,
+    'age' => $age,
+];
+
+Tada dobiješ:
+[
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+    'age' => 40,
+]
+
+i neželjeni:
+'role' => 'admin'
+
+uopšte ne prolazi dalje.
+To je jako važan obrazac:
+RAW INPUT
+→ validation/normalization
+→ VALIDATED DATA
+→ business/service/repository
+
+A ne:
+$_POST
+→ direktno DB
+
+To je u Laravelu konceptualno vrlo slično:
+$validated = $request->validated();
+
+kod FormRequest-a.
+Pitanje
+Zašto je ovo:
+$userRepository->create($_POST);
+
+lošije od:
+$userRepository->create([
+    'name' => $name,
+    'email' => $email,
+    'age' => $age,
+]);
+
+čak i ako smo pre toga validirali name, email i age?
+
+---
+
+Ako korisnik pošalje:
+$_POST = [
+    'name' => 'Bojan',
+    'email' => 'bojan@test.com',
+    'age' => '40',
+    'role' => 'admin',
+    'is_verified' => '1',
+];
+
+a ti radiš:
+$userRepository->create($_POST);
+
+onda si potencijalno pustio kroz sistem i podatke koje nisi ni očekivao ni validirao.
+Mnogo je bezbednije:
+$validated = [
+    'name' => $name,
+    'email' => $email,
+    'age' => $age,
+];
+
+$userRepository->create($validated);
+
+To je praktično zaštita kroz explicit allowlisting.
+I ovde imaš lepu Laravel paralelu. Ovo:
+$request->all()
+
+nije isto što i:
+$request->validated()
+
+kod FormRequest-a.
+A cela tema dodiruje i Laravelov mass assignment problem ($fillable, $guarded), ali to je dodatni sloj zaštite. Idealno je:
+request validation / allowlist
++
+model mass-assignment protection
+
+a ne da se oslanjaš samo na jedan od ta dva sloja
