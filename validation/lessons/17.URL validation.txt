@@ -1,0 +1,90 @@
+URL validation
+Ovo nam je još ostalo iz osnovnih tipova pre završnog checkpointa.
+Recimo da user unosi:
+website = https://example.com
+
+Najosnovnije:
+$url = $_POST['website'] ?? null;
+
+if (!is_string($url)) {
+    $errors['website'] = 'Website must be a string.';
+} else {
+    $url = trim($url);
+
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        $errors['website'] = 'Website must be a valid URL.';
+    }
+}
+
+Ali postoji važna stvar: validan URL nije isto što i URL koji naša aplikacija želi da prihvati.
+Na primer, URL može imati validnu sintaksu, ali mi poslovno možda hoćemo samo:
+http
+https
+
+Zato posle format validation možemo proveriti scheme:
+$scheme = parse_url($url, PHP_URL_SCHEME);
+
+if (!in_array($scheme, ['http', 'https'], true)) {
+    $errors['website'] = 'Only HTTP and HTTPS URLs are allowed.';
+}
+
+Dakle opet imamo dva nivoa:
+FILTER_VALIDATE_URL
+→ da li izgleda kao validan URL?
+
+business validation
+→ koje URL scheme-ove dozvoljavamo?
+
+To postaje još važnije ako URL kasnije koristi server, a ne samo prikazuje korisniku. Tada ulazimo i u druge security teme poput SSRF-a, ali to nam sada nije tema.
+Za običan portfolio/profile website field dovoljno je da zapamtiš:
+type
+→ trim
+→ URL format
+→ eventualno dozvoljeni scheme
+
+Poslednje kratko pitanje pre Module 3 checkpointa
+Šta nije dovoljno u ovome:
+$url = filter_var(
+    $_POST['website'] ?? '',
+    FILTER_VALIDATE_URL
+);
+
+if ($url === false) {
+    $errors['website'] = 'Invalid URL.';
+}
+
+ako business pravilo kaže:
+korisnik sme da unese samo http:// ili https:// URL?
+
+Odnosno: šta bi proverio nakon FILTER_VALIDATE_URL?
+
+---
+
+Proverio bih scheme.
+
+Dakle 
+
+$scheme = parse_url($url, PHP_URL_SCHEME); 
+
+Pa bih onda proverio da li su u nizu zeljeni formati, npr http i https.
+
+---
+
+$url = filter_var(
+    $_POST['website'] ?? '',
+    FILTER_VALIDATE_URL
+);
+
+if ($url === false) {
+    $errors['website'] = 'Invalid URL.';
+} else {
+    $scheme = strtolower(
+        (string) parse_url($url, PHP_URL_SCHEME)
+    );
+
+    if (!in_array($scheme, ['http', 'https'], true)) {
+        $errors['website'] = 'Only HTTP and HTTPS URLs are allowed.';
+    }
+}
+
+Bitno je da parse_url() radiš tek nakon što znaš da URL nije pao osnovnu validaciju. strtolower() ovde lepo normalizuje scheme pre poređenja.
