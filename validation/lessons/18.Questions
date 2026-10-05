@@ -1,0 +1,674 @@
+1. Objasni svojim rečima razliku između ova četiri pojma:
+
+Validation
+Normalization
+Sanitization
+Output escaping
+
+I za svaki mi daj po jedan konkretan PHP primer.
+Posebno želim da objasniš zašto ovo:
+trim($name)
+
+nije isto što i:
+filter_var($email, FILTER_VALIDATE_EMAIL)
+
+i zašto:
+htmlspecialchars(...)
+
+ne treba posmatrati kao „sanitize input“ funkciju.
+
+---
+
+Prvo, kod validation-a bih malo promenio formulaciju:
+„da li vrednost odgovara onome što baza očekuje“
+
+nije pogrešno u konkretnim aplikacijama, ali je preusko. Validation pre svega proverava 
+da li input odgovara contract-u aplikacije/requesta, nezavisno od baze.
+Na primer:
+age → integer 18–100
+email → validan email format
+username → 3–20 karaktera
+
+To bi važilo čak i da podatke ne čuvamo u SQL bazi.
+Kod emaila si lepo odvojio format od drugih provera, ali još preciznije:
+FILTER_VALIDATE_EMAIL
+→ format validation
+
+email already taken
+→ database/business constraint
+
+da li user zaista kontroliše taj inbox
+→ email verification flow
+
+Ovo poslednje ne bih baš zvao običnim business rule-om, nego ownership verification.
+Druga važna nijansa: pre trim() ipak ide type check.
+Dakle ne:
+$email = trim($email);
+
+odmah, nego:
+if (!is_string($email)) {
+    // error
+} else {
+    $email = trim($email);
+}
+
+jer smo već videli:
+email[]=banana
+
+→ array → trim() TypeError.
+Tvoj deo o sanitization-u je odličan. Ovo:
+banana12kg
+→ sanitize number
+→ 12
+
+je baš savršen primer zašto:
+„Mogu da izvučem validnu vrednost“
+
+nije isto što i:
+„Korisnik je poslao validnu vrednost.“
+
+Najvažnija korekcija je kod htmlspecialchars().
+Ona ne „escape-uje HTML tagove“ u smislu da prepoznaje i obrađuje tagove kao strukture. 
+Preciznije:
+htmlspecialchars() HTML-encode-uje specijalne karaktere poput <, >, &, navodnika itd, 
+tako da browser podatak tretira kao tekst umesto kao markup.
+
+Na primer:
+$value = '<script>alert("x")</script>';
+
+postaje reprezentacija nalik:
+&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;
+
+Takođe, razlog da ne čuvaš htmlspecialchars() rezultat u bazi nije zato što bi izgubio ime poput:
+Đorđe
+
+htmlspecialchars() neće uništiti Đ.
+Problem je više ovo:
+business data
+≠
+HTML representation business podatka
+
+Ako u bazu sačuvaš:
+Tom &amp; Jerry
+
+umesto:
+Tom & Jerry
+
+onda si podatak vezao za HTML context. 
+Sutra možda isti podatak želiš da pošalješ kroz JSON, PDF, CSV ili email.
+
+Zato najbolji mentalni model ostaje:
+INPUT
+↓
+type check
+↓
+normalization
+↓
+validation
+↓
+store meaningful data
+↓
+escape za konkretan output context
+
+A tvoj glavni rezime je potpuno dobar:
+Validation
+→ prihvati ili odbij
+
+Normalization
+→ canonical oblik dozvoljenog podatka
+
+Sanitization
+→ menja/uklanja delove inputa; koristiti oprezno
+
+Output escaping
+→ bezbedna reprezentacija podatka u konkretnom output context-u
+
+---------------------------------
+
+Pitanje 2
+
+Imamo HTML formu koja šalje:
+age = "0"
+
+i kod:
+$age = filter_var(
+    $_POST['age'] ?? null,
+    FILTER_VALIDATE_INT
+);
+
+if (!$age) {
+    $errors['age'] = 'Invalid age.';
+}
+
+Objasni:
+1. šta će FILTER_VALIDATE_INT vratiti,
+2. zašto je if (!$age) pogrešan,
+3. kako bi pravilno proverio failure,
+4. i koji širi PHP princip ova greška ilustruje.
+
+---
+
+Ovde ce filter_var vratiti int 0, medjutim provera !$age je ovde problematicna zbok truty / falsy ponasanja, 
+pa je zato najbolje striktno poredjenje $age === false.
+
+Ova greska ilustruje problematiku poredjenja tipova i vrednosti.
+
+---
+
+Pa zato sto $_POST moze sadrzati i neocekivana polja koja nismo validirali.
+
+Zato je bolje uraditi nesto sto Laravel radi sa $request->validated(), odnosno da izvucemo svaki od ocekivanih podataka, 
+proverimo tj validiramo i smestimo u niz $validated.
+Tačno — 10/10.
+
+Ključ je upravo u tome da:
+
+$_POST
+
+predstavlja raw client-controlled input, dok:
+
+$validated
+
+treba da predstavlja samo ono što je aplikacija eksplicitno prihvatila.
+
+Dakle:
+
+$validated = [
+    'name' => $name,
+    'email' => $email,
+    'age' => $age,
+];
+
+$userRepository->create($validated);
+
+je bolji obrazac od:
+
+$userRepository->create($_POST);
+
+jer time praviš jasan allowlist očekivanih polja. Ne dozvoljavaš da kroz request neopaženo prođu stvari poput:
+
+'role' => 'admin',
+'is_verified' => '1',
+
+Ovo se lepo vezuje i za Laravel mass-assignment zaštitu: $request->validated() rešava request-side allowlisting, 
+dok $fillable / $guarded daje dodatnu zaštitu na model nivou. Najbolje je imati oba sloja.
+
+Interview pitanje 8
+Objasni razliku između:
+
+input validation
+i:
+
+business validation
+na ovom primeru:
+
+room_id = 12
+check_in = 2026-10-10
+check_out = 2026-10-15
+Posebno me zanima gde bi proveravao:
+
+da li su datumi validnog formata,
+da li je check_out > check_in,
+da li soba sa ID 12 postoji,
+da li ima availability za ceo period.
+Ovde je situacija takva da mozemo imati potpuno validne datume i room_id ali osima validacije imamo 
+i druge provere u smislu bussines rules.
+
+Tako da bih podelio odgovornosti na vise funkcija:
+
+validateDates - bi proveravala da li su datumi validni dates
+
+Zatim imamo cross field validation:
+checkDates - bi proverila da li je requested check_in pre check_out.
+
+isExistingRoom - bi proveravala da li room sa ID 12 zaista postoji.
+
+checkAvailability  - bi proverila da li je za requested period odredjena soba dostupna.
+
+PS. Bilo bi dobro proveriti i da li je check_in past
+
+Poenta je u tome da validateDates proverava samo da li su datumi korektni, 
+i ne treba da je zanima bussines logika. Na taj nacin imamo reusable validation.
+
+To se opet moze koristiti na primer kada poredimo check_in / out, 
+jer nema potrebe da dodjemo do poredjenja ako je jedan od datuma nevalidan, treba vec da padne pre toga.
+…
+Odlično — 10/10. Ovde si lepo razdvojio slojeve i još si dodao dobru praktičnu proveru za check_in u prošlosti.
+
+Ja bih to samo terminološki sredio ovako:
+
+INPUT VALIDATION
+→ room_id ima očekivan tip/format
+→ check_in je validan datum
+→ check_out je validan datum
+Zatim:
+
+CROSS-FIELD VALIDATION
+→ check_out > check_in
+A onda:
+
+BUSINESS / DOMAIN VALIDATION
+→ check_in nije u prošlosti
+→ soba 12 postoji
+→ soba je bookable/aktivna
+→ ima availability za svaki dan traženog perioda
+I ovo što si rekao je posebno bitno:
+
+nema smisla porediti check_in i check_out ako jedan datum već nije validan.
+
+Dakle:
+
+parse/validate pojedinačne vrednosti
+↓
+cross-field pravila
+↓
+database/domain pravila
+Takođe mi se sviđa što validateDates() ne želiš da zatrpaš availability logikom. 
+Upravo tako validator ostaje reusable, a booking logika ostaje booking logika.
+
+Za proveru „datum nije u prošlosti“ bih rekao da je već bliže business rule-u 
+nego običnoj format validaciji. String "2020-05-10" može biti savršeno validan datum, 
+samo nije dozvoljen kao budući check_in.
+
+Interview pitanje 9
+Programer ima komentar korisnika i radi:
+
+$comment = trim($_POST['comment'] ?? '');
+
+$comment = htmlspecialchars(
+    $comment,
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+$stmt = $pdo->query(
+    "INSERT INTO comments (body)
+     VALUES ('$comment')"
+);
+
+Kaže:
+
+„Input sam sanitizovao sa htmlspecialchars(), tako da sam rešio i XSS i SQL injection.“
+
+Objasni šta je ovde pogrešno i kako bi pravilno razdvojio:
+
+validation / normalization
+SQL injection protection
+XSS protection
+database storage
+Ovde je najvise problematicna tvrdnja da he resen sql injection.
+
+Jer sql injection se resava sa prepared statements a ne sa htmlspecialchars niti bilo kakvom sanitizacijom.
+
+Dakle, pravilan proces bi bio:
+
+Validacija komentara - proveravamo tip, da li je required, tj prazan string ili ne.
+
+Normalizacija bi znacila prilagodjavanje samog inputa ali ne agresivno, 
+nego tipa sa trim() da ne izmenimo bez potrebe unos  i ona bi ovde dosla izmedju provere tipa i da li je prazan string.
+
+Prevencija sql injection bi se radila sa prepared statements i bindovanjem 
+ali tek nakon validacije i normalizacije.
+
+htmlspecialchars ne bi trebalo koristiti pre db storage i to je losa praksa 
+jer bismo onda u bazi cuvali podatak koji jedino mozemo koristiti kao prezentaciju tj ispis. A sta ako bismo ga zeleli poslati tj koristiti u sklopu sistema na drugi nacin?
+
+Zato htmlspecialchars koristimo iskljucivo za output escaping i bezbedan ispis. 
+I sada ovo ima veze sa prevencijom XSS-a.
+
+PS. Ovde je potpuno drugacije pitanje da li comment sadrzi nezeljene reci, 
+karaktere i to je vise bussines domen nego validacija (na primer ruzne reci i uvrede).
+…
+Odlično — 10/10. Razdvajanje odgovornosti ti je sada baš čisto.
+
+Tačan pipeline bi bio:
+
+RAW INPUT
+↓
+type check
+↓
+normalization
+↓
+validation
+↓
+prepared statement
+↓
+store meaningful data
+↓
+escape tek pri outputu
+Dakle:
+
+$comment = $_POST['comment'] ?? null;
+
+if (!is_string($comment)) {
+    // validation error
+}
+
+$comment = trim($comment);
+
+if ($comment === '') {
+    // validation error
+}
+
+$stmt = $pdo->prepare(
+    'INSERT INTO comments (body) VALUES (:body)'
+);
+
+$stmt->execute([
+    'body' => $comment,
+]);
+
+A kasnije u HTML view-u:
+
+<?= htmlspecialchars(
+    $commentFromDatabase,
+    ENT_QUOTES,
+    'UTF-8'
+) ?>
+
+Posebno dobro što si rekao da HTML representation ne treba trajno mešati sa business podatkom. 
+I još preciznije: htmlspecialchars() nije „funkcija za prikaz“ u opštem smislu, nego escaping za HTML context. 
+Ako isti komentar ide u JSON, PDF ili neki drugi format, primenjuješ pravila tog output context-a.
+
+I tvoj PS je dobar. Provera ružnih reči, dozvoljenog sadržaja, maksimalnog broja linkova i 
+sličnog nije XSS zaštita niti SQL zaštita. To je zasebna content/business policy.
+
+Interview pitanje 10
+Objasni CSRF na primeru session-cookie autentifikacije.
+
+Pretpostavimo da je korisnik ulogovan i browser ima:
+
+PHPSESSID=abc123
+A aplikacija ima:
+
+POST /change-email.php
+Zašto savršena validation emaila i prepared statement ne štite od CSRF-a?
+
+Objasni:
+
+šta napadač pokušava da iskoristi,
+zašto browser može automatski poslati session cookie,
+šta CSRF token dodaje,
+i zašto CSRF nije isto što i XSS.
+Savrsena validacija + prepared statements ne stite od cross site forgery iz razloga sto napadac 
+moze da natera zrtvin browser da izvrsi neke akcije koja zrtva nije zelela.
+
+U ovom primeru, da se izmeni email.
+
+CSRF token se generise na serveru tj na bekendu, na primer to laravel za nas radi automatski. 
+U browseru se cuva session ID i cookies, koji se automatski salju prilikom svakog requesta i ako nemamo csrf token definisan, 
+napadac moze forsirano da posalje session ID i cookies i server primi request, vidi sessid, vidi cookies, 
+sve to lepo poveze -> proceed.
+Medjutim ono sto napadac ne moze poslati preko drugog sajta jeste upravo CSRF, 
+tacnije moze da posalje nesto fejk ali server ce prepoznati da nije validan i nece izvrsiti akciju.
+Odlično — 9.5/10. CSRF suštinu si uhvatio vrlo dobro. Samo dve nijanse da budu intervju-precizne.
+
+Prvo, kod klasične PHP session autentifikacije session ID je tipično upravo vrednost koja putuje u cookie-ju:
+
+Cookie: PHPSESSID=abc123
+Dakle ne bih govorio:
+
+session ID + cookies
+kao dve nužno odvojene stvari.
+
+Drugo, napadač obično ne zna i ne šalje sam žrtvin session ID. Njegova prednost je baš u tome 
+što može da navede žrtvin browser da napravi request ka tvojoj aplikaciji, a browser automatski priloži odgovarajući 
+session cookie prema pravilima cookie-ja.
+
+Mentalno:
+
+evil-site.com
+↓
+navede browser žrtve da pošalje POST
+↓
+browser automatski priloži cookie za target sajt
+↓
+server vidi authenticated session
+↓
+bez CSRF zaštite request može izgledati legitimno
+CSRF token dodaje nešto što strani sajt normalno nema:
+
+valid session
++
+validan tajni token očekivan za tu session/aplikaciju
+Napadač može poslati:
+
+csrf_token=banana
+ali server poređenjem sa očekivanim tokenom odbija request.
+
+I još nisi odgovorio na poslednju tačku, pa da je zakucamo:
+
+CSRF
+→ nateram browser žrtve da izvrši neželjeni authenticated request
+
+XSS
+→ ubacim JavaScript koji se izvršava u kontekstu tvoje aplikacije
+To su različiti napadi. XSS je često još ozbiljniji jer JavaScript koji se izvršava na tvom origin-u 
+može imati mogućnosti koje običan strani sajt nema.
+
+Interview pitanje 11
+Zašto je za reusable validator koji obrađuje raw user input bolji ovakav potpis:
+
+function validateEmail(
+    mixed $value,
+    string $field,
+    array &$errors
+): ?string
+
+nego:
+
+function validateEmail(
+    string $value,
+    string $field,
+    array &$errors
+): ?string
+
+Posebno objasni šta se dešava ako napadač pošalje:
+
+email[]=banana
+i zašto želimo da validator sam kontroliše type error umesto da PHP pre ulaska u funkciju baci TypeError.
+
+Bolje je jer mi ne znamo u kom tipu se podatak salje i ako podatak ogranicimo samo na string u potpisu funkcije, 
+php ce izbaciti TypeError sto ne zelimo. Zato koristimo mixed, koji dozvoljava bilo koji tip podatka 
+a mi svakako taj tip validiramo tj proveravamo na samom ulasku u funkciju. Tada gresku mozemo upisat u error bag 
+i vratiti je nazad.
+Tačno — 10/10.
+
+To je upravo poenta boundary validatora: raw request je untrusted, 
+pa validator ne treba da pretpostavi tip pre nego što ga proveri.
+
+Ako napadač pošalje:
+
+email[]=banana
+PHP napravi nešto poput:
+
+$_POST['email'] = ['banana'];
+
+Sa potpisom:
+
+function validateEmail(string $value, ...)
+
+PHP može da baci TypeError pre nego što funkcija uopšte stigne da odradi validation.
+
+Sa:
+
+function validateEmail(mixed $value, ...)
+
+mi zadržavamo kontrolu:
+
+if (!is_string($value)) {
+    $errors[$field] = "The $field must be a string.";
+    return null;
+}
+
+Dakle:
+
+HTTP/request boundary
+→ mixed
+→ validate type ourselves
+
+business/domain layer
+→ već validirani strong types
+I to je vrlo lep dizajn.
+
+Interview pitanje 12 — poslednje pre coding checkpointa
+Objasni zašto je ovo potencijalno loš reusable validator API:
+
+function validatePhone(mixed $value): ?string
+
+ako je phone dozvoljen kao nullable string.
+
+Drugim rečima, ako funkcija vrati:
+
+null
+
+kako znaš da li to znači:
+
+phone je validno null
+ili:
+
+validation je pala
+I kako bi ti rešio tu dvosmislenost koristeći naš dosadašnji error bag pristup?
+
+Ovo potencijalno moze biti loš reusable validator iz razloga sto ovde imamo podudarnost validiranog podatka 
+i validation statusa. Dakle, posto je nullable, null je dozvoljen tip i onda izbegavamo da null bude validation status.
+
+Razmislio bih o koriscenju string | false u ovom slucaju a takodje pri validaciji ne bih koristio isset, 
+nego array_key_exist() ukoliko je phone required + nullable.
+
+Tako bih proverio striktno da li je phone '' ili null ili eventualno {} ako je patch request, pogotovo vazno...
+Vrlo dobro razmišljanje — 8.8/10. Tačno si prepoznao glavni problem: null više ne može sam da predstavlja 
+validation failure ako je istovremeno dozvoljena vrednost podatka.
+
+Ali baš zato ja ovde ne bih prelazio na string|false. 
+Time bismo se vratili na sentinel pristup koji smo pokušavali da odvojimo od samog podatka.
+
+Naš error bag već rešava problem elegantnije.
+
+Recimo:
+
+function validateNullablePhone(
+    mixed $value,
+    string $field,
+    array &$errors
+): ?string {
+    if ($value === null) {
+        return null; // validan nullable podatak
+    }
+
+    if (!is_string($value)) {
+        $errors[$field] = 'Phone must be a string or null.';
+        return null;
+    }
+
+    $value = trim($value);
+
+    if ($value === '') {
+        $errors[$field] = 'Phone cannot be empty.';
+        return null;
+    }
+
+    return $value;
+}
+
+Sada funkcija može vratiti:
+
+null
+
+u dva slučaja, ali status ne čitamo iz return vrednosti.
+
+Čitamo ga iz drugog kanala:
+
+$phone = validateNullablePhone(
+    $data['phone'],
+    'phone',
+    $errors
+);
+
+if (isset($errors['phone'])) {
+    // validation failed
+}
+
+Dakle:
+
+$phone === null
++ nema errors['phone']
+→ validan null
+
+$phone === null
++ postoji errors['phone']
+→ validation failure
+
+$phone === '+381...'
++ nema errora
+→ validan string
+To je upravo prednost razdvajanja:
+
+RETURN VALUE
+→ validirani podatak
+
+ERROR BAG
+→ validation status + razlog
+Drugi deo tvog odgovora je tačan: ako je polje required + nullable, isset() nije dovoljan.
+
+Treba:
+
+if (!array_key_exists('phone', $data)) {
+    $errors['phone'] = 'Phone field is required.';
+}
+
+jer:
+
+[
+    'phone' => null
+]
+
+mora da se razlikuje od:
+
+[]
+
+I mala korekcija za PATCH deo: {} nije vrednost phone polja, nego ceo payload bez phone ključa.
+
+Dakle:
+
+{}
+
+znači:
+
+phone nije poslat
+dok bi:
+
+{
+    "phone": {}
+}
+
+značilo da je phone poslat kao JSON object, što bi za nullable string bilo nevalidno.
+
+Mentalno:
+
+PATCH {}
+
+→ key missing
+→ ne menjaj phone
+
+
+PATCH {"phone": null}
+
+→ key exists
+→ validan nullable input
+→ obriši phone
+
+
+PATCH {"phone": ""}
+
+→ key exists
+→ business pravilo odlučuje šta znači
+
+
+PATCH {"phone": {}}
+
+→ key exists
+→ pogrešan tip
+→ validation error
+Time si završio i interview checkpoint Modula 3 veoma dobro. Glavne stvari 
+koje treba još da izbrusimo kroz praksu su upravo ovakve API-design nijanse, ne osnovni koncepti.
