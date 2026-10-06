@@ -1,0 +1,197 @@
+Filesystem path nije URL
+Ovo smo već malo videli kod upload zadatka.
+Pretpostavimo projekat:
+C:\laragon\www\myapp\
+
+i fajl:
+C:\laragon\www\myapp\uploads\15\avatar.webp
+
+To je filesystem path.
+PHP-u treba takva putanja da bi uradio:
+file_exists(...)
+unlink(...)
+file_get_contents(...)
+move_uploaded_file(...)
+
+Ali browser ne koristi:
+C:\laragon\www\myapp\uploads\15\avatar.webp
+
+Browser eventualno koristi nešto poput:
+/uploads/15/avatar.webp
+
+ili:
+https://example.com/uploads/15/avatar.webp
+
+Dakle:
+FILESYSTEM PATH
+→ gde se fajl fizički nalazi za PHP/OS
+
+PUBLIC PATH / URL
+→ kako mu klijent pristupa preko HTTP-a
+
+To je veoma važna razlika.
+__DIR__
+U PHP-u:
+__DIR__
+
+daje direktorijum trenutnog PHP fajla.
+Recimo da je:
+C:\laragon\www\myapp\store.php
+
+onda:
+echo __DIR__;
+
+može dati:
+C:\laragon\www\myapp
+
+Zato je ovo mnogo pouzdanije:
+$path = __DIR__ . '/uploads/file.txt';
+
+nego:
+$path = 'uploads/file.txt';
+
+Druga varijanta je relative path i može zavisiti od current working directory-ja procesa.
+__DIR__ ti daje stabilnu referentnu tačku.
+DIRECTORY_SEPARATOR
+Možemo:
+$path = __DIR__
+    . DIRECTORY_SEPARATOR
+    . 'uploads'
+    . DIRECTORY_SEPARATOR
+    . 'avatar.webp';
+
+Na Windows-u je separator tipično:
+\
+
+na Linux/macOS:
+/
+
+PHP uglavnom sasvim lepo prihvata / čak i na Windows-u, pa je:
+__DIR__ . '/uploads/avatar.webp'
+
+često potpuno praktično i čitljivije.
+Ali treba da znaš šta DIRECTORY_SEPARATOR predstavlja.
+Absolute vs Relative path
+Absolute:
+C:\laragon\www\myapp\uploads\a.jpg
+
+ili Linux:
+/var/www/myapp/uploads/a.jpg
+
+Relative:
+uploads/a.jpg
+
+Relative znači:
+„u odnosu na trenutno mesto iz kog se putanja razrešava“.
+
+Zato kod backend fajlova često radimo:
+$uploadDir = __DIR__ . '/uploads';
+
+umesto da se oslanjamo na:
+$uploadDir = 'uploads';
+
+Osnovne filesystem provere
+PHP ima nekoliko funkcija koje želim da razlikuješ:
+file_exists($path);
+
+pita:
+postoji li nešto na ovoj putanji?
+
+Može biti file ili directory.
+is_file($path);
+
+pita:
+postoji li baš regularan fajl?
+
+is_dir($path);
+
+pita:
+postoji li direktorijum?
+
+Na primer:
+$path = __DIR__ . '/uploads';
+
+if (!is_dir($path)) {
+    mkdir($path, 0755, true);
+}
+
+Treći argument:
+true
+
+znači recursive creation.
+Ako želiš:
+uploads/users/15/avatar
+
+a roditeljski direktorijumi još ne postoje, true omogućava PHP-u da napravi celu potrebnu strukturu.
+realpath()
+realpath($path)
+
+pokušava da vrati canonical absolute path.
+Na primer:
+$path = __DIR__ . '/uploads/../uploads/avatar.jpg';
+
+$real = realpath($path);
+
+može rezultirati pravom normalizovanom putanjom.
+Ali postoji bitna stvar:
+realpath() obično zahteva da target već postoji.
+
+Zato nije funkcija koju slepo koristiš kada tek želiš da kreiraš novi fajl.
+Kasnije će nam biti veoma korisna kada budemo pričali o path traversal zaštiti.
+Prva security tema — nikad slepo user input u putanju
+Ovo je veoma loše:
+$file = $_GET['file'];
+
+$path = __DIR__ . '/uploads/' . $file;
+
+echo file_get_contents($path);
+
+Korisnik možda pošalje nešto nalik:
+?file=../../config.php
+
+i pokušava da izađe iz uploads direktorijuma.
+To se zove path traversal / directory traversal.
+Zato je mnogo bezbedniji dizajn da aplikacija kontroliše putanje.
+Na primer umesto:
+GET /download.php?file=../../nešto
+
+korisnik pošalje:
+GET /download.php?id=52
+
+pa ti iz baze pronađeš trusted-ish stored path za file ID 52, proveriš authorization i tek onda pristupiš fajlu.
+To je isti princip koji već znaš:
+user-controlled input
+≠
+trusted filesystem path
+
+Prvo pitanje Modula 4
+Pretpostavimo:
+$path = __DIR__ . '/uploads/avatar.jpg';
+
+Objasni mi svojim rečima razliku između:
+file_exists($path)
+is_file($path)
+is_dir($path)
+
+i zašto bi kod direktorijuma za upload radije koristio:
+if (!is_dir($uploadDir)) {
+    mkdir(...);
+}
+
+nego samo:
+if (!file_exists($uploadDir)) {
+    mkdir(...);
+}
+
+---
+
+file_get_contents()
+success → string
+failure → false
+
+file_put_contents()
+success → int broj bytes
+failure → false
+
+--------------------------------------
+
