@@ -1,33 +1,34 @@
 <?php
 
-$path = 'note.txt';
+declare(strict_types=1);
 
-$dir = '/myfiles';
+header('Content-Type: text/html; charset=utf-8');
 
-$fileDest = __DIR__ . $dir . DIRECTORY_SEPARATOR . $path;
+$dirPath  = __DIR__ . DIRECTORY_SEPARATOR . 'myfiles';
+$fileDest = $dirPath . DIRECTORY_SEPARATOR . 'note.txt';
 
-if(!is_dir($dir) && !mkdir($dir, 0075, true) && !is_dir($dir)) {
+if (!is_dir($dirPath) && !mkdir($dirPath, 0755, true) && !is_dir($dirPath)) {
     throw new RuntimeException('Could not create a directory.');
-} /*
+}
+/*
+$result = file_put_contents($fileDest, 'Hello Bojan');
 
-$result = file_put_contents($path, "Hello Bojan");
-
-if($result === false) throw new RuntimeException('Could not write the file');
-
-echo 'Rezultat upisa u fajl: ' . $result . "</br>"; */
-
-if(is_file($path)) {
-    $text = file_get_contents($path);
-
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-    if($text !== false) {
-        foreach($lines as $line) echo $line . "</br>";
-    } 
-    // echo "Čitanje iz fajla: $text" . "</br>";
-    
-    print_r($lines);
+if ($result === false) {
+    throw new RuntimeException('Could not write the file.');
 }
 
+echo "Upisano bajtova: $result<br>"; */
 
+$lines = file($fileDest, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
+if ($lines === false) {
+    throw new RuntimeException('Could not read the file.');
+}
+
+foreach ($lines as $line) {
+    echo htmlspecialchars($line) . '<br>';
+}
+
+echo '<pre>';
+print_r($lines);
+echo '</pre>';
