@@ -69,5 +69,14 @@ $validated = [
     'guests' => $guests
 ]; */
 
+/*
+$validatedRooms = validateRooms($_POST['rooms'] ?? null, $errors);
+
+if ($errors === []) {
+    return $validatedRooms;
+} else return $errors;
+
+ */
+
 header('Location: index.php', true, 303);
 exit;

@@ -111,3 +111,243 @@ Posebno obrati pažnju na ovo: string poput:
 2026-02-31
 
 izgleda kao Y-m-d, ali nije stvaran datum. Tu želim da vidim kako ćeš rešiti validation pravog kalendarskog datuma.
+
+---
+
+nested array validation sa indeksiranim error bag-om.
+
+Pravila su sledeća:
+- rooms je required array
+- mora imati najmanje 1, a najviše 3 sobe
+- svaki element rooms mora biti array
+- room_id je required HTML integer, minimum 1
+- adults je required HTML integer, 1–4
+- children je required HTML integer, 0–3
+- isti room_id ne sme da se pojavi dva puta
+- ako jedan room entry ima grešku, nastavljamo da proveravamo ostale sobe; hoću collect-all, ne return na prvoj grešci
+Najvažniji deo: error bag treba da bude precizan. Na primer:
+$errors = [
+    'rooms.0.adults' => 'Adults must be between 1 and 4.',
+    'rooms.1.room_id' => 'Room ID must be a positive integer.',
+];
+
+Dakle ne samo:
+$errors['rooms'] = 'Invalid rooms.';
+
+nego da frontend/view može tačno da zna koji row i koje polje ima problem.
+Ako je sve validno, hoću finalni rezultat:
+$validatedRooms = [
+    [
+        'room_id' => 5,
+        'adults' => 2,
+        'children' => 1,
+    ],
+    [
+        'room_id' => 8,
+        'adults' => 2,
+        'children' => 0,
+    ],
+];
+
+Odnosno svi brojevi su sada pravi PHP int, ne stringovi.
+Možeš da iskoristiš svoj postojeći:
+validateInteger(...)
+
+ali obrati pažnju na jednu stvar: za children je 0 validna vrednost, pa je dobro što tvoj validator koristi:
+$validatedInt === false
+
+a ne truthiness.
+Ja bih ovaj put predložio da napišeš jednu novu funkciju tipa:
+function validateRooms(
+    mixed $value,
+    array &$errors
+): ?array
+
+Ali pošto želimo collect-all, razmisli dobro da li funkcija treba odmah da vrati null čim jedna soba ima grešku, ili da validira sve redove pa tek na kraju odluči šta vraća.
+Još jedna zamka za razmišljanje: ako dobiješ:
+[
+    [
+        'room_id' => '5',
+        'adults' => '2',
+        'children' => '0',
+    ],
+    [
+        'room_id' => '5',
+        'adults' => '3',
+        'children' => '1',
+    ],
+]
+
+oba room_id su pojedinačno validna, ali kolekcija krši business/array-level rule o duplikatima.
+
+---
+
+
+---
+
+Ovo je baš dobro urađeno — 9.6/10. Struktura funkcije ti je vrlo čista, error keys su tačno onakvi kakve smo želeli, koristiš postojeći validateInteger(), ne prekidaš obradu na prvoj grešci u sobama i finalni rezultat je typed array. ✅
+Posebno su dobri ovi delovi:
+$errors["rooms.$index.room_id"]
+$errors["rooms.$index.adults"]
+$errors["rooms.$index.children"]
+
+To ti omogućava precizan error bag poput:
+[
+    'rooms.0.adults' => '...',
+    'rooms.2.children' => '...',
+]
+
+što je praktično Laravel rooms.*.adults mentalni model koji sada ručno implementiraš.
+Takođe, ovo je dobro:
+$validated[] = [
+    'room_id'  => $roomId,
+    'adults'   => $adults,
+    'children' => $children,
+];
+
+jer nakon validation boundary-ja dobijaš:
+[
+    [
+        'room_id' => 5,
+        'adults' => 2,
+        'children' => 0,
+    ]
+]
+
+a ne HTML stringove "5", "2", "0".
+Imam samo jednu važniju dizajnersku doradu.
+Trenutno koristiš:
+$before = count($errors);
+
+// validation...
+
+if (count($errors) > $before) {
+    $hasErrors = true;
+    continue;
+}
+
+To radi u tvom konkretnom slučaju, ali malo indirektno proveravaš ono što zapravo već znaš iz return vrednosti validatora.
+Pošto validateInteger() ima contract:
+validno   → int
+nevalidno → null + error bag
+
+možeš jednostavnije:
+$roomId = validateInteger(
+    $room['room_id'] ?? '',
+    "rooms.$index.room_id",
+    $errors,
+    1,
+    PHP_INT_MAX
+);
+
+$adults = validateInteger(
+    $room['adults'] ?? '',
+    "rooms.$index.adults",
+    $errors,
+    1,
+    4
+);
+
+$children = validateInteger(
+    $room['children'] ?? '',
+    "rooms.$index.children",
+    $errors,
+    0,
+    3
+);
+
+if (
+    $roomId === null ||
+    $adults === null ||
+    $children === null
+) {
+    $hasErrors = true;
+    continue;
+}
+
+Meni je ovo čitljivije jer direktno govori:
+Ako bilo koje polje ovog room entry-ja nije validirano, ne pravimo validated room.
+
+count($errors) pristup može postati krhkiji ako validator jednog dana menja postojeći error key umesto da dodaje novi, jer broj elemenata tada ne mora da se promeni.
+Postoji još jedna zanimljiva nijansa kod duplicate provere.
+Trenutno radiš duplicate check tek nakon što su sva tri polja sobe validna:
+if (count($errors) > $before) {
+    continue;
+}
+
+if (isset($seenRoomIds[$roomId])) {
+
+Zamisli:
+[
+    [
+        'room_id' => '5',
+        'adults' => 'banana',
+        'children' => '0',
+    ],
+    [
+        'room_id' => '5',
+        'adults' => '2',
+        'children' => '0',
+    ],
+]
+
+Prva soba ima validan room_id = 5, ali zbog adults greške nikada ne upišeš 5 u $seenRoomIds.
+Zato druga room_id = 5 neće biti označena kao duplicate.
+Da li je to bug? Zavisi od željenog ponašanja. Ako želiš maksimalni collect-all, možeš duplicate pravilo proveriti čim znaš da je room_id validan, nezavisno od adults/children.
+Na primer:
+if ($roomId !== null) {
+    if (isset($seenRoomIds[$roomId])) {
+        $errors["rooms.$index.room_id"] =
+            'The same room cannot be selected twice!';
+
+        $hasErrors = true;
+    } else {
+        $seenRoomIds[$roomId] = true;
+    }
+}
+
+pa tek kasnije:
+if (
+    $roomId === null ||
+    $adults === null ||
+    $children === null ||
+    isset($errors["rooms.$index.room_id"])
+) {
+    $hasErrors = true;
+    continue;
+}
+
+To je već finija validation-design odluka, ne neka osnovna greška.
+Tvoj završetak:
+return $hasErrors ? null : $validated;
+
+mi je sasvim dobar. Jasno kaže:
+ima makar jedna validation greška
+→ nema trusted validatedRooms kolekcije
+
+sve prošlo
+→ vrati typed array
+
+Za store.php bih samo u realnoj aplikaciji umesto:
+if ($errors === []) {
+    return $validatedRooms;
+} else {
+    return $errors;
+}
+
+nastavio naš standardni flow:
+if ($errors !== []) {
+    $_SESSION['errors'] = $errors;
+    // old input...
+    header('Location: ...', true, 303);
+    exit;
+}
+
+$validated = [
+    'rooms' => $validatedRooms,
+];
+
+// business/service layer
+
+Ali razumem da ti je taj return ovde samo demonstracija rezultata.
+Sa promenom $before/count($errors) pristupa u proveru konkretnih return vrednosti, ovo bih smatrao 10/10 nested validation zadatkom.

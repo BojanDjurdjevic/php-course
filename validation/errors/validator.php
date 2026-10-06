@@ -233,3 +233,183 @@ function validateIds(mixed $value, string $field, array &$errors, int $min = 1, 
 
     return $ids;
 }
+
+/*
+function validateRooms(mixed $value, array &$errors): ? array {
+
+    if(!is_array($value)) {
+        $errors['rooms'] = 'Rooms must be an array!';
+    }
+
+    $count = count($value);
+
+    if($count < 1) {
+        $errors['rooms'] = 'There must be at least 1 room selected!';
+    }
+
+    if($count > 3) {
+        $errors['rooms'] = 'There can be as maximum 3 room selected!';
+    }
+
+    foreach($value as $index => $room) {
+        if(!is_array($room)) {
+            $errors["rooms.$index"] = 'Room must bee an array!';
+            continue;
+        }
+
+        $room_id = $room['room_id'] ?? null;
+        $adults = $room['adults'] ?? null;
+        $children = $room['children'] ?? null;
+
+        if($room_id === null) {
+            $errors["rooms.$index.room_id"] = 'Room ID is required!';
+            continue;
+        } 
+        
+        $room_id = validateInteger($room_id, "rooms.$index.room_id", $errors, 1, 999999999999999999999999);
+
+        if($adults === null) {
+            $errors["rooms.$index.adults"] = 'The number of adult passangers is required!';
+            continue;
+        } 
+        
+        $adults = validateInteger($adults, "rooms.$index.adults", $errors, 1, 4);
+
+        if($children === null) {
+            $errors["rooms.$index.children"] = 'The number of children is required!';
+            continue;
+        } 
+        
+        $children = validateInteger($children, "rooms.$index.children", $errors, 0, 3);
+
+
+
+
+    } 
+
+} 
+
+function validateRooms(mixed $value, array &$errors): ?array {
+
+    if (!is_array($value)) {
+        $errors['rooms'] = 'Rooms must be an array!';
+        return null;
+    }
+
+    $count = count($value);
+
+    if ($count < 1) {
+        $errors['rooms'] = 'There must be at least 1 room selected!';
+        return null;
+    }
+
+    if ($count > 3) {
+        $errors['rooms'] = 'There can be a maximum of 3 rooms selected!';
+        return null;
+    }
+
+    $validated = [];
+    $hasErrors = false;
+    $seenRoomIds = [];
+
+    foreach ($value as $index => $room) {
+
+        if (!is_array($room)) {
+            $errors["rooms.$index"] = 'Room must be an array!';
+            $hasErrors = true;
+            continue;
+        }
+
+        $before = count($errors);
+
+        $roomId   = validateInteger($room['room_id'] ?? '', "rooms.$index.room_id", $errors, 1, PHP_INT_MAX);
+        $adults   = validateInteger($room['adults'] ?? '', "rooms.$index.adults", $errors, 1, 4);
+        $children = validateInteger($room['children'] ?? '', "rooms.$index.children", $errors, 0, 3);
+
+        if (count($errors) > $before) {
+            $hasErrors = true;
+            continue;
+        }
+
+        if (isset($seenRoomIds[$roomId])) {
+            $errors["rooms.$index.room_id"] = 'The same room cannot be selected twice!';
+            $hasErrors = true;
+            continue;
+        }
+
+        $seenRoomIds[$roomId] = true;
+
+        $validated[] = [
+            'room_id'  => $roomId,
+            'adults'   => $adults,
+            'children' => $children,
+        ];
+    }
+
+    return $hasErrors ? null : $validated;
+}
+    
+*/
+
+function validateRooms(mixed $value, array &$errors): ?array {
+
+    if (!is_array($value)) {
+        $errors['rooms'] = 'Rooms must be an array!';
+        return null;
+    }
+
+    $count = count($value);
+
+    if ($count < 1) {
+        $errors['rooms'] = 'There must be at least 1 room selected!';
+        return null;
+    }
+
+    if ($count > 3) {
+        $errors['rooms'] = 'There can be a maximum of 3 rooms selected!';
+        return null;
+    }
+
+    $validated = [];
+    $hasErrors = false;
+    $seenRoomIds = [];
+
+    foreach ($value as $index => $room) {
+
+        if (!is_array($room)) {
+            $errors["rooms.$index"] = 'Room must be an array!';
+            $hasErrors = true;
+            continue;
+        }
+
+        $roomId = validateInteger( $room['room_id'] ?? '', "rooms.$index.room_id", $errors, 1, PHP_INT_MAX);
+
+        $adults = validateInteger( $room['adults'] ?? '', "rooms.$index.adults", $errors, 1, 4);
+
+        $children = validateInteger( $room['children'] ?? '', "rooms.$index.children", $errors, 0, 3);
+
+        if ($roomId !== null) {
+            if (isset($seenRoomIds[$roomId])) {
+                $errors["rooms.$index.room_id"] =
+                    'The same room cannot be selected twice!';
+
+                $hasErrors = true;
+            } else {
+                $seenRoomIds[$roomId] = true;
+            }
+        }
+
+        if ( $roomId === null || $adults === null || $children === null) {
+            $hasErrors = true;
+            continue;
+        }
+
+        $validated[] = [
+            'room_id'  => $roomId,
+            'adults'   => $adults,
+            'children' => $children,
+        ];
+    }
+
+    return $hasErrors ? null : $validated;
+}
