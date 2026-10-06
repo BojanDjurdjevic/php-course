@@ -50,6 +50,24 @@ if($errors !== []) {
 
     $_SESSION['success'] = 'The user is stored successfully!';
 }
+/*
+$errors = [];
+
+$checkIn  = validateDate($_POST['check_in'] ?? null, 'check_in', $errors);
+$checkOut = validateDate($_POST['check_out'] ?? null, 'check_out', $errors);
+
+validateNotInPast($checkIn, 'check_in', $errors);
+validateDateRange($checkIn, $checkOut, $errors);
+
+$roomIds = validateIds($_POST['room_ids'] ?? null, 'room_ids', $errors);
+$guests  = validateInteger($_POST['guests'] ?? null, 'guests', $errors, 1, 6);
+
+$validated = [
+    'check_in' => $checkIn,
+    'check_out' => $checkOut,
+    'rooms_ids' => $roomIds,
+    'guests' => $guests
+]; */
 
 header('Location: index.php', true, 303);
 exit;

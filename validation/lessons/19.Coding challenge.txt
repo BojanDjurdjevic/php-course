@@ -47,3 +47,67 @@ Pošalji mi samo PHP deo; HTML nam za ovu vežbu nije potreban.
 
 See validator.php + mystore.php 
 
+-----------------------------------
+
+Coding checkpoint 2 — nested + cross-field validation
+
+Sada možemo na malo ozbiljniju vežbu.
+Zamisli booking HTML formu koja šalje:
+$_POST = [
+    'check_in' => '2026-11-10',
+    'check_out' => '2026-11-15',
+
+    'room_ids' => [
+        '5',
+        '8',
+        '12',
+    ],
+
+    'guests' => '3',
+];
+
+Pravila su:
+check_in
+→ required string
+→ validan datum Y-m-d
+
+check_out
+→ required string
+→ validan datum Y-m-d
+
+cross-field
+→ check_out mora biti posle check_in
+→ check_in ne sme biti u prošlosti
+
+room_ids
+→ required array
+→ minimum 1 element
+→ maximum 3 elementa
+→ svaki element mora biti pozitivan integer
+→ duplikati nisu dozvoljeni
+
+guests
+→ required HTML integer
+→ 1–6
+
+Ne proveravamo još bazu ni availability. Dakle nema:
+da li room 5 postoji
+da li ima inventory
+
+To bi bio sledeći business/domain sloj.
+Na kraju, ako nema grešaka, želim:
+$validated = [
+    'check_in' => ...,     // može DateTimeImmutable ili canonical string
+    'check_out' => ...,
+    'room_ids' => [5, 8, 12],
+    'guests' => 3,
+];
+
+Za datume možeš napraviti novu reusable funkciju:
+validateDate(...)
+
+a za room_ids želim da sam odlučiš da li ćeš praviti posebnu funkciju ili validirati u store.php.
+Posebno obrati pažnju na ovo: string poput:
+2026-02-31
+
+izgleda kao Y-m-d, ali nije stvaran datum. Tu želim da vidim kako ćeš rešiti validation pravog kalendarskog datuma.

@@ -144,3 +144,92 @@ function validateInteger(mixed $value, string $field, array &$errors, int $min, 
 
     return $validatedInt;
 }
+
+function validateDate(mixed $value, string $field, array &$errors, string $format = 'Y-m-d'): ? string {
+    
+    $input = validateRequiredString($value, $field, $errors);
+
+    if($input === null) return null;
+
+    $date = DateTimeImmutable::createFromFormat('!' . $format, $input);
+
+    if($date === false || $date->format($format) !== $input) {
+        $errors[$field] = "Field $field must be a valid date in format: $format";
+
+        return null;
+    } 
+
+    return $input;
+
+}
+
+function validateNotInPast(?string $date, string $field, array &$errors, string $format = 'Y-m-d'): ?string {
+
+    if ($date === null) return null;
+
+    $d = DateTimeImmutable::createFromFormat('!' . $format, $date);
+
+    if ($d < new DateTimeImmutable('today')) {
+        $errors[$field] = "Field $field can't be in the past!";
+        return null;
+    }
+
+    return $date;
+}
+
+function validateDateRange(?string $checkIn, ?string $checkOut, array &$errors, string $format = 'Y-m-d'): bool {
+
+    if ($checkIn === null || $checkOut === null) return false;
+
+    $start = DateTimeImmutable::createFromFormat('!' . $format, $checkIn);
+    $end   = DateTimeImmutable::createFromFormat('!' . $format, $checkOut);
+
+    if ($end <= $start) {
+        $errors['check_out'] = "Check-out must be after check-in!";
+        return false;
+    }
+
+    return true;
+}
+
+function validateIds(mixed $value, string $field, array &$errors, int $min = 1, int $max = 3): ?array {
+
+    if (!is_array($value)) {
+        $errors[$field] = "$field must be an array!";
+        return null;
+    }
+
+    $count = count($value);
+
+    if ($count < $min) {
+        $errors[$field] = "At least $min room must be chosen!";
+        return null;
+    }
+
+    if ($count > $max) {
+        $errors[$field] = "Maximum number of chosen rooms is $max!";
+        return null;
+    }
+
+    $ids = [];
+
+    foreach ($value as $item) {
+        $id = filter_var($item, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1]
+        ]);
+
+        if ($id === false) {
+            $errors[$field] = "Room id must be a positive integer!";
+            return null;
+        }
+
+        $ids[] = $id;
+    }
+
+    if (count($ids) !== count(array_unique($ids))) {
+        $errors[$field] = "There can't be duplicated rooms!";
+        return null;
+    }
+
+    return $ids;
+}
