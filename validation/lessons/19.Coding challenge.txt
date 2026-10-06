@@ -1,0 +1,49 @@
+Coding checkpoint 1 — reusable validator
+
+Sada bih da spojimo ono što smo učili.
+
+Napravi mali Validator.php — ne klasu još, samo funkcije — koji ima:
+validateRequiredString(...)
+validateNullableString(...)
+validateEmail(...)
+validateInteger(...)
+
+A onda store.php sa poljima:
+name
+email
+age
+phone
+
+Pravila:
+name
+→ required string
+→ 2–100 karaktera
+
+email
+→ required valid email
+
+age
+→ HTML input
+→ integer 18–100
+
+phone
+→ optional + nullable string
+→ ako je poslat kao "", normalizuj u null
+→ max 30 karaktera
+
+Na kraju napravi:
+$validated = [
+    'name' => ...,
+    'email' => ...,
+    'age' => ...,
+    'phone' => ...,
+];
+
+ali samo ako $errors === [].
+Ako ima grešaka, ne radi exit na prvoj — skupi ceo error bag.
+Pošalji mi samo PHP deo; HTML nam za ovu vežbu nije potreban.
+
+---
+
+See validator.php + mystore.php 
+

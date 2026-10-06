@@ -19,7 +19,7 @@ unset($_SESSION['errors'], $_SESSION['old'], $_SESSION['success']);
     <div
         class="w-full max-w-md p-8 bg-gray-900 rounded-2xl shadow-lg"
     >
-        <form action="store.php" method="POST"
+        <form action="mystore.php" method="POST"
             class="flex flex-col gap-4"
         >
 
@@ -61,6 +61,20 @@ unset($_SESSION['errors'], $_SESSION['old'], $_SESSION['success']);
             <p class="text-red-500">
                 <?= 
                     htmlspecialchars($errors['age'] ?? '', ENT_QUOTES, 'UTF-8');
+                ?>
+            </p>
+            <?php endif; ?>
+
+            <input type="text" name="phone" id="" placeholder="Phone"
+                class="w-full p-3 rounded-lg bg-gray-800 text-white placeholder-gray-400 border-gray-700
+                focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value="<?=htmlspecialchars($old['phone'] ?? '', ENT_QUOTES, 'UTF-8');?>"
+            >
+
+            <?php if(isset($errors['phone'])): ?>
+            <p class="text-red-500">
+                <?= 
+                    htmlspecialchars($errors['phone'] ?? '', ENT_QUOTES, 'UTF-8');
                 ?>
             </p>
             <?php endif; ?>

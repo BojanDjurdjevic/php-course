@@ -39,6 +39,54 @@ function validateRequiredString(mixed $value, string $field, array &$errors, int
     return $value;
 }
 
+function validateNullableString(mixed $value, string $field, array &$errors, int $max = 30): ?string {
+
+    if($value === null) return null;
+
+    if(!is_string($value)) {
+        $errors[$field] = "Field $field must be a string or null!";
+        return null;
+    }
+
+    $value = trim($value);
+
+    if($value === '') {
+        return null;
+    }
+
+    if(mb_strlen($value) > $max) {
+        $errors[$field] = "Field $field may have up to $max characters";
+        return null;
+    }
+
+    return $value;
+}
+
+function validatePhone( mixed $value, string $field, array &$errors): ?string {
+
+    $value = validateNullableString(
+        $value,
+        $field,
+        $errors,
+        30
+    );
+
+    if ($value === null) {
+        return null;
+    }
+
+    $clean = preg_replace('/[\s\-()]/', '', $value);
+
+    if (!preg_match('/^\+?[0-9]{8,15}$/', $clean)) {
+        $errors[$field] =
+            "Field $field must be a valid phone number.";
+
+        return null;
+    }
+
+    return $clean;
+}
+
 function validateEmail(mixed $value, string $field, array &$errors): ?string {
 
     if(!is_string($value)) {
