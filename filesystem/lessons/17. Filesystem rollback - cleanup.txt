@@ -1,0 +1,266 @@
+Lekcija 17 — Filesystem rollback / cleanup strategija
+Ovo je vrlo važna tema i direktno se vezuje za ono što si već radio sa DB transakcijama.
+Recimo da treba da sačuvamo 4 obrađene slike:
+photo 0
+photo 1
+photo 2
+photo 3
+
+Sve su prethodno validirane.
+Počnemo save:
+photo 0 → saved
+photo 1 → saved
+photo 2 → save FAILED
+
+Sada filesystem izgleda:
+uploads/
+    a.webp
+    b.webp
+
+ali request kao celina nije uspeo.
+Ako samo uradimo:
+throw new RuntimeException(...);
+
+ostaju orphan fajlovi.
+Zato treba da pratimo šta smo uspešno napravili.
+Na primer:
+$savedPaths = [];
+
+Pa:
+foreach ($validatedFiles as $file) {
+
+    $destination = ...;
+
+    $success = saveProcessedImage(
+        $file,
+        $destination
+    );
+
+    if (!$success) {
+        // cleanup
+    }
+
+    $savedPaths[] = $destination;
+}
+
+Ako nešto pukne:
+foreach ($savedPaths as $path) {
+    if (is_file($path)) {
+        unlink($path);
+    }
+}
+
+pa tek onda:
+throw new RuntimeException(
+    'Could not save all images.'
+);
+
+To je naš ručni filesystem rollback.
+Bolji obrazac sa try/catch
+Čistije:
+$savedPaths = [];
+
+try {
+
+    foreach ($validatedFiles as $file) {
+
+        $destination = ...;
+
+        saveProcessedImage(
+            $file,
+            $destination
+        );
+
+        $savedPaths[] = $destination;
+    }
+
+} catch (Throwable $e) {
+
+    foreach ($savedPaths as $path) {
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+
+    throw $e;
+}
+
+Ovde je ideja:
+try
+→ uradi sve
+
+catch
+→ vrati filesystem u prethodno stanje
+→ rethrow original exception
+
+To veoma liči na:
+DB::transaction(...)
+
+mentalno, samo što filesystem rollback moraš sam da napišeš.
+Ali šta ako i cleanup pukne?
+Odlično pitanje koje se javlja u production sistemima.
+Recimo:
+unlink($path)
+
+vrati false.
+Ne želiš da cleanup failure potpuno sakrije originalni problem.
+Zato možeš logovati cleanup problem:
+foreach ($savedPaths as $path) {
+    if (is_file($path) && !unlink($path)) {
+        error_log(
+            "Cleanup failed for: $path"
+        );
+    }
+}
+
+a zatim i dalje:
+throw $e;
+
+Originalni exception ostaje glavni failure.
+Filesystem + DB zajedno
+Sad postaje još zanimljivije.
+Recimo:
+1. save image file
+2. insert DB row
+
+Ako file save uspe, a DB insert padne:
+filesystem
+→ ima fajl
+
+database
+→ nema zapis
+
+opet orphan.
+Zato flow moraš pažljivo dizajnirati.
+Jedan moguć pristup:
+1. validate sve
+2. save files
+3. start/use DB transaction
+4. insert DB rows
+5. commit
+6. success
+
+ako DB padne
+→ rollback DB
+→ cleanup saved files
+
+Ali ni to nije prava distributed transaction između DB-a i filesystem-a.
+Zato kažemo:
+DB transaction
+≠
+filesystem transaction
+
+Aplikacija koordinira oba sistema.
+Temporary staging
+Još robustniji obrazac može biti:
+upload/process
+↓
+save u temporary/staging folder
+↓
+DB uspe
+↓
+promote/move files na finalnu lokaciju
+
+Na primer:
+storage/tmp/
+    abc.webp
+
+↓ success
+
+storage/hotels/42/
+    abc.webp
+
+Ako request padne pre finalizacije, temp fajlove možeš cleanup-ovati.
+Ovo je napredniji, ali vrlo koristan obrazac.
+Replace existing images
+Kod zamene postojeće slike važi isto pravilo koje smo već pomenuli:
+Loše:
+delete old
+↓
+save new
+↓
+new save fails
+
+User ostaje bez slike.
+Bolje:
+save new
+↓
+update DB
+↓
+tek onda delete old
+
+Ako DB update ne uspe:
+cleanup new
+↓
+old ostaje validan
+
+To je veoma dobar invariant:
+Dok nova verzija nije potvrđena, stara ostaje netaknuta.
+
+Cleanup foldera
+Ako obrišeš sve slike iz user/hotel foldera:
+uploads/hotels/42/
+
+i ostane prazan, možeš:
+if (
+    is_dir($dir)
+    && count(scandir($dir)) === 2
+) {
+    rmdir($dir);
+}
+
+Zašto 2?
+Zbog:
+.
+..
+
+Ipak, u realnoj aplikaciji možeš imati i .gitkeep, hidden files itd, pa ne bih svuda slepo koristio ovaj trick bez razumevanja strukture foldera.
+Pitanje
+Imamo flow:
+1. save new avatar
+2. update DB sa novom putanjom
+3. delete old avatar
+
+Novi avatar je uspešno sačuvan, ali DB update pada.
+Šta bi uradio sa:
+new avatar
+old avatar
+
+i zašto?
+A drugo: zašto nije dobro da u replace flow-u prvo radiš:
+delete old avatar
+
+pa tek onda pokušavaš da sačuvaš novi?
+
+---
+
+Prvo: pošto smo pali na drugom koraku, praktično nismo ni došli do delete old avatar, pa onda samo imamo da uradimo cleanup new avatar i tjt.
+
+Drugo: Loše je, jer šta ako iz nekog razčoga padne upload novog? Bilo da je upload error ili DB transaction rollback. Ovako ako idemo redom koji si stavio u prvom pitanju, dok god sre nova verzija uspešno ne uploaduje, stara je aktivna i mora ostati netaknuta.
+Tačno — 10/10.
+
+Prvi deo si rešio baš kako treba:
+
+new avatar → već sačuvan
+DB update → FAILED
+old avatar → još nije diran
+Dakle:
+
+cleanup new avatar
+↓
+old avatar ostaje aktivan
+↓
+DB i dalje pokazuje na validan old avatar
+To je upravo stanje koje želimo da sačuvamo.
+
+I drugi deo ti je odličan: stara validna verzija ostaje netaknuta dok nova verzija nije uspešno potvrđena kroz ceo flow.
+
+To je isti princip koji možeš primeniti i mnogo šire:
+
+existing valid state
+↓
+prepare replacement
+↓
+confirm replacement
+↓
+tek onda ukloni old state

@@ -1,0 +1,245 @@
+Lekcija 16 — Multiple file uploads i struktura $_FILES
+Sada prelazimo na nešto što ti je vrlo relevantno za hotel/gallery upload.
+Za jedan fajl imamo:
+<input type="file" name="photo">
+
+i PHP daje:
+$_FILES['photo']
+
+Ali za više slika možemo imati:
+<input
+    type="file"
+    name="photos[]"
+    multiple
+>
+
+Tada $_FILES ne izgleda intuitivno kao:
+[
+    [
+        'name' => ...,
+        'tmp_name' => ...
+    ],
+    [
+        'name' => ...,
+        'tmp_name' => ...
+    ]
+]
+
+nego PHP pravi strukturu po atributima:
+$_FILES['photos'] = [
+    'name' => [
+        0 => 'hotel.jpg',
+        1 => 'spa.png',
+    ],
+
+    'type' => [
+        0 => 'image/jpeg',
+        1 => 'image/png',
+    ],
+
+    'tmp_name' => [
+        0 => '/tmp/php123',
+        1 => '/tmp/php456',
+    ],
+
+    'error' => [
+        0 => UPLOAD_ERR_OK,
+        1 => UPLOAD_ERR_OK,
+    ],
+
+    'size' => [
+        0 => 312000,
+        1 => 540000,
+    ],
+];
+
+To je malo nezgodno za rad.
+Mi obično želimo:
+[
+    [
+        'name' => 'hotel.jpg',
+        'tmp_name' => '/tmp/php123',
+        'error' => UPLOAD_ERR_OK,
+        'size' => 312000,
+        'type' => 'image/jpeg',
+    ],
+    [
+        'name' => 'spa.png',
+        'tmp_name' => '/tmp/php456',
+        'error' => UPLOAD_ERR_OK,
+        'size' => 540000,
+        'type' => 'image/png',
+    ],
+]
+
+Dakle želimo da normalizujemo $_FILES strukturu.
+Jedna jednostavna funkcija može izgledati ovako:
+function normalizeUploadedFiles(array $files): array
+{
+    $normalized = [];
+
+    foreach ($files['name'] as $index => $name) {
+        $normalized[] = [
+            'name' => $name,
+            'type' => $files['type'][$index],
+            'tmp_name' => $files['tmp_name'][$index],
+            'error' => $files['error'][$index],
+            'size' => $files['size'][$index],
+        ];
+    }
+
+    return $normalized;
+}
+
+Pa:
+$photos = normalizeUploadedFiles(
+    $_FILES['photos']
+);
+
+i onda možeš mnogo prirodnije:
+foreach ($photos as $index => $photo) {
+    // validate one uploaded photo
+}
+
+Error bag sa indeksima
+Isti princip koji smo radili u Modulu 3:
+$errors["photos.$index"]
+
+Na primer:
+$errors = [
+    'photos.1' => 'Image exceeds maximum size.',
+    'photos.3' => 'Unsupported image type.',
+];
+
+Ili još preciznije ako validator ima podpravila:
+photos.1.size
+photos.1.mime
+
+mada kod upload-a često je dovoljno da jedna fotografija ima jedan glavni error key.
+Max broj fajlova
+Recimo hotel gallery dozvoljava maksimalno 10 slika.
+Ne proveravamo samo svaki fajl pojedinačno.
+Imamo i collection-level pravilo:
+if (count($photos) > 10) {
+    $errors['photos'] =
+        'You may upload a maximum of 10 photos.';
+}
+
+To je isti mentalni model kao:
+rooms
+→ kolekcija ima svoja pravila
+
+rooms.*
+→ pojedinačni element ima svoja pravila
+
+Collect-all ili fail-fast?
+Za multiple upload imaš dizajnersku odluku.
+Recimo:
+photo 0 → OK
+photo 1 → prevelika
+photo 2 → OK
+photo 3 → pogrešan MIME
+
+Možeš raditi:
+A) reject ceo request
+
+ili:
+B) sačuvaj validne, prijavi nevalidne
+
+Za formu poput hotel gallery upload-a ja bih često preferirao:
+validate all first
+↓
+ako ima grešaka
+→ ne čuvaj ništa
+
+To daje atomic-like UX na application nivou.
+Za neke sisteme, npr. bulk media uploader, partial success može imati smisla.
+Ali mora biti namerna odluka.
+Velika zamka: partial filesystem success
+Pretpostavimo da radiš ovako:
+photo 0 → validna → sačuvaš
+photo 1 → validna → sačuvaš
+photo 2 → invalidna → stop
+
+Sad već imaš dve sačuvane slike i jedan failed request.
+To može biti neželjeno stanje.
+Zato je često bolje:
+1. validiraj sve
+2. ako bilo šta nije validno → ništa ne čuvaj
+3. ako je sve validno → processing/save
+
+To ti je vrlo sličan princip kao database transaction mentalni model, samo filesystem nema običan ACID transaction koji rešava sve umesto tebe.
+Još bolji flow
+Za multiple image upload:
+normalize $_FILES
+↓
+validate collection count
+↓
+validate svaki upload
+↓
+validate MIME/dimensions/business rules svih
+↓
+ako errors postoje
+    → stop
+↓
+process/save svaki
+↓
+ako save pukne usred procesa
+    → cleanup već kreiranih fajlova
+
+Ovaj poslednji deo ćemo posebno raditi jer je vrlo važan za ozbiljan upload service.
+Pitanje
+Pretpostavimo da user uploaduje 4 slike:
+0 → validna
+1 → validna
+2 → invalid MIME
+3 → validna
+
+Ako je business pravilo:
+ili se sve slike prihvataju ili nijedna,
+
+zašto nije dobro da slike čuvaš odmah tokom iste petlje u kojoj ih validiraš?
+I kako bi ti organizovao flow da izbegneš scenario gde su slike 0 i 1 već sačuvane, a tek kod slike 2 otkriješ grešku?
+
+---
+
+Prvo:
+
+Nije dobro jer onda imamo neželjeno stanje -> sačuvali 2 a vratili jednu a trebalo je da odbijemo sve
+
+Drugo:
+
+Prvo bih uradio samo validation svih slika, pa ako ima problem makar i sa jednom vraćam sve a ako su sve validne (uključujući sve ono što obično validiramio: err, size, mime i sl) krećemo u save proces pa ako negde proces pukne -> cleanup storovanih slika, a ako sve prođe success.
+Tačno — 10/10.
+
+Uhvatio si upravo ono što sam hteo: odvojiti validation phase od persistence/save phase.
+
+Mentalno:
+
+PHASE 1 — VALIDATION
+normalize files
+↓
+validate collection
+↓
+validate every file
+↓
+ako makar jedan ima grešku
+→ reject ceo request
+→ ništa još nije sačuvano
+Tek ako je sve validno:
+
+PHASE 2 — PROCESS / SAVE
+process file 0
+↓
+save file 0
+
+process file 1
+↓
+save file 1
+
+...
+A pošto filesystem nema klasičan DB rollback:
+
+ako nešto pukne tokom save faze
+→ ručno cleanup svega što smo već napravili
+To je pravi mentalni model.

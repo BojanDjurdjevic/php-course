@@ -1,0 +1,307 @@
+Lekcija 23 — Nemoj prosleđivati sirov $_FILES kroz celu aplikaciju
+Sada prelazimo sa pojedinačnih funkcija na malo ozbiljniji dizajn.
+Recimo controller dobije:
+
+$_FILES['photo']
+
+koji izgleda otprilike:
+[
+    'name' => 'hotel.jpg',
+    'type' => 'image/jpeg',
+    'tmp_name' => '/tmp/php123',
+    'error' => 0,
+    'size' => 482381,
+]
+
+Lošiji dizajn bi bio da prosleđuješ ovaj raw array kroz sve slojeve:
+
+Controller
+↓
+Service
+↓
+ImageService
+↓
+Repository
+
+i svuda radiš:
+$file['tmp_name']
+$file['size']
+$file['name']
+
+Problem je što taj array sadrži mešavinu:
+trusted-ish PHP upload metadata
++
+client-controlled metadata
++
+još nevalidiran input
+
+Na primer:
+$file['name']
+$file['type']
+
+ne treba tretirati kao trusted vrednosti.
+Mnogo je zdravije imati:
+RAW UPLOAD
+↓
+UPLOAD VALIDATION
+↓
+NORMALIZED / VALIDATED FILE DATA
+↓
+PROCESSING
+
+Isto kao što smo u Modulu 3 radili:
+$_POST
+↓
+validation
+↓
+$validated
+
+Na primer validateUploadedImage()
+Možemo konceptualno imati:
+function validateUploadedImage(
+    mixed $file,
+    string $field,
+    array &$errors,
+    bool $required = true
+): ?array
+
+i da ona odradi:
+structure
+error
+size
+MIME
+image decoding
+dimensions
+
+Pa ako sve prođe, ne vraća originalni raw array nego nešto poput:
+[
+    'tmp_path' => '/tmp/php123',
+    'mime' => 'image/jpeg',
+    'size' => 482381,
+    'width' => 1920,
+    'height' => 1080,
+]
+
+Primetio si šta više nemamo kao trusted podatak:
+'type'
+
+iz $_FILES.
+Umesto toga imamo:
+'mime' => $detectedMime
+
+koji smo dobili server-side preko finfo.
+Original filename može biti metadata, ali ne authority
+Možemo eventualno zadržati:
+'original_name' => $file['name']
+
+ali mentalno ga tretiramo samo kao:
+display metadata
+
+ne kao:
+storage filename
+MIME proof
+filesystem path
+
+Na primer:
+[
+    'original_name' => 'Moja slika.jpg',
+    'tmp_path' => '/tmp/php123',
+    'mime' => 'image/jpeg',
+    'size' => 482381,
+    'width' => 1920,
+    'height' => 1080,
+]
+
+Kasnije:
+$storedName =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+Dakle dva potpuno različita koncepta:
+original_name
+→ ono što je korisnik uploadovao
+
+stored_name
+→ ono što server generiše
+
+Structure validation
+Čak ni ovo ne treba pretpostaviti:
+$file['error']
+$file['tmp_name']
+$file['size']
+
+Ako validator prima mixed, user/request može biti čudan ili malformed.
+Prvi korak može biti:
+if (!is_array($file)) {
+    $errors[$field] = 'Invalid upload.';
+    return null;
+}
+
+zatim proveri da potrebni ključevi postoje.
+Na primer:
+$requiredKeys = [
+    'name',
+    'tmp_name',
+    'error',
+    'size',
+];
+
+foreach ($requiredKeys as $key) {
+    if (!array_key_exists($key, $file)) {
+        $errors[$field] = 'Invalid upload structure.';
+        return null;
+    }
+}
+
+Ne moraš svaki put ručno praviti paranoid production validator, ali mentalno je važno:
+$_FILES je boundary input.
+
+Validacija i processing nisu isto
+Još jedna bitna dizajnerska granica.
+Validator treba da kaže:
+da li prihvatamo fajl?
+
+Processing servis treba da radi:
+resize
+crop
+convert WebP
+save
+
+Ne bih pravio jednu ogromnu funkciju:
+validateResizeConvertSaveDeleteOldAndUpdateDb()
+
+😄
+Mnogo zdravije:
+validateUploadedImage()
+↓
+validated image data
+
+processImage()
+↓
+processed file
+
+save / persist
+↓
+application state
+
+To je SRP koji si već praktikovao kod svojih servisa.
+Laravel paralela
+Laravel ti daje UploadedFile objekat umesto ovog raw proceduralnog array-a.
+Na primer u Laravelu radiš stvari poput:
+$request->file('photo');
+
+i dobiješ objekat sa metodama.
+Ali ispod toga i dalje postoji ista HTTP upload priča:
+multipart/form-data
+↓
+temporary uploaded file
+↓
+framework object
+↓
+validation
+↓
+storage
+
+Framework samo uklanja dosta ručnog rada.
+Još važnije: validation output treba da bude bolji od input-a
+To je isti princip kao:
+'age' => '40'
+
+postaje:
+'age' => 40
+
+U upload svetu:
+[
+    'type' => 'image/jpeg', // client claim
+    ...
+]
+
+postaje:
+[
+    'mime' => 'image/jpeg', // server detected
+    'width' => 1920,
+    'height' => 1080,
+    ...
+]
+
+Dakle validation nije samo:
+„nisam našao grešku“.
+
+Nego:
+„sada imam strukturiraniji i pouzdaniji podatak sa kojim ostatak aplikacije može da radi“.
+
+To je veoma važan nivo razmišljanja.
+Pitanje
+Zašto ti je po tvom mišljenju bolji ovaj flow:
+$_FILES['photo']
+↓
+validateUploadedImage()
+↓
+validated image data
+↓
+ImageService
+
+nego da ImageService direktno prima sirov:
+$_FILES['photo']
+
+?
+Posebno objasni zašto je korisno da validator vrati server-side utvrđen:
+'mime'
+'width'
+'height'
+
+umesto da ostatak aplikacije stalno ponovo gleda raw $file['type'] i druge user/request podatke.
+
+---
+
+Iz razlog što $_FILES sadrži mešavinu trusted i client controlled metadata a pri tom je još i nevalidiran input:
+
+na primer type i name nikada ne tretiramo kao trusted vrednosti i zato je potrebno da vratimo  server side trusted:
+
+'mime' -> jer može biti poslat lažni format, što smo već ranije videli
+'width' -> proveren od strane servera kao i 'height' posebno bitno zbog daljeg hendlovanja size-a
+
+---
+
+Tačno — 9.8/10. Uhvatio si glavnu arhitektonsku poentu: $_FILES je boundary input, a ne struktura koju želimo da vučemo kroz celu aplikaciju.
+Ovo:
+$_FILES['photo']
+
+je mešavina stvari poput:
+name      → client-controlled
+type      → client-provided MIME claim
+tmp_name  → PHP-generated temp path
+error     → PHP upload status
+size      → PHP upload metadata
+
+Dok nakon validacije možemo imati znatno smisleniji contract:
+[
+    'tmp_path' => '/tmp/phpABC',
+    'mime' => 'image/jpeg',
+    'size' => 482381,
+    'width' => 1920,
+    'height' => 1080,
+]
+
+I lepo si izdvojio zašto su mime, width i height korisni: to su server-side izvedeni podaci koje smo proverili kroz finfo i getimagesize(), umesto da kasniji slojevi ponovo veruju:
+$file['type']
+
+Samo nijansa u terminologiji: ne bih ih zvao apsolutno „trusted zauvek“, nego validated/server-derived data. Poenta je da su prešli naš validation boundary i ostatak aplikacije sada može da se osloni na contract koji smo definisali.
+I tu dobijaš još jednu važnu korist: ImageService više ne mora da zna kako izgleda PHP-ov $_FILES.
+Može da dobije nešto svoje:
+$imageService->process($validatedImage);
+
+i njegova odgovornost je samo:
+decode
+resize/crop
+encode
+save
+
+a ne:
+da li field postoji?
+da li je UPLOAD_ERR_OK?
+da li je client lagao MIME?
+da li je slika prevelika?
+...
+
+To je čistiji SRP.

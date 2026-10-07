@@ -1,0 +1,208 @@
+UPLOAD_ERR_* kodovi kako treba
+Do sada smo koristili:
+if ($file['error'] !== UPLOAD_ERR_OK) {
+    // upload failed
+}
+
+Sada želim da znaš šta konkretno PHP pokušava da ti kaže.
+Najvažniji kodovi su:
+UPLOAD_ERR_OK
+// 0
+
+Sve je prošlo.
+UPLOAD_ERR_INI_SIZE
+// 1
+
+Fajl je veći od:
+upload_max_filesize
+
+iz PHP konfiguracije.
+UPLOAD_ERR_FORM_SIZE
+// 2
+
+Fajl je premašio MAX_FILE_SIZE iz HTML forme.
+Na primer:
+<input
+    type="hidden"
+    name="MAX_FILE_SIZE"
+    value="5242880"
+>
+
+Ali veoma važno:
+Ovo nije security granica kojoj verujemo.
+
+Client može izmeniti HTML request.
+Server-side application validation i PHP config su ono na šta se oslanjamo.
+UPLOAD_ERR_PARTIAL
+// 3
+
+Samo deo fajla je uploadovan.
+Takav fajl odbacujemo.
+Ne pokušavamo:
+„Pa možda je dovoljno slike stiglo.“
+
+Nije validan upload.
+UPLOAD_ERR_NO_FILE
+// 4
+
+Nije poslat fajl.
+Da li je to error zavisi od contract-a.
+Ako je:
+avatar required
+
+onda:
+validation error
+
+Ako je:
+avatar optional
+
+onda može biti potpuno legitimno stanje.
+To je isti mentalni model kao Module 3:
+missing value
+nije automatski error
+→ zavisi od contract-a
+
+Postoje još:
+UPLOAD_ERR_NO_TMP_DIR
+// 6
+
+Server nema temporary direktorijum.
+UPLOAD_ERR_CANT_WRITE
+// 7
+
+PHP nije uspeo da upiše temp fajl na disk.
+UPLOAD_ERR_EXTENSION
+// 8
+
+Neka PHP ekstenzija je zaustavila upload.
+Ova tri više liče na:
+server/infrastructure problem
+
+nego:
+user validation problem
+
+I to je korisno razlikovati.
+User error vs server error
+Recimo:
+UPLOAD_ERR_INI_SIZE
+
+možemo korisniku reći:
+The uploaded file is too large.
+
+Ali:
+UPLOAD_ERR_NO_TMP_DIR
+
+nije korisnikova greška.
+Ne bih mu rekao:
+Please fix your temporary directory.
+
+😂
+To je naš serverski problem.
+Korisniku:
+Upload could not be completed.
+
+a interno:
+error_log(...)
+
+sa preciznim razlogom.
+Reusable mapper
+Možemo napraviti:
+function uploadErrorMessage(int $error): ?string
+{
+    return match ($error) {
+        UPLOAD_ERR_OK => null,
+
+        UPLOAD_ERR_INI_SIZE,
+        UPLOAD_ERR_FORM_SIZE =>
+            'The uploaded file is too large.',
+
+        UPLOAD_ERR_PARTIAL =>
+            'The file was only partially uploaded.',
+
+        UPLOAD_ERR_NO_FILE =>
+            'No file was uploaded.',
+
+        UPLOAD_ERR_NO_TMP_DIR,
+        UPLOAD_ERR_CANT_WRITE,
+        UPLOAD_ERR_EXTENSION =>
+            'The upload could not be completed.',
+
+        default =>
+            'Unknown upload error.',
+    };
+}
+
+Ali u pravom kodu bih server-side infrastrukturne greške verovatno i logovao.
+Required vs optional upload
+Za required avatar:
+$file = $_FILES['avatar'] ?? null;
+
+if ($file === null) {
+    $errors['avatar'] = 'Avatar is required.';
+} elseif ($file['error'] === UPLOAD_ERR_NO_FILE) {
+    $errors['avatar'] = 'Avatar is required.';
+}
+
+Za optional avatar:
+if (
+    $file === null ||
+    $file['error'] === UPLOAD_ERR_NO_FILE
+) {
+    $avatar = null;
+}
+
+i to nije validation failure.
+Tek ako postoji pokušaj upload-a:
+if ($file['error'] !== UPLOAD_ERR_OK) {
+    // error handling
+}
+
+Ovo je praktično ista tema kao:
+optional + nullable
+
+iz Modula 3, samo sada na file input-u.
+Pitanje
+Imamo optional avatar upload.
+Šta bi uradio u ova tri slučaja:
+A) $_FILES['avatar'] uopšte ne postoji
+
+B) postoji, ali:
+   error === UPLOAD_ERR_NO_FILE
+
+C) postoji, ali:
+   error === UPLOAD_ERR_PARTIAL
+
+Koja od ta tri slučaja mogu legitimno značiti:
+"korisnik jednostavno nije poslao novi avatar"
+
+a koji predstavlja pravi upload failure?
+
+---
+
+Slučaj A i B znače da korisnik jednostavno nije poslao avatar, 
+dok slučaj C znači da ga je poslao ali fajl je samo parcijalno uploadovan 
+i u tom slučaju bi trebalo korisniku vratiti grešku koja to objašnjava.
+
+---
+
+Tačno — 10/10.
+Kod optional file input-a:
+A) $_FILES['avatar'] ne postoji
+→ nema upload pokušaja
+→ validno za optional field
+
+B) UPLOAD_ERR_NO_FILE
+→ file input postoji, ali ništa nije izabrano
+→ takođe validno za optional field
+
+C) UPLOAD_ERR_PARTIAL
+→ upload je započet, ali nije kompletiran
+→ pravi upload failure
+→ reject
+
+Dakle lepo se nastavlja na Modul 3:
+missing / no value
+≠
+invalid attempted value
+
+Kod required avatara bi A i B naravno postali validation error.

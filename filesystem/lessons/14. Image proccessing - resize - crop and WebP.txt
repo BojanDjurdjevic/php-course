@@ -1,0 +1,294 @@
+Lekcija 14 — Image processing: resize, crop i WebP
+Sada dolazimo do dela koji ti je već praktično poznat iz BookYourHotel projekta, ali ćemo ga rastaviti da tačno znaš šta se dešava ispod Laravel/Intervention sloja.
+Pretpostavimo da je upload prošao:
+UPLOAD_ERR_OK
+↓
+size OK
+↓
+MIME OK
+↓
+getimagesize OK
+↓
+dimensions OK
+
+Sad želimo da sliku obradimo pre trajnog čuvanja.
+Tipičan pipeline može biti:
+temporary uploaded image
+↓
+decode image
+↓
+auto-orient
+↓
+resize / scale
+↓
+encode to WebP
+↓
+save processed file
+↓
+remove temp automatically / request ends
+
+Zašto uopšte resize?
+Ako user pošalje:
+5000 × 3500
+
+a tvoj frontend je prikazuje maksimalno:
+1200 × 800
+
+nema mnogo smisla da svaki put serviraš original od 5000 px.
+Možeš napraviti npr:
+1600 px max width
+
+i time dobiti:
+manji storage
+manji bandwidth
+brže učitavanje
+manji browser memory usage
+
+Scale vs crop
+Ovo je jako bitna razlika.
+Scale / resize uz očuvanje odnosa stranica
+Recimo original:
+4000 × 3000
+
+odnos je:
+4:3
+
+Ako želiš maksimalnu širinu:
+1600
+
+onda proporcionalna visina postaje:
+1200
+
+Dakle:
+4000 × 3000
+↓
+1600 × 1200
+
+Nema deformacije.
+Loš resize bez aspect ratio-a
+Ako nasilno uradiš:
+4000 × 3000
+↓
+1600 × 900
+
+slika se deformiše jer si promenio odnos stranica.
+Ljudi mogu izgledati rastegnuto ili spljošteno.
+Zato najčešće čuvamo aspect ratio.
+Crop
+Crop znači druga stvar.
+Recimo hoćeš tačno:
+1200 × 800
+
+za hotel cover.
+Original:
+4000 × 3000
+
+ima 4:3 odnos.
+Target:
+1200 × 800
+
+ima 3:2.
+Ne možeš dobiti tačno 1200×800 bez:
+1. deformacije
+ili
+2. sečenja dela slike
+
+Pravilno rešenje obično je:
+resize dovoljno da popuni target
+↓
+crop višak
+
+To često zovemo:
+cover
+fit / cover
+crop-to-fit
+
+u zavisnosti od biblioteke.
+Ne povećavaj malu sliku bez razloga
+Ako original ima:
+800 × 600
+
+a ti kažeš:
+resize max width 1600
+
+često ne želiš:
+800 → 1600
+
+jer ne dobijaš novi detalj — samo praviš veću, mutniju sliku.
+Zato često postoji pravilo:
+downscale only
+
+odnosno:
+smanji ako je prevelika, ali nemoj upscale ako je već manja.
+
+WebP konverzija
+Recimo user uploaduje:
+hotel.jpg
+
+ali ti želiš da sve slike u storage-u budu:
+WebP
+
+Tada originalna ekstenzija više nije važna za finalni filename.
+Pipeline je:
+JPEG / PNG / WebP input
+↓
+decode
+↓
+resize
+↓
+encode kao WebP
+↓
+random-name.webp
+
+Na primer:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+To ima par prednosti:
+jedinstven storage format
+manji fajlovi
+jednostavniji frontend
+server potpuno kontroliše output extension
+
+Encode quality
+Kod WebP možeš imati quality npr:
+80
+
+ili:
+85
+
+Viša vrednost obično znači:
+bolji kvalitet
+veći fajl
+
+Niža:
+manji fajl
+veći gubitak kvaliteta
+
+Ne postoji jedna magična vrednost za sve slike.
+Za web fotografije je često neki srednji raspon sasvim dobar kompromis.
+Originalni upload vs processed output
+Ovo je važan arhitektonski izbor.
+Možeš:
+A) sačuvati samo processed WebP
+
+ili:
+B) čuvati original + processed verziju
+
+Za običnu web aplikaciju poput hotel galerije često je sasvim razumno:
+validiraj original
+↓
+obradi
+↓
+sačuvaj WebP
+↓
+ne čuvaj original
+
+ako ti original nije potreban za kasniju ponovnu obradu.
+Za ozbiljniji media sistem možda želiš original kao source asset.
+To je business/storage odluka.
+GD mentalni model
+Sa čistim GD-om konceptualno bi radio nešto poput:
+$image = imagecreatefromjpeg($tmpPath);
+
+zatim kreiraš target canvas:
+$resized = imagecreatetruecolor(
+    $newWidth,
+    $newHeight
+);
+
+pa:
+imagecopyresampled(...)
+
+i na kraju:
+imagewebp(
+    $resized,
+    $destination,
+    82
+);
+
+pa oslobodiš memory:
+imagedestroy($image);
+imagedestroy($resized);
+
+Dakle Intervention Image ti dosta toga samo lepše apstrahuje.
+Mentalno ispod njega i dalje postoji:
+decode image
+↓
+manipulate pixels
+↓
+encode output
+↓
+save
+
+Važna posledica
+Ako konvertuješ sve u WebP, onda ne radiš:
+$extension = pathinfo(
+    $file['name'],
+    PATHINFO_EXTENSION
+);
+
+za finalni storage filename.
+Nego:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+jer je output format WebP, bez obzira da li je input bio JPEG ili PNG.
+Pitanje
+Imamo original:
+4000 × 3000
+
+i želimo hotel cover tačno:
+1200 × 800
+
+Objasni:
+1. zašto običan resize direktno na 1200 × 800 može deformisati sliku,
+2. zašto je bolji pristup resize + crop uz očuvanje aspect ratio-a,
+3. i ako finalno sve kodiraš u WebP, zašto više nema smisla koristiti originalnu .jpg ili .png ekstenziju za finalni stored filename.
+
+---
+
+1. Običan resize deformiše sliku jer nisu dobro odrađene proporcije sa aspect ratio, 
+pa na primer ljudi mogu izgledati razvučeno ili skupljeno na slikama. Zato se ne radi nasilan resize
+2. Bolji pristup je sesize uz očuvanje aspect rati-a + crop (isecanje onoga što je višak) 
+jer tako su veće šanse za proporcionalni resize i očuvanj izgleda slike
+3. Ako želimo sve da kodiramo u WebP, s obzirom da u filesystemu sve čuvamo kao webp radi 
+jedinstvenog outputa i ostalih dobrobiti (manji storage i sl), nema smisla da više koristimo staru ekstenziu pa je najbolje 
+raditi generisan file name sa bin2hex(random_bytes(16)) . '.' . 'webp'
+
+
+Tačno — 9.8/10.
+
+Prva i treća tačka su potpuno pogođene. 
+Kod druge bih samo precizirao formulaciju: resize + crop ne daje samo „veće šanse“ da proporcije budu dobre, 
+nego je poenta da resize namerno čuva aspect ratio, a crop zatim uklanja višak 
+da bismo dobili tačnu ciljnu dimenziju bez deformacije.
+
+Dakle:
+4000 × 3000  (4:3)
+
+target:
+1200 × 800   (3:2)
+
+Ne možemo samo proporcionalno skalirati 4:3 sliku direktno u 3:2 bez jedne od dve stvari:
+deformacija
+ili
+crop
+
+Zato:
+resize uz očuvanje aspect ratio-a
+↓
+slika popuni ceo target
+↓
+crop viška
+↓
+1200 × 800 bez rastezanja
+
+I treći deo ti je odličan:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+Ako je naš output format WebP, output extension mora odgovarati tome, bez obzira da li je input bio JPEG, PNG ili WebP.

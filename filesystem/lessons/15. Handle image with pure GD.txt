@@ -1,0 +1,297 @@
+Lekcija 15 — Obrada slike sa čistim GD-om
+
+Sada hoću da vidiš kako bi ono što ti Intervention Image daje elegantno izgledalo ispod haube.
+Nećemo još praviti full production klasu, već mentalni model.
+Pretpostavimo da smo već validirali:
+$tmpPath = $file['tmp_name'];
+$mime = 'image/jpeg';
+
+1. Decode input slike
+GD ima različite funkcije za različite formate:
+imagecreatefromjpeg($tmpPath);
+imagecreatefrompng($tmpPath);
+imagecreatefromwebp($tmpPath);
+
+Zato možemo:
+$image = match ($mime) {
+    'image/jpeg' => imagecreatefromjpeg($tmpPath),
+    'image/png'  => imagecreatefrompng($tmpPath),
+    'image/webp' => imagecreatefromwebp($tmpPath),
+    default      => false,
+};
+
+Ako decode ne uspe:
+if ($image === false) {
+    throw new RuntimeException(
+        'Could not decode image.'
+    );
+}
+
+Ovo je još jedan razlog zašto MIME allowlist mora prethoditi image processing-u.
+
+2. Uzmi originalne dimenzije
+Možemo:
+$sourceWidth = imagesx($image);
+$sourceHeight = imagesy($image);
+
+Recimo:
+4000 × 3000
+
+Hoćemo max width:
+$maxWidth = 1600;
+
+Ako želimo običan proporcionalni downscale:
+$ratio = $maxWidth / $sourceWidth;
+
+onda:
+$newWidth = 1600;
+$newHeight = (int) round(
+    $sourceHeight * $ratio
+);
+
+U našem primeru:
+1600 / 4000 = 0.4
+
+3000 × 0.4 = 1200
+
+dobijamo:
+1600 × 1200
+
+Ne upscale-uj
+Ako original ima:
+800 × 600
+
+a maksimum nam je:
+1600
+
+ne želimo:
+800 → 1600
+
+Zato:
+if ($sourceWidth <= $maxWidth) {
+    $newWidth = $sourceWidth;
+    $newHeight = $sourceHeight;
+} else {
+    // calculate downscale
+}
+
+Ili matematički možeš koristiti faktor koji nikad ne prelazi 1.
+Na primer:
+$scale = min(
+    1,
+    $maxWidth / $sourceWidth
+);
+
+Ako je slika prevelika:
+1600 / 4000 = 0.4
+
+pa $scale = 0.4.
+Ako je mala:
+1600 / 800 = 2
+
+onda:
+min(1, 2)
+
+daje:
+1
+
+Dakle nema upscale-a.
+Ovo je lep matematički pattern.
+
+3. Kreiranje nove slike
+
+GD radi sa novim canvas-om:
+$resized = imagecreatetruecolor(
+    $newWidth,
+    $newHeight
+);
+
+Dakle napravi praznu target sliku.
+Onda kopiraš/resample-uješ original:
+imagecopyresampled(
+    $resized,
+    $image,
+
+    0,
+    0,
+
+    0,
+    0,
+
+    $newWidth,
+    $newHeight,
+
+    $sourceWidth,
+    $sourceHeight
+);
+
+Ovo izgleda ružno dok ne znaš šta parametri znače.
+Mentalno:
+destination image
+source image
+
+destination x/y
+source x/y
+
+destination width/height
+source width/height
+
+Odnosno:
+Uzmi ceo source image i preslikaj ga na target canvas tih novih dimenzija.
+
+4. Encode kao WebP
+Onda:
+$result = imagewebp(
+    $resized,
+    $destination,
+    82
+);
+
+gde je:
+82
+
+quality.
+Ako ne uspe:
+if (!$result) {
+    // encoding/save failed
+}
+
+5. Oslobodi resurse
+Tradicionalno:
+imagedestroy($image);
+imagedestroy($resized);
+
+U modernom PHP-u GD slike su objekti i garbage collector može da ih oslobodi, ali je i dalje korisno da razumeš da image buffers zauzimaju memoriju i da ih ne želiš nepotrebno zadržavati tokom obrade većeg broja slika.
+Kod batch processing-a ovo postaje posebno važno.
+Zašto Intervention Image izgleda mnogo lepše
+Konceptualno biblioteka ti omogućava nešto poput:
+$image = $manager->read($tmpPath);
+
+$image->scaleDown(width: 1600);
+
+$encoded = $image->toWebp(quality: 82);
+
+Ali ispod toga i dalje imaš isti mentalni model:
+decode
+↓
+dimensions
+↓
+resize/resample
+↓
+encode
+↓
+save
+
+I zato sada kada koristiš Intervention nećeš samo znati:
+„pozovem metodu i radi“
+
+nego znaš šta se dešava.
+Jedna veoma važna stvar: PNG transparency
+Ako radiš sa PNG-om koji ima providnu pozadinu, moraš paziti na alpha channel.
+Kod čistog GD-a običan:
+imagecreatetruecolor(...)
+
+može zahtevati dodatno podešavanje transparency/alpha handling-a.
+To je još jedan primer gde biblioteke poput Intervention-a smanjuju količinu low-level detalja koje moraš ručno rešavati.
+WebP takođe može imati transparency.
+Pitanje
+Imamo original:
+3200 × 2400
+
+i želimo:
+$maxWidth = 1600;
+
+bez upscale-a i uz očuvanje aspect ratio-a.
+1. Koliki će biti $scale?
+2. Koje će biti nove dimenzije?
+3. A šta bi $scale bio ako je original samo:
+800 × 600
+
+i koristimo:
+$scale = min(
+    1,
+    $maxWidth / $sourceWidth
+);
+
+Objasni i zašto nam min(1, ...) rešava problem upscale-a.
+
+---
+
+Prvo:
+1. $scale bi trebalo da bude 0.5 -> $maxWidth / $sourceWidth -> 1600 / 3200
+2. Novi height bi onda bio sourceHeight * ratio -> 2400 * 0.5 = 1200 tako da nove dimenzije su 1600 x 1200
+3. ako bi slika koja dolazi bila manja, ne bismo radili scale, pa bi on ili praktično bio 1 ili bismo napravili uslov pa ako je sourceWidth manji od maxWidth, samo bismo kao nove vrednosti prihvatili postojeće od slike. Drugi način je ovaj koji si spomenuo u drugom pitanju.
+Drugo:
+dakle ovo 1 označava vrednost koju nikada ne prelazimo i onda ako je slika velika tj veća od max-a
+1600 / 3200 = 0.5 -> koristimo 0.5 as ratio
+A ako je slika manja, npr width 800:
+1600 / 800 = 2 -> 2 je veće od 1 pa tako koristimo 1 -> 800 * 1 = 800, dakle ostaje nepromenjeno
+
+
+
+
+
+Прикажи још
+
+ 
+
+
+
+
+
+
+Tačno — 10/10.
+Sve si lepo izračunao i, što je važnije, razumeo si zašto min(1, ...) radi.
+Za veliki original:
+$sourceWidth = 3200;
+$sourceHeight = 2400;
+$maxWidth = 1600;
+
+$scale = min(1, 1600 / 3200);
+// min(1, 0.5)
+// 0.5
+
+onda:
+$newWidth = 3200 * 0.5;
+// 1600
+
+$newHeight = 2400 * 0.5;
+// 1200
+
+Dakle:
+3200 × 2400
+↓
+1600 × 1200
+
+Aspect ratio je ostao isti.
+Kod male slike:
+$sourceWidth = 800;
+
+$scale = min(1, 1600 / 800);
+// min(1, 2)
+// 1
+
+pa:
+800 × 600
+↓
+800 × 600
+
+Nema upscale-a.
+Najbolje si rekao ovo:
+1 je gornja granica scale faktora.
+
+Mentalno:
+scale < 1
+→ downscale
+
+scale = 1
+→ bez promene
+
+scale > 1
+→ upscale
+→ mi ga ne dozvoljavamo
+
+Zato:
+min(1, $calculatedScale)
+
+elegantno ograničava scale na maksimalno 1.

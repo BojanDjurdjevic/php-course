@@ -1,0 +1,187 @@
+Lekcija 24 — Gde čuvamo šta: DB path, filesystem path i public URL
+Ovo je jedna od stvari koja ume da napravi nepotrebnu zbrku u aplikaciji.
+Recimo fizički fajl postoji na serveru ovde:
+/var/www/myapp/public/uploads/hotels/42/a83f.webp
+
+To je absolute filesystem path.
+Browser mu možda pristupa preko:
+https://bookyourhotelapp.com/uploads/hotels/42/a83f.webp
+
+To je URL.
+Ali pitanje je:
+Šta treba da čuvamo u bazi?
+
+Obično ne želimo da čuvamo:
+/var/www/myapp/public/uploads/hotels/42/a83f.webp
+
+jer je to vezano za konkretnu server infrastrukturu.
+Ako sutra pređeš sa:
+/var/www/myapp/
+
+na:
+/home/customer/www/
+
+DB podaci postaju pogrešni.
+Isto tako često ne želimo ni pun URL:
+https://bookyourhotelapp.com/uploads/hotels/42/a83f.webp
+
+jer sutra možeš promeniti:
+domain
+CDN
+storage provider
+HTTP/HTTPS setup
+
+Mnogo zdravije je čuvati relativni storage path, na primer:
+uploads/hotels/42/a83f.webp
+
+ili ako već znaš na kom disku je:
+hotels/42/a83f.webp
+
+pa aplikacija odlučuje kako od toga dobija filesystem path ili URL.
+Na primer:
+$relativePath = 'uploads/hotels/42/a83f.webp';
+
+$filesystemPath =
+    PUBLIC_PATH . '/' . $relativePath;
+
+a URL:
+$url =
+    'https://bookyourhotelapp.com/'
+    . $relativePath;
+
+Laravel ti ovo upravo apstrahuje kroz diskove i:
+Storage::disk('public')->url($path);
+
+ali princip ispod je isti.
+Zašto je relativni path fleksibilniji?
+Ako DB čuva:
+hotels/42/a83f.webp
+
+danas može biti:
+local public disk
+
+sutra:
+S3
+
+prekosutra:
+CDN
+
+a DB zapis ne mora nužno da se menja.
+Aplikacija/storage sloj zna:
+Kako se hotels/42/a83f.webp mapira na stvarnu lokaciju?
+
+To je mnogo bolja separation of concerns.
+Public i private mogu imati isti logical path
+Možeš imati:
+hotel-images/42/a83f.webp
+
+kao logical/storage path.
+A storage konfiguracija odlučuje da li je fizički:
+public/uploads/...
+
+ili:
+storage/private/...
+
+To je još jedan razlog da DB ne zna previše o server filesystem strukturi.
+Original name kao poseban podatak
+U tabeli možeš imati:
+id
+hotel_id
+path
+original_name
+mime
+size
+created_at
+
+na primer:
+path:
+hotels/42/a83f.webp
+
+original_name:
+hotel-dunav.jpg
+
+mime:
+image/webp
+
+size:
+182431
+
+Obrati pažnju: ako si original JPEG konvertovao u WebP, stored MIME je:
+image/webp
+
+bez obzira što je original bio:
+image/jpeg
+
+Ako ti je bitno da znaš originalni MIME, onda ga čuvaš kao drugo metadata polje.
+Najvažniji mentalni model
+FILESYSTEM PATH
+→ gde PHP/OS nalazi fajl
+
+STORAGE / RELATIVE PATH
+→ logička lokacija koju često čuvamo u DB
+
+PUBLIC URL
+→ kako browser dolazi do javnog fajla
+
+To su tri različita koncepta.
+Pitanje
+Pretpostavimo da u produkciji fizički fajl postoji ovde:
+/var/www/bookyourhotel/public/uploads/hotels/42/abc.webp
+
+a korisnik ga vidi preko:
+https://bookyourhotelapp.com/uploads/hotels/42/abc.webp
+
+Šta bi od sledećeg najradije čuvao u bazi i zašto?
+A)
+/var/www/bookyourhotel/public/uploads/hotels/42/abc.webp
+
+B)
+https://bookyourhotelapp.com/uploads/hotels/42/abc.webp
+
+C)
+uploads/hotels/42/abc.webp
+
+Posebno objasni šta bi se desilo sa A i B ako sutra promenimo server path ili domen/CDN.
+
+---
+
+Pa naravno, u bazu bih upisao C tj relative path iz prostog razloga što ako bih sačuvao kao što si naveo pod A i B, 
+recimo da dođe do promene server patha ili domain-a, 
+imali bismo veliki mismatch i trebalo bi da se radi ogroman refactor da bismo imali normalan tok i prikazivanje slika.
+
+---
+
+Tačno — 9.8/10.
+C je najbolji izbor:
+uploads/hotels/42/abc.webp
+
+jer DB tada čuva logičku/storage lokaciju, a ne detalje infrastrukture.
+Samo bih ti jednu formulaciju precizirao: promena server path-a ili domena ne mora nužno zahtevati veliki refactor koda ako je aplikacija dobro organizovana, ali bi sa A/B zahtevala migraciju ogromnog broja DB zapisa ili bi ti podaci postali nevažeći.
+Ako čuvaš:
+A)
+/var/www/bookyourhotel/public/uploads/...
+
+pa server pređe na:
+/home/customer/www/bookyourhotel/...
+
+svi stored absolute paths su zastareli.
+Ako čuvaš:
+B)
+https://bookyourhotelapp.com/uploads/...
+
+a pređeš na:
+https://cdn.bookyourhotelapp.com/...
+
+opet su DB vrednosti vezane za staru infrastrukturu.
+Sa:
+C)
+uploads/hotels/42/abc.webp
+
+menjaš samo način na koji aplikacija/storage layer mapira relative path:
+relative path
+→ filesystem path
+
+relative path
+→ public URL
+
+DB ostaje isti.

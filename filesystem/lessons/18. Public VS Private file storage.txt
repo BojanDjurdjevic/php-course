@@ -1,0 +1,269 @@
+Lekcija 18 — Public vs private file storage
+Sad dolazimo do jedne veoma važne arhitektonske teme.
+Nisu svi uploadovani fajlovi isti.
+Imamo, na primer:
+hotel image
+avatar
+public brochure
+
+koji mogu biti javni.
+Ali možemo imati:
+invoice
+passport scan
+contract
+private voucher
+medical document
+
+koji ne smeju biti direktno dostupni preko URL-a.
+Public storage
+Recimo:
+public/uploads/hotels/42/photo.webp
+
+Ako je public/ web root, browser može direktno:
+https://example.com/uploads/hotels/42/photo.webp
+
+To je sasvim logično za hotel gallery.
+Flow je:
+browser
+↓
+web server
+↓
+static file
+
+PHP možda uopšte nije uključen u serving tog fajla.
+To je brzo i jednostavno.
+Private storage
+Ali recimo da imamo:
+storage/private/contracts/123.pdf
+
+i taj folder nije pod web root-om.
+Browser ne može direktno:
+https://example.com/storage/private/contracts/123.pdf
+
+da mu pristupi.
+Umesto toga:
+GET /documents/123/download
+↓
+PHP
+↓
+authenticate user
+↓
+authorize access
+↓
+find file in DB
+↓
+read/send file
+
+Dakle:
+PRIVATE FILE
+→ aplikacija kontroliše access
+
+Ovo je veoma važna razlika.
+Nemoj čuvati osetljive fajlove samo pod “teškim” random URL-om
+Loša ideja:
+/public/uploads/private/
+    84f29a8172938asd.pdf
+
+pa zaključak:
+“Niko neće pogoditi URL.”
+
+To nije prava authorization zaštita.
+Random filename može otežati guessing, ali ako URL procuri, fajl je i dalje javno dostupan.
+Security princip je:
+unguessable URL
+≠
+authorization
+
+Download preko PHP-a
+Konceptualno:
+$fileId = validateInteger(...);
+
+$file = $repository->findById($fileId);
+
+if ($file === null) {
+    http_response_code(404);
+    exit;
+}
+
+if (!$authorization->canDownload($user, $file)) {
+    http_response_code(403);
+    exit;
+}
+
+$path = PRIVATE_STORAGE_PATH . '/' . $file->stored_name;
+
+if (!is_file($path)) {
+    http_response_code(404);
+    exit;
+}
+
+onda šaljemo response headers:
+header('Content-Type: application/pdf');
+
+header(
+    'Content-Disposition: attachment; filename="contract.pdf"'
+);
+
+pa:
+readfile($path);
+
+I browser dobije fajl.
+readfile()
+readfile($path);
+
+čita fajl i šalje ga direktno u output.
+To je često bolje nego:
+$content = file_get_contents($path);
+echo $content;
+
+za veće fajlove, jer nema potrebe da ti ceo fajl prvo držiš kao jedan veliki PHP string.
+I readfile() na uspeh vraća broj pročitanih bytes, a na failure:
+false
+
+Opet isti PHP obrazac.
+Content-Type
+Treba poslati odgovarajući MIME:
+header('Content-Type: application/pdf');
+
+Za WebP:
+header('Content-Type: image/webp');
+
+Za JPEG:
+header('Content-Type: image/jpeg');
+
+Ali MIME za private stored fajl treba da bude nešto što je aplikacija već pouzdano utvrdila/prihvatila, a ne slepo user supplied vrednost.
+Content-Disposition
+Dve česte opcije:
+header(
+    'Content-Disposition: inline; filename="document.pdf"'
+);
+
+znači otprilike:
+browser može pokušati da ga prikaže.
+
+Dok:
+header(
+    'Content-Disposition: attachment; filename="document.pdf"'
+);
+
+kaže:
+tretiraj kao download.
+
+Original name vs stored name
+Ovo se sada lepo uklapa sa ranijom lekcijom.
+U bazi možeš imati:
+original_name:
+"ugovor oktobar 2026.pdf"
+
+stored_name:
+"a8d4f91c73201f....pdf"
+
+Filesystem koristi:
+stored_name
+
+a kada korisniku šalješ download:
+original_name
+
+možeš koristiti za lep naziv fajla — uz pravilno formiranje response header-a.
+Authorization pre filesystem access-a
+Veoma važan redosled:
+request file_id
+↓
+validate ID
+↓
+DB lookup
+↓
+authorization
+↓
+resolve trusted path
+↓
+filesystem access
+
+Ne:
+user path
+↓
+read file
+↓
+onda proveravaj permissions
+
+To se veoma lepo nastavlja na Modul 3.
+Laravel paralela
+Ovo što sada ručno gradimo Laravel ti kasnije apstrahuje kroz stvari kao:
+Storage::disk(...)
+
+i private/public disk konfiguraciju.
+A authorization:
+$this->authorize(...)
+
+ili policy.
+Ali suština ispod toga ostaje ista:
+public disk
+→ direct/static access
+
+private disk
+→ controlled application access
+
+Pitanje
+Imamo dva upload-a:
+1. hotel cover image
+2. user's private employment contract PDF
+
+Gde bi ih konceptualno smestio:
+public storage
+ili
+private storage
+
+i zašto?
+I drugo: zašto random filename kao:
+9f84ab782d91f.pdf
+
+nije dovoljan security mehanizam za privatni dokument ako se fajl ipak nalazi direktno ispod javnog web root-a?
+
+---
+
+Prvo: hotel cover image bih stavio u public storage iz jednostavnog razloga što je to nešto što treba da bude 
+javno dostupno a contract PDF bih stavio u private, jer tome može imati pristup samo odreženi authorized user 
+(klijent ili supplier sa druge strane ugovora eventualno, u zavisnosti od bussines)
+
+Drugo:
+random generisan file name nije dovoljan security iako je teško "pogodljiv", 
+jer šta ako path ipak procuri? To bi značilo da mu se može javno pristupiti bez provere.
+
+Dakle, najbolje je da bude private + provera accesibility validation 
+(na primer request file -> validate ID -> DB lookup -> auth -> resolve trusted path -> access)
+
+---
+
+Tačno — 10/10.
+Prvi deo je potpuno ispravan:
+hotel cover image
+→ public storage
+→ namenjen javnom prikazu
+
+private contract PDF
+→ private storage
+→ pristup samo kroz aplikaciju + authorization
+
+I drugi deo ti je takođe potpuno pogođen. Random filename:
+9f84ab782d91f.pdf
+
+jeste dobar za izbegavanje kolizija i otežava guessing, ali nije authorization. Ako je fajl ispod public web root-a i URL procure, server ga može poslužiti bez ikakve provere ko ga traži.
+Jedina terminološka dorada: umesto “accessibility validation” rekao bih authorization check. Validation proverava da li je file_id validnog formata; authorization proverava da li baš taj user sme da pristupi tom fajlu.
+Dakle tvoj flow bih zapisao ovako:
+request file_id
+↓
+input validation
+↓
+DB lookup
+↓
+authentication
+↓
+authorization
+↓
+resolve trusted private path
+↓
+filesystem read
+↓
+send response
+
+To je baš dobar mentalni model.

@@ -1,0 +1,281 @@
+Lekcija 19 — Bezbedno slanje fajla: headers, readfile() i filename
+Sad ćemo završiti private download deo kako treba.
+Pretpostavimo da smo već uradili:
+valid file ID
+↓
+DB lookup
+↓
+authorization
+↓
+trusted path
+↓
+is_file()
+
+Imamo:
+$path = '/var/www/app/storage/private/contracts/a83f.pdf';
+
+i originalno ime:
+$originalName = 'employment-contract.pdf';
+
+Osnovni download
+Možemo:
+header('Content-Type: application/pdf');
+
+header(
+    'Content-Disposition: attachment; filename="employment-contract.pdf"'
+);
+
+$result = readfile($path);
+
+if ($result === false) {
+    // reading/sending failed
+}
+
+exit;
+
+readfile():
+success → broj pročitanih bytes
+failure → false
+
+I ovde opet strict sentinel pattern.
+Content-Length
+Možemo poslati i:
+$size = filesize($path);
+
+if ($size !== false) {
+    header('Content-Length: ' . $size);
+}
+
+Browser tada unapred zna veličinu response body-ja.
+inline vs attachment
+Već smo pomenuli:
+Content-Disposition: inline
+
+znači:
+browser može pokušati da otvori sadržaj u tabu.
+
+Na primer PDF ili slika.
+Dok:
+Content-Disposition: attachment
+
+preferira download.
+To je response behavior, ne security boundary.
+Čak i ako staviš:
+attachment
+
+authorization i dalje mora biti odrađen pre toga.
+Nikad slepo original filename u header
+Ovo je loše:
+header(
+    'Content-Disposition: attachment; filename="' .
+    $fileFromDb->original_name .
+    '"'
+);
+
+ako original_name nije pravilno obrađen.
+Zašto?
+Zato što filename može sadržati problematične karaktere:
+"
+\r
+\n
+
+i može poremetiti HTTP header.
+Danas PHP ima određene zaštite, ali security princip ostaje:
+User-controlled vrednost se ne ubacuje slepo u response header.
+
+Isto kao što:
+HTML context
+→ HTML escaping
+
+tako:
+HTTP header context
+→ pravilno header-safe encoding/formiranje
+
+Context matters.
+ASCII fallback + UTF-8 filename
+Ako original može biti:
+Ugovor Đorđe oktobar.pdf
+
+običan:
+filename="..."
+
+nije idealan za sve Unicode nazive.
+HTTP standardi omogućavaju i oblik sa:
+filename*
+
+konceptualno:
+Content-Disposition:
+attachment;
+filename="contract.pdf";
+filename*=UTF-8''Ugovor%20%C4%90or%C4%91e%20oktobar.pdf
+
+Ne tražim da ovo sada učiš napamet, ali hoću da znaš da Unicode download filenames zahtevaju malo pažljiviji handling.
+Frameworkovi/biblioteke često ovo rešavaju umesto tebe.
+Ne šalji output pre headers
+Ovo je klasična PHP zamka:
+echo 'Downloading...';
+
+header('Content-Type: application/pdf');
+
+može izazvati:
+headers already sent
+
+jer HTTP headers moraju biti poslati pre response body-ja.
+Isto važi za whitespace pre <?php, debug var_dump, accidental echo itd.
+Za download endpoint obično želiš čist response:
+headers
+↓
+file bytes
+↓
+exit
+
+bez HTML-a.
+Output buffering
+Ponekad aplikacija već ima output buffer, pa se koriste funkcije poput:
+ob_get_level()
+ob_end_clean()
+
+ali ne bih da sada pravimo workaround za loše organizovan response flow.
+Bolji mentalni model je:
+Download endpoint ne treba da generiše nikakav drugi output pre fajla.
+
+readfile() vs ručni streaming
+Za manje i srednje fajlove:
+readfile($path);
+
+je sasvim praktičan.
+Za baš velike fajlove možeš raditi chunked streaming:
+$handle = fopen($path, 'rb');
+
+if ($handle === false) {
+    throw new RuntimeException(...);
+}
+
+while (!feof($handle)) {
+    $chunk = fread($handle, 8192);
+
+    if ($chunk === false) {
+        break;
+    }
+
+    echo $chunk;
+}
+
+fclose($handle);
+
+Ali production serving velikih fajlova često se još bolje delegira web serveru ili object storage/CDN sloju.
+Za naš PHP kurs dovoljno je da razumeš:
+small/normal download
+→ readfile()
+
+large streaming
+→ fopen/fread chunks
+
+Pitanje
+Šta nije dobro u ovom download endpoint-u?
+echo 'Preparing download...';
+
+$fileId = $_GET['id'];
+
+$file = $repository->findById($fileId);
+
+$path = __DIR__ . '/storage/private/' . $file->stored_name;
+
+header('Content-Type: application/pdf');
+
+header(
+    'Content-Disposition: attachment; filename="' .
+    $file->original_name .
+    '"'
+);
+
+readfile($path);
+
+Navedi mi bar četiri problema koje vidiš u ovom flow-u.
+
+---
+
+1. echo pre header()
+→ može izazvati "headers already sent"
+
+2. nema authorization-a
+→ validan file ID ne znači da user sme da skine fajl
+
+3. original_name se slepo ubacuje u Content-Disposition
+→ user-controlled vrednost u HTTP header kontekstu
+
+4. readfile() rezultat se ne proverava
+→ failure sentinel je false
+
+---
+
+Dodao bih još sledeće.
+Prvo:
+$fileId = $_GET['id'];
+
+nije validiran.
+Treba prvo nešto poput:
+$fileId = filter_var(
+    $_GET['id'] ?? null,
+    FILTER_VALIDATE_INT,
+    [
+        'options' => [
+            'min_range' => 1,
+        ],
+    ]
+);
+
+Ako ne prođe:
+400 / 404
+
+u zavisnosti od dizajna endpointa.
+Drugo:
+$file = $repository->findById($fileId);
+
+može vratiti null.
+A kod odmah radi:
+$file->stored_name
+
+što bi puklo.
+Dakle:
+if ($file === null) {
+    http_response_code(404);
+    exit;
+}
+
+Treće, čak i nakon DB lookup-a treba proveriti stvarni filesystem:
+if (!is_file($path)) {
+    http_response_code(404);
+    exit;
+}
+
+if (!is_readable($path)) {
+    // server/filesystem problem
+}
+
+Četvrto, ovo:
+header('Content-Type: application/pdf');
+
+ima smisla samo ako endpoint zaista služi isključivo PDF-ove. Ako isti endpoint može servirati različite tipove, MIME treba da dolazi iz pouzdano sačuvanih metadata, a ne da bude hardkodovan.
+Dobar mentalni flow je sada:
+validate file ID
+↓
+DB lookup
+↓
+404 ako ne postoji
+↓
+authentication
+↓
+authorization
+↓
+resolve server-controlled path
+↓
+is_file / is_readable
+↓
+set safe headers
+↓
+readfile()
+↓
+check === false
+↓
+exit

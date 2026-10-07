@@ -1,0 +1,261 @@
+Temporary files, staging i atomic-ish replace
+Ovo se direktno nadovezuje na naš upload/rollback flow.
+Zamisli da treba da napraviš novi:
+avatar.webp
+
+Jedan naivan pristup je da odmah pišeš finalni fajl:
+imagewebp(
+    $image,
+    $finalPath,
+    82
+);
+
+Ali šta ako obrada pukne usred procesa?
+Ili generisanje fajla uspe delimično?
+Mnogo zdraviji obrazac je:
+napravi temporary file
+↓
+upis / processing završi
+↓
+proveri da je sve OK
+↓
+tek onda ga prebaci na finalnu lokaciju
+
+tempnam()
+PHP može da napravi unique temporary filename:
+$tmpPath = tempnam(
+    sys_get_temp_dir(),
+    'img_'
+);
+
+Na primer možeš dobiti:
+/tmp/img_a8F3x2
+
+tempnam() vraća:
+string path
+
+ili:
+false
+
+ako ne uspe.
+Dakle:
+$tmpPath = tempnam(
+    sys_get_temp_dir(),
+    'img_'
+);
+
+if ($tmpPath === false) {
+    throw new RuntimeException(
+        'Could not create temporary file.'
+    );
+}
+
+sys_get_temp_dir()
+sys_get_temp_dir()
+
+vraća sistemski temporary direktorijum koji PHP može koristiti.
+Na Linux-u to može biti:
+/tmp
+
+Na Windows-u druga lokacija.
+Ne moraš hardkodovati OS-specific temp path.
+Staging folder aplikacije
+Umesto sistemskog temp foldera možeš imati i svoj:
+storage/tmp/
+
+na primer:
+$tmpDir =
+    __DIR__ . '/storage/tmp';
+
+To može biti korisno kada želiš bolju kontrolu nad lifecycle-om.
+Na primer:
+storage/tmp/
+storage/public/
+storage/private/
+
+Zašto staging?
+Recimo da praviš obrađenu WebP sliku.
+Umesto:
+uploads/hotels/42/final.webp
+
+odmah, uradiš:
+storage/tmp/random.webp
+
+pa tek ako je encode potpuno uspeo:
+rename(
+    $tmpPath,
+    $finalPath
+);
+
+Mentalno:
+PROCESS
+↓
+temporary result
+↓
+success?
+    NE → cleanup temp
+    DA
+↓
+promote to final
+
+Ovo smanjuje šansu da finalna lokacija sadrži polovično ili nevalidno stanje.
+rename() kao finalizacija
+Na istom filesystem-u rename() je često vrlo efikasna operacija.
+Umesto:
+čitaj ceo fajl
+↓
+kopiraj bytes
+↓
+obriši original
+
+filesystem često može samo da promeni directory entry / ime.
+Zato je staging + rename čest obrazac.
+Ali nemoj iz toga izvući:
+rename() je u apsolutno svakom mogućem okruženju garantovana distributed atomic transaction.
+
+Nije.
+Posebno ako prelaziš između različitih filesystem-a/mountova, ponašanje može biti drugačije.
+Ali za isti lokalni filesystem ovo je veoma koristan pattern.
+
+Replace postojećeg fajla
+
+Zamisli:
+avatar.webp
+
+već postoji.
+
+Želiš novi avatar.
+
+Možeš:
+1. generiši avatar-new-temp.webp
+2. proveri da je sve uspešno
+3. update DB / pripremi replacement
+4. finalizuj novi fajl
+5. cleanup starog
+
+ili zavisno od arhitekture još sigurnije koristiti novo random ime umesto overwrite-a:
+old:
+abc123.webp
+
+new:
+f91ab4.webp
+
+pa:
+save new
+↓
+DB promeni path abc123.webp → f91ab4.webp
+↓
+delete abc123.webp
+
+Ovo mi je često mnogo lepše nego overwrite istog filename-a.
+Zašto?
+Jer do trenutka DB update-a stari fajl i dalje postoji i DB pokazuje na njega.
+tmpfile()
+Postoji i:
+$handle = tmpfile();
+
+koji kreira temporary file i vraća file handle.
+Kada se handle zatvori ili script završi, temporary fajl se automatski uklanja.
+To je zgodno kada ti treba privremeni stream, ali ne nužno trajni path za library koja očekuje pathname.
+Za image processing često nam je praktičniji:
+tempnam()
+
+jer imamo konkretnu putanju.
+Temp cleanup je važan
+Ako koristiš svoj:
+storage/tmp/
+
+i proces pukne pre cleanup-a, mogu ostati orphan temp fajlovi.
+Zato ozbiljniji sistemi često imaju periodični cleanup:
+obriši temp fajlove starije od npr. 24h
+
+Tu nam opet postaje koristan:
+filemtime()
+
+Na primer konceptualno:
+if (
+    filemtime($path) < time() - 86400
+) {
+    unlink($path);
+}
+
+uz normalne failure provere.
+Mentalni model
+temporary
+→ još nije deo stabilnog application state-a
+
+final
+→ aplikacija računa da fajl postoji i može da ga koristi
+
+To je važna razlika.
+Pitanje
+Zamisli da korisnik menja avatar.
+Trenutno DB pokazuje na:
+uploads/users/15/old.webp
+
+Ti obrađuješ novu sliku.
+Zašto je sigurnije napraviti:
+storage/tmp/new-random.webp
+
+pa tek nakon uspešne obrade/promocije promeniti stanje aplikacije, nego odmah pisati preko:
+uploads/users/15/old.webp
+
+?
+Objasni šta bi moglo da se desi ako obrada ili zapis puknu na pola.
+
+---
+
+sigurnije je imati tmp folder i tamo privremeno smestiti novi avatar zato što sve do kraja uspešne obrade update-a stari path još postoji i baza ukazuje na njega, i tako imamo stari fajl sa sigurnošću očuvan ukoliko dođe do pucanja bilo gde u procesu uploada i upisa u bazu. Jer šta ako prepišemo stari fajl novim a DB upis padne? ili obrnuto, recimo da neko uradi prvo upis u bazu a potom upload error. Izgubili bismo stari avatar.
+
+Zato je bolje na primer:
+
+old:
+abc123.webp
+
+new:
+f91ab4.webp
+
+pa:
+save new
+↓
+DB promeni path abc123.webp → f91ab4.webp
+↓
+delete abc123.webp
+
+---
+
+Da — 9.7/10. Mentalni model ti je potpuno dobar:
+old valid state ostaje netaknut
+↓
+napravi/obradi new state
+↓
+potvrdi new state
+↓
+DB prebaci referencu na new
+↓
+tek tada cleanup old
+
+To je mnogo sigurnije od overwrite-a postojećeg fajla.
+Samo jedna mala nijansa oko ovog dela:
+„šta ako prepišemo stari fajl novim a DB upis padne?“
+
+Ako bukvalno prepisujemo isti:
+old.webp
+
+i DB već pokazuje na old.webp, sam path možda ni ne mora da se menja. Ali glavni problem i dalje postoji: uništio si staru ispravnu verziju pre nego što znaš da je nova potpuno validno obrađena i sačuvana. Ako encode/write pukne, možeš završiti sa neispravnim ili nepotpunim old.webp, a original više nemaš.
+Zato je tvoj drugi flow mnogo bolji:
+abc123.webp     ← current
+
+f91ab4.webp     ← new
+↓
+save/process uspešno
+↓
+DB: abc123.webp → f91ab4.webp
+↓
+delete abc123.webp
+
+Ako DB update padne:
+delete f91ab4.webp
+DB i dalje → abc123.webp
+
+i sistem ostaje konzistentan.

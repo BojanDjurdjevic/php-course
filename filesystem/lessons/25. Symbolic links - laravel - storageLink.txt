@@ -1,0 +1,144 @@
+Symbolic links i zašto Laravel ima storage:link
+
+
+U Laravel projektu često imaš:
+storage/app/public/
+
+Tu Laravel čuva fajlove na public disku.
+Ali browser kao web root uglavnom vidi:
+public/
+
+Dakle browser ne vidi direktno:
+storage/app/public/hotels/42/photo.webp
+
+Kako onda URL:
+/storage/hotels/42/photo.webp
+
+radi?
+Preko symbolic link-a.
+Kada uradiš:
+php artisan storage:link
+
+Laravel tipično napravi nešto konceptualno poput:
+public/storage
+        ↓ symlink
+storage/app/public
+
+Dakle fizički fajl može biti:
+storage/app/public/hotels/42/photo.webp
+
+ali browser ide na:
+/storage/hotels/42/photo.webp
+
+jer:
+public/storage
+
+pokazuje na:
+storage/app/public
+
+Šta je symlink?
+Symbolic link možeš mentalno posmatrati kao:
+filesystem prečicu/pokazivač na drugu lokaciju.
+
+Nije isto što i kopija.
+Ako imamo:
+real folder:
+storage/images/
+
+symlink:
+public/images → storage/images/
+
+i u realnom folderu postoji:
+storage/images/a.webp
+
+onda kroz link može izgledati kao:
+public/images/a.webp
+
+Ali nemaš dve nezavisne kopije fajla.
+Symlink vs copy()
+Ako uradiš:
+copy($source, $destination);
+
+dobiješ drugi fizički fajl.
+Posle:
+source/a.webp
+destination/a.webp
+
+mogu postati različiti.
+Ako je destination symlink ka source folderu, onda oba puta praktično dolaze do istog filesystem sadržaja.
+Zašto Laravel ne stavlja sve direktno u public/?
+Zato što framework želi jasnu storage strukturu:
+storage/app/public
+storage/app/private
+logs
+framework cache
+...
+
+a samo ono što je eksplicitno javno izlaže browseru preko symlink-a.
+To je dosta bolja organizacija nego da sve trpaš direktno u:
+public/uploads/
+
+mada je taj Vanilla PHP pristup potpuno validan za manji projekat ako ga dobro organizuješ.
+symlink() u PHP-u
+PHP ima:
+symlink($target, $link);
+
+na primer:
+symlink(
+    __DIR__ . '/storage/public',
+    __DIR__ . '/public/storage'
+);
+
+Ali permissions i OS mogu uticati na to da li je dozvoljeno pravljenje symlink-a.
+Na shared hostingu ovo ume da bude relevantno.
+Security napomena
+Symlink može biti koristan, ali moraš znati šta izlažeš.
+Nikada ne želiš slučajno nešto poput:
+public/storage
+    ↓
+storage/
+
+ako storage/ sadrži i:
+private/
+contracts/
+logs/
+.env backup
+
+Želiš da linkuješ samo public storage deo.
+Dakle:
+public/storage
+→ storage/app/public
+
+a ne ceo privatni storage tree.
+Laravel veza sa našom prethodnom lekcijom
+U bazi Laravel aplikacije često čuvaš:
+hotels/42/abc.webp
+
+pa:
+Storage::disk('public')->url(
+    'hotels/42/abc.webp'
+);
+
+dobiješ odgovarajući URL.
+Opet:
+DB zna logical path
+
+disk config zna filesystem root
+
+storage layer zna public URL
+
+To je upravo ono što smo ručno gradili.
+Pitanje
+Objasni mi svojim rečima šta zapravo radi:
+php artisan storage:link
+
+i zašto je symlink bolji od toga da Laravel pri svakom upload-u pravi kopiju istog fajla i u:
+storage/app/public/
+
+i u:
+public/storage/
+
+?
+
+---
+

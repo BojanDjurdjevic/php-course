@@ -1,0 +1,211 @@
+Lekcija 20 — Unique filenames, collisions i zašto ne koristimo timestamp kao jedinu zaštitu
+Već smo koristili:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+Sad hoću da objasnimo zašto je to bolje od nekoliko veoma čestih alternativa.
+Lošiji pristup 1 — original filename
+$filename = $file['name'];
+
+Problemi:
+user-controlled
+kolizije
+čudni karakteri
+path problemi
+reveals original information
+
+Dva usera mogu oba uploadovati:
+avatar.jpg
+
+i ako ih čuvaš u istom folderu, drugi može pregaziti prvi.
+Lošiji pristup 2 — time()
+Na primer:
+$filename = time() . '.jpg';
+
+Izgleda unique, ali nije garantovano.
+time() ima rezoluciju od jedne sekunde.
+Dva upload-a u istoj sekundi:
+1760000000.jpg
+1760000000.jpg
+
+→ collision.
+Malo bolje, ali i dalje nepotrebno — user ID + timestamp
+$filename =
+    $userId . '_' . time() . '.jpg';
+
+Smanjuje šansu za collision, ali isti user i dalje može napraviti dva upload-a u istoj sekundi.
+I filename otkriva:
+user ID
+upload vreme
+
+što možda nije potrebno.
+random_bytes()
+$bytes = random_bytes(16);
+
+daje 16 cryptographically secure random bytes.
+Ali to nisu nužno printable karakteri.
+Zato:
+$hex = bin2hex(
+    random_bytes(16)
+);
+
+dobijaš 32 hexadecimal karaktera:
+b7c6e9dfe52443d29b63ab4adf189234
+
+pa:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+dobijaš praktično vrlo bezbedan unique filename.
+Zašto 16 bytes postaje 32 karaktera?
+Svaki byte ima:
+8 bita
+
+Hexadecimalna cifra predstavlja:
+4 bita
+
+pa jedan byte postaje dve hex cifre.
+Dakle:
+16 bytes
+× 2
+=
+32 hex characters
+
+Ne moraš ovo računati na intervjuu, ali lepo je razumeti šta bin2hex() radi.
+Da li ipak proveravati collision?
+Matematički je collision sa 128-bit random vrednošću ekstremno malo verovatan.
+Ali ako želiš potpuno robustan filesystem flow, možeš:
+do {
+    $filename =
+        bin2hex(random_bytes(16))
+        . '.webp';
+
+    $destination =
+        $uploadDir . '/' . $filename;
+
+} while (file_exists($destination));
+
+U praksi će loop skoro sigurno proći prvi put.
+Još jači obrazac — exclusive create
+Seti se:
+fopen($path, 'x');
+
+x mode znači:
+napravi fajl samo ako već ne postoji.
+
+Ako postoji, operacija pada.
+
+To je interesantno jer postoji mala concurrency nijansa kod:
+if (!file_exists($path)) {
+    // create
+}
+
+Između:
+check
+
+i:
+create
+
+drugi proces teoretski može napraviti isti fajl.
+To se zove TOCTOU:
+Time Of Check
+↓
+Time Of Use
+
+Za random filename od 128 bits collision je praktično zanemarljiv, ali koncept je važan.
+
+Race condition mentalni model
+Na primer:
+if (!file_exists($destination)) {
+    file_put_contents($destination, $data);
+}
+
+Proces A:
+proveri → ne postoji
+
+Proces B:
+proveri → ne postoji
+
+A napravi fajl.
+B zatim napravi isti fajl.
+Dakle:
+pre-check
+≠
+atomic guarantee
+
+Ovo je potpuno ista familija problema kao concurrency koju si već video kod rezervacija i:
+SELECT ... FOR UPDATE
+
+Samo sada na filesystem nivou.
+Za image upload
+Pošto najčešće radimo:
+bin2hex(random_bytes(16))
+
+i zatim:
+imagewebp(..., $destination)
+
+u normalnom web projektu ne bih komplikovao kod previše zbog praktično nemogućeg collision-a.
+Ali hoću da znaš razliku između:
+"veoma malo verovatno"
+
+i:
+"matematički/atomski nemoguće"
+
+To nije isto.
+Pitanje
+Zašto bi:
+$filename = time() . '.webp';
+
+bio lošiji izbor od:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+I drugo: šta je problem u ovom pattern-u sa stanovišta concurrency-ja?
+if (!file_exists($path)) {
+    file_put_contents($path, $data);
+}
+
+Objasni svojim rečima šta se može desiti između file_exists() i file_put_contents()
+
+---
+
+time() bi bio lošiji izbor, jer se lako može desiti da dva korisnika uploaduju u isto vreme i tako bi došlo do kolizije imena.. Zato je bolje koristiti bin2hex(random_bytes(16)) sa kojom su teoretske šanse za koliziju drastično male, skoro pa nemoguće mada ne 100% matematički i teoretski nemoguće.
+
+Drugo: 
+
+ovde postoji mala concurrency nijansa između uslova i create, može se dogoditi da drugi proces teoretski napravi isti fajl:
+
+Time of check - Time of use
+
+Proces A:
+proveri → ne postoji
+
+Proces B:
+proveri → ne postoji
+
+A napravi fajl.
+B zatim napravi isti fajl.
+Dakle:
+pre-check
+≠
+atomic guarantee
+
+---
+
+Tačno — 10/10. Ovo je baš odgovor koji bih očekivao na intervjuu.
+Posebno dobro što nisi rekao da je random_bytes(16) kolizija „nemoguća“, nego praktično ekstremno malo verovatna. To je preciznije.
+I TOCTOU si objasnio potpuno pravilno:
+Time Of Check
+↓
+Time Of Use
+
+Problem je što:
+file_exists($path)
+
+i:
+file_put_contents($path, $data)
+
+nisu jedna atomska operacija. Stanje filesystem-a može da se promeni između njih.
