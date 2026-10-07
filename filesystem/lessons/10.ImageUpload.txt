@@ -1,0 +1,270 @@
+Lekcija 10 — Kako PHP upload zapravo radi
+Sad ulazimo u pravi file upload pipeline.
+Ovo smo u HTTP modulu već koristili praktično, ali sada hoću da ga rastavimo do kraja.
+HTML:
+<form
+    method="POST"
+    enctype="multipart/form-data"
+>
+    <input type="file" name="photo">
+
+    <button type="submit">Upload</button>
+</form>
+
+Ovde je ključan:
+enctype="multipart/form-data"
+
+Bez njega browser neće pravilno poslati file upload.
+PHP zatim napravi:
+$_FILES['photo']
+
+otprilike ovako:
+[
+    'name' => 'hotel.jpg',
+    'full_path' => 'hotel.jpg',
+    'type' => 'image/jpeg',
+    'tmp_name' => '/tmp/phpabc123',
+    'error' => UPLOAD_ERR_OK,
+    'size' => 248351,
+]
+
+Najvažniji mentalni model
+Browser ne kaže PHP-u:
+„Evo fajla, sačuvaj ga zauvek.“
+
+Nego:
+Browser
+↓
+multipart/form-data
+↓
+Web server / PHP
+↓
+PHP napravi TEMPORARY upload file
+↓
+$_FILES['photo']['tmp_name']
+↓
+tvoja aplikacija validira
+↓
+move_uploaded_file()
+↓
+trajni storage
+
+Dakle:
+$_FILES['photo']['tmp_name']
+
+je privremena lokacija.
+Ako ga ti ne premestiš na trajno mesto, taj temp fajl nije nešto na šta treba da računaš dugoročno.
+error mora prvi da se proveri
+Pre MIME-a, size-a, extension-a i svega ostalog:
+$file = $_FILES['photo'] ?? null;
+
+if ($file === null) {
+    // field wasn't sent
+}
+
+zatim:
+if ($file['error'] !== UPLOAD_ERR_OK) {
+    // upload nije uspeo
+}
+
+Najčešće konstante:
+UPLOAD_ERR_OK
+// 0
+
+UPLOAD_ERR_INI_SIZE
+// veći od upload_max_filesize
+
+UPLOAD_ERR_FORM_SIZE
+// veći od MAX_FILE_SIZE iz HTML forme
+
+UPLOAD_ERR_PARTIAL
+// samo deo fajla uploadovan
+
+UPLOAD_ERR_NO_FILE
+// ništa nije poslato
+
+Postoje još neke, ali ove su najvažnije za početak.
+Zašto prvo error?
+Zato što nema smisla da radiš:
+finfo->file($file['tmp_name'])
+
+ako PHP već kaže:
+$file['error'] === UPLOAD_ERR_NO_FILE
+
+ili:
+UPLOAD_ERR_PARTIAL
+
+Dakle pipeline je:
+postoji $_FILES entry?
+↓
+upload error?
+↓
+size?
+↓
+MIME?
+↓
+business rules?
+↓
+generate safe filename
+↓
+create destination directory
+↓
+move_uploaded_file()
+
+Redosled je bitan.
+tmp_name
+Recimo:
+$tmpPath = $file['tmp_name'];
+
+To je filesystem path do temp fajla koji je PHP napravio.
+Na Linux serveru može izgledati kao:
+/tmp/phpA1B2C3
+
+Na Windows-u drugačije.
+Nije bitno kako izgleda — PHP ti daje putanju.
+move_uploaded_file()
+Kada odlučiš da upload prihvatiš:
+$destination = __DIR__
+    . '/uploads/'
+    . $filename;
+
+if (!move_uploaded_file(
+    $file['tmp_name'],
+    $destination
+)) {
+    throw new RuntimeException(
+        'Could not move uploaded file.'
+    );
+}
+
+Ova funkcija je specijalno namenjena uploadovima i proverava da je source zaista fajl uploadovan kroz PHP HTTP POST upload mehanizam.
+Zato je bolji izbor od generičkog:
+rename(...)
+
+za initial upload move.
+is_uploaded_file()
+Postoji i:
+is_uploaded_file($file['tmp_name'])
+
+koja proverava da li je fajl stvarno uploadovan HTTP POST upload mehanizmom.
+move_uploaded_file() već radi relevantnu proveru, ali treba da znaš da is_uploaded_file() postoji.
+Nemoj verovati $_FILES['type']
+Ovo je veoma važno:
+$file['type']
+
+dolazi iz informacija koje šalje klijent/browser.
+Dakle:
+$file['type'] === 'image/jpeg'
+
+nije dovoljan security dokaz.
+Za MIME proveru koristićemo server-side:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+$mime = $finfo->file(
+    $file['tmp_name']
+);
+
+pa tek onda:
+$allowed = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+];
+
+if (!in_array($mime, $allowed, true)) {
+    // reject
+}
+
+To je ogromna razlika:
+$_FILES['type']
+→ client-provided hint
+
+finfo
+→ server-side inspection sadržaja
+
+Originalni filename
+Ovo:
+$file['name']
+
+takođe dolazi od korisnika.
+Zato ga ne koristimo direktno:
+$destination =
+    $uploadDir . '/' . $file['name'];
+
+Mnogo bolje:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+ili ako još ne konvertujemo fajl:
+$extensionMap = [
+    'image/jpeg' => 'jpg',
+    'image/png' => 'png',
+    'image/webp' => 'webp',
+];
+
+$extension = $extensionMap[$mime];
+
+$filename =
+    bin2hex(random_bytes(16))
+    . '.' . $extension;
+
+Ovde server određuje extension na osnovu prihvaćenog MIME-a.
+To je mnogo zdraviji flow nego:
+pathinfo($file['name'], PATHINFO_EXTENSION)
+
+i slepo verovanje tome.
+Pitanje
+Zašto bi ovaj kod smatrao nesigurnim?
+$file = $_FILES['photo'];
+
+if ($file['type'] === 'image/jpeg') {
+    $destination =
+        __DIR__
+        . '/uploads/'
+        . $file['name'];
+
+    move_uploaded_file(
+        $file['tmp_name'],
+        $destination
+    );
+}
+
+Navedi mi bar tri konkretna problema koja vidiš u ovom upload flow-u.
+
+---
+
+Odlično — 10/10. Ovo je već odgovor koji bih očekivao na intervjuu.
+Naveo si više od tri problema, i još važnije: složio si ih u dobar upload pipeline.
+Tvoj redosled:
+1. Da li file entry postoji?
+2. Da li je upload uspeo?
+3. Size
+4. MIME
+5. Business rules
+6. Safe generated filename
+7. Destination directory
+8. move_uploaded_file()
+
+je vrlo dobar.
+Samo jedna mala sintaksna korekcija u ovom delu koji si opisao:
+bin2hex(random_bytes(16) + ekstenzija)
+
+treba konceptualno da bude:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.'
+    . $extension;
+
+Dakle random_bytes() daje binarne random bytes, bin2hex() ih pretvara u bezbedan hex string, a ekstenziju dodajemo tek posle.
+Još bih na intervjuu dodao jedan detalj koji lepo zaokružuje odgovor: nije dovoljno ni samo pozvati:
+move_uploaded_file(...)
+
+nego proveravamo njegov rezultat:
+if (!move_uploaded_file($tmp, $destination)) {
+    throw new RuntimeException(
+        'Could not move uploaded file.'
+    );
+}
+
+Jer i posle kompletne validacije filesystem operacija može pasti.

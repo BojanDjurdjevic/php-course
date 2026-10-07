@@ -1,0 +1,240 @@
+Lekcija 12 — MIME validation sa finfo
+Sada dolazimo do jednog od najvažnijih delova upload security-ja.
+Pretpostavimo:
+$file = $_FILES['photo'];
+
+Imamo:
+$file['name']
+$file['type']
+$file['tmp_name']
+
+Od ova tri, za određivanje stvarnog tipa fajla ne želimo da verujemo:
+$file['name']
+$file['type']
+
+jer dolaze sa client strane.
+Umesto toga:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+$mime = $finfo->file($file['tmp_name']);
+
+Na primer možemo dobiti:
+image/jpeg
+image/png
+image/webp
+application/pdf
+
+Ako finfo->file() ne uspe, može vratiti:
+false
+
+zato:
+$mime = $finfo->file($file['tmp_name']);
+
+if ($mime === false) {
+    $errors['photo'] = 'Could not detect file type.';
+}
+
+Allowlist, ne blocklist
+Lošiji pristup:
+if ($mime !== 'application/x-php') {
+    // allow
+}
+
+To je blocklist mentalni model:
+zabrani ono čega sam se setio.
+
+Mnogo bolji:
+$allowedMimes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+];
+
+if (!in_array($mime, $allowedMimes, true)) {
+    $errors['photo'] = 'Unsupported image type.';
+}
+
+To je allowlist:
+dozvoli samo ono što eksplicitno očekujem.
+
+I opet:
+in_array(..., true)
+
+strict comparison.
+MIME određuje ekstenziju
+Ako smo već utvrdili:
+$mime === 'image/jpeg'
+
+mnogo je bolje da server odluči ekstenziju:
+$extensions = [
+    'image/jpeg' => 'jpg',
+    'image/png' => 'png',
+    'image/webp' => 'webp',
+];
+
+$extension = $extensions[$mime];
+
+nego:
+$extension = pathinfo(
+    $file['name'],
+    PATHINFO_EXTENSION
+);
+
+Jer originalni filename može biti:
+hotel.exe.jpg
+photo.php
+whatever.fakeextension
+
+A storage filename želimo da bude potpuno pod našom kontrolom:
+$filename =
+    bin2hex(random_bytes(16))
+    . '.'
+    . $extension;
+
+MIME nije isto što i potpuna image validation
+Ovo je važna nijansa.
+Ako:
+$finfo->file($tmp) === 'image/jpeg'
+
+to je mnogo bolje od client-provided MIME-a.
+Ali za aplikaciju koja zaista očekuje sliku, možemo ići korak dalje i pokušati da je zaista interpretiramo kao image.
+Na primer:
+$imageInfo = getimagesize($file['tmp_name']);
+
+Ako nije validna slika:
+$imageInfo === false
+
+Za validnu sliku možeš dobiti podatke kao:
+[
+    0 => 1920,
+    1 => 1080,
+    2 => IMAGETYPE_JPEG,
+    'mime' => 'image/jpeg',
+]
+
+Dakle:
+$width = $imageInfo[0];
+$height = $imageInfo[1];
+
+To nam omogućava i dimensional validation:
+if ($width > 6000 || $height > 6000) {
+    $errors['photo'] = 'Image dimensions are too large.';
+}
+
+Zašto proveravati dimensions?
+Zamisli fajl:
+4 MB JPEG
+
+ali rezolucija:
+12000 × 10000
+
+Disk size je relativno mali zbog kompresije.
+Ali kada ga GD ili druga image biblioteka dekodira u memoriju, može zauzeti ogroman RAM.
+Zato za image pipeline često proveravamo oba:
+file size
++
+pixel dimensions
+
+Redosled za sliku sada izgleda ovako
+$_FILES entry postoji?
+↓
+UPLOAD_ERR_OK?
+↓
+file size?
+↓
+finfo MIME?
+↓
+MIME allowlist?
+↓
+getimagesize() uspeva?
+↓
+dimensions?
+↓
+business rules?
+↓
+generate filename
+↓
+destination directory
+↓
+move / process image
+
+Još jedna bitna nijansa
+getimagesize() nije generalna MIME validation funkcija za sve fajlove.
+Odlična je kada je business contract:
+očekujem sliku.
+
+Za PDF, ZIP, CSV itd. nema smisla.
+Tu ostajemo na drugim odgovarajućim validatorima.
+Pitanje
+Pretpostavimo da user uploaduje fajl nazvan:
+holiday.jpg
+
+a:
+$file['type'] === 'image/jpeg'
+
+ali:
+$finfo->file($file['tmp_name'])
+
+vrati:
+application/pdf
+
+Šta radiš?
+I drugo: zašto bi kod image upload-a, čak i nakon validnog image/jpeg MIME-a, ipak mogao da koristiš:
+getimagesize()
+
+pre nego što sliku pošalješ u GD ili Intervention Image?
+
+---
+
+Drugi deo si objasnio odlično: upravo zato getimagesize() ima smisla pre GD/Intervention obrade. Disk veličina i decoded image memory nisu ista stvar.
+Samo jedna važna korekcija za prvi scenario.
+Ako:
+$finfo->file($file['tmp_name'])
+
+vrati:
+application/pdf
+
+a business contract kaže da prihvatamo samo:
+image/jpeg
+image/png
+image/webp
+
+onda bih fajl odmah odbio.
+Dakle:
+$allowed = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+];
+
+if (!in_array($mime, $allowed, true)) {
+    $errors['photo'] = 'Unsupported image type.';
+}
+
+Ne moramo ni stići do:
+getimagesize(...)
+
+jer već znamo da MIME ne odgovara contract-u.
+getimagesize() dolazi kao dodatna provera nakon što MIME već prođe allowlist.
+Mentalno:
+finfo MIME
+↓
+nije dozvoljen?
+→ reject
+
+dozvoljen?
+↓
+getimagesize()
+↓
+nije prava / čitljiva slika?
+→ reject
+
+jeste?
+↓
+proveri width / height
+
+A ovo što si rekao za:
+$imageInfo[0] // width
+$imageInfo[1] // height
+
+je tačno.

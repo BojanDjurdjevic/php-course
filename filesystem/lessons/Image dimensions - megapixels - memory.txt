@@ -1,0 +1,142 @@
+Lekcija 13 — Dimenzije slike, megapikseli i memory risk
+Sad ćemo malo preciznije da razdvojimo tri stvari:
+file size
+dimensions
+decoded memory
+
+Recimo imamo:
+photo.jpg
+4 MB
+
+12000 × 10000
+
+To je:
+120,000,000 pixels
+
+odnosno:
+120 MP
+
+Iako je JPEG kompresovan na samo 4 MB, kada se dekodira, biblioteka mora da radi sa ogromnim brojem piksela.
+Grubo:
+width × height × channels
+
+Ako zamisliš RGBA:
+12000 × 10000 × 4
+≈ 480 MB
+
+a realna potrošnja biblioteke može biti i veća zbog internih struktura i dodatnih buffer-a.
+Zato:
+4 MB upload
+
+ne znači:
+4 MB RAM usage
+
+Provera širine i visine
+Recimo:
+$imageInfo = getimagesize($file['tmp_name']);
+
+if ($imageInfo === false) {
+    $errors['photo'] = 'Invalid image.';
+} else {
+    $width = $imageInfo[0];
+    $height = $imageInfo[1];
+}
+
+Pa možemo:
+$maxWidth = 6000;
+$maxHeight = 6000;
+
+if (
+    $width > $maxWidth ||
+    $height > $maxHeight
+) {
+    $errors['photo'] =
+        'Image dimensions are too large.';
+}
+
+Ali možeš proveriti i ukupan broj piksela:
+$maxPixels = 25_000_000;
+
+if ($width * $height > $maxPixels) {
+    $errors['photo'] =
+        'Image has too many pixels.';
+}
+
+To često ima još više smisla.
+Jer:
+10000 × 1000
+
+i:
+5000 × 5000
+
+imaju veoma različite profile, a pixel count ti daje dodatnu zaštitu.
+Minimum dimensions
+Možeš imati i business rule:
+$minWidth = 800;
+$minHeight = 600;
+
+na primer za hotel cover fotografiju.
+if (
+    $width < $minWidth ||
+    $height < $minHeight
+) {
+    $errors['photo'] =
+        'Image resolution is too small.';
+}
+
+To više nije security validation.
+To je:
+business / quality rule
+
+Važno je da razlikujemo:
+max pixel count
+→ često resource/security concern
+
+minimum 800×600
+→ business/UX concern
+
+Aspect ratio
+Možemo imati i pravilo:
+cover image mora biti landscape
+
+pa:
+if ($width <= $height) {
+    $errors['photo'] =
+        'Cover image must be landscape.';
+}
+
+Ili preciznije ratio:
+$ratio = $width / $height;
+
+Na primer:
+1920 / 1080 ≈ 1.777
+
+što je oko 16:9.
+EXIF orientation — mala zamka
+Kod JPEG fotografija sa telefona može postojati EXIF orientation metadata.
+Zato ponekad raw:
+getimagesize()
+
+kaže jednu širinu/visinu, a slika se vizuelno prikazuje rotirano.
+Kasnije kod image processing-a biblioteka može automatski ili eksplicitno primeniti orientation.
+Za sada samo zapamti da:
+pixel dimensions
+i
+visual orientation
+
+nisu uvek potpuno ista stvar kod JPEG fotografija.
+Pitanje
+Imamo dve slike:
+A:
+5 MB
+4000 × 3000
+
+B:
+3 MB
+12000 × 10000
+
+Koja je potencijalno opasnija za memory usage kada je otvorimo kroz GD i zašto?
+I drugo: da li bi pravilo:
+minimum 1200 × 800
+
+svrstao pre svega u security validation ili u business/quality validation?

@@ -1,0 +1,175 @@
+Lekcija 11 — Upload size: PHP limiti vs application limit
+Ovde postoji jedna važna stvar koju dosta ljudi pomeša.
+Recimo da naša aplikacija dozvoljava maksimalno:
+$maxSize = 5 * 1024 * 1024;
+
+odnosno 5 MB.
+Možemo proveriti:
+if ($file['size'] > $maxSize) {
+    $errors['photo'] =
+        'Photo must not exceed 5 MB.';
+}
+
+Ali PHP ima i svoje konfiguracione limite.
+Najvažniji su:
+upload_max_filesize
+post_max_size
+
+Recimo:
+upload_max_filesize = 2M
+post_max_size = 8M
+
+Ako ti aplikacija kaže:
+dozvoljavamo 5 MB
+
+ali PHP kaže:
+upload_max_filesize = 2M
+
+upload od 4 MB neće ni doći do tvoje application-level size validacije kao normalan uspešan upload.
+PHP ga odbija ranije.
+Zato postoje dva nivoa:
+PHP/server transport limit
+        +
+application/business limit
+
+UPLOAD_ERR_INI_SIZE
+Ako fajl pređe:
+upload_max_filesize
+
+u tipičnom slučaju ćeš dobiti:
+$file['error'] === UPLOAD_ERR_INI_SIZE
+
+Zato smo rekli:
+error ide pre size.
+
+Jer upload možda već nije kompletno prihvaćen.
+post_max_size
+Ovo je još zanimljivije.
+post_max_size ograničava ceo POST request, ne samo jedan fajl.
+Recimo:
+photo1 = 4 MB
+photo2 = 4 MB
+plus ostala multipart data
+
+Ako je:
+post_max_size = 6M
+
+ceo request može biti prevelik i PHP ga odbiti pre nego što aplikacija normalno obradi fajlove.
+Zato u realnim aplikacijama treba da postoji sklad između:
+post_max_size
+upload_max_filesize
+application max size
+
+Na primer ako aplikacija dozvoljava jedan file do 5 MB, nema smisla imati:
+upload_max_filesize = 2M
+
+$file['size'] vs filesize($tmp)
+Nakon uspešnog upload-a imaš:
+$file['size']
+
+koji predstavlja veličinu uploadovanog fajla u bytes.
+Možeš dodatno proveriti i temp fajl:
+$actualSize = filesize($file['tmp_name']);
+
+if ($actualSize === false) {
+    // filesystem problem
+}
+
+Za normalnu aplikaciju $file['size'] je standardni upload podatak koji PHP popunjava, ali ako radiš strožiji pipeline, ima smisla validirati i ono što stvarno postoji na filesystem-u.
+Minimum size
+Nije uvek dovoljno proveriti samo maksimum.
+Na primer:
+if ($file['size'] === 0) {
+    // suspicious / invalid
+}
+
+ili business rule:
+$minSize = 1024; // 1 KB
+
+Ipak, kod slika se obično više oslanjamo na validan upload + MIME + dekodiranje slike nego na neki proizvoljni minimum.
+Memory limit nije isto što i upload size
+Još jedna bitna razlika.
+Ako primiš JPEG od 5 MB i kasnije ga otvoriš kroz GD:
+imagecreatefromjpeg(...)
+
+slika u memoriji može zauzeti mnogo više od 5 MB.
+Na primer fajl može biti kompresovan na 5 MB, ali imati:
+8000 × 6000 px
+
+što je 48 miliona piksela.
+Dekodirana slika može trošiti ogromnu količinu RAM-a.
+Zato kod image upload-a size u bytes nije jedini relevantan limit.
+Kasnije ćemo proveravati i:
+width
+height
+pixel dimensions
+
+To je jako važno protiv accidental ili malicious memory exhaustion-a.
+Primer
+$file = $_FILES['photo'] ?? null;
+
+if ($file === null) {
+    $errors['photo'] = 'Photo is required.';
+} elseif ($file['error'] !== UPLOAD_ERR_OK) {
+    $errors['photo'] = 'Upload failed.';
+} else {
+    $maxSize = 5 * 1024 * 1024;
+
+    if ($file['size'] > $maxSize) {
+        $errors['photo'] =
+            'Photo must not exceed 5 MB.';
+    }
+}
+
+Kasnije ćemo error handling učiniti preciznijim po UPLOAD_ERR_* kodovima.
+Pitanje
+Pretpostavimo da aplikacija dozvoljava upload do 5 MB, ali server ima:
+upload_max_filesize = 2M
+post_max_size = 8M
+
+Korisnik šalje JPEG od 4 MB.
+Da li će kod:
+if ($file['size'] > 5 * 1024 * 1024) {
+    ...
+}
+
+uopšte biti glavno mesto gde će upload biti odbijen?
+I objasni razliku između:
+upload_max_filesize
+post_max_size
+application max size
+
+svojim rečima.
+
+---
+
+Postavljeni kod, nece biti mesto odbijanja nego Upload_error_ini_size iz $file['error']
+
+Zato smo i rekli da prvo ide provera upload error.
+
+upload_max_filesize jekonfiguracija php-a i odnosi sw na maksimalnu velicinu fajla.
+
+post_max_size odnosi se na ceo post request
+
+a  applixation max size je ono sto mi definisemo kroz aplikaciju
+
+---
+
+Tačno — 10/10.
+Odlično si uhvatio tri nivoa:
+upload_max_filesize
+→ PHP limit po jednom uploadovanom fajlu
+
+post_max_size
+→ PHP limit za ceo POST request
+
+application max size
+→ naše pravilo unutar aplikacije
+
+I da, u ovom primeru:
+upload_max_filesize = 2M
+
+a user šalje 4 MB, glavni signal će biti:
+$file['error'] === UPLOAD_ERR_INI_SIZE
+
+zato application proveru od 5 MB ni ne posmatramo kao prvu liniju odbrane.

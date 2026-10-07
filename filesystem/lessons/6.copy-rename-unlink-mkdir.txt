@@ -131,3 +131,65 @@ unlink($old);
 i šta bi se desilo sa originalnim avatar.webp fajlom nakon svake od te tri operacije.
 
 ---
+
+U našem primeru:
+$old = __DIR__ . '/uploads/15/avatar.webp';
+$new = __DIR__ . '/uploads/15/avatar-new.webp';
+
+ovo:
+copy($old, $new);
+
+znači:
+avatar.webp
+→ ostaje gde jeste
+
+avatar-new.webp
+→ dobija kopiju sadržaja avatar.webp
+
+Dakle source $old se ne dira.
+Ako $new već postoji, onda copy() može pregaziti baš destination $new, ne $old.
+Znači:
+copy($old, $new)
+
+pre:
+avatar.webp
+
+posle:
+avatar.webp
+avatar-new.webp
+
+Kod:
+rename($old, $new);
+
+pošto je isti direktorijum, praktično menja ime:
+pre:
+avatar.webp
+
+posle:
+avatar-new.webp
+
+Originalna putanja:
+avatar.webp
+
+više ne postoji.
+Da je $new bio u drugom direktorijumu, rename() bi praktično radio move.
+A:
+unlink($old);
+
+briše samo:
+avatar.webp
+
+i direktorijum ostaje netaknut. Za prazan direktorijum koristimo:
+rmdir($dir);
+
+Dakle ukratko:
+copy()
+→ source ostaje
+→ destination dobija kopiju
+
+rename()
+→ source prestaje da postoji na staroj putanji
+→ fajl dobija novo ime / lokaciju
+
+unlink()
+→ fajl se briše

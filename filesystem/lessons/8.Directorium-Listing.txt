@@ -1,0 +1,168 @@
+Lekcija 8 — Listing direktorijuma: scandir(), glob() i iteracija
+Recimo da imamo:
+uploads/
+    avatar.webp
+    document.pdf
+    old.txt
+
+Najjednostavnije:
+$files = scandir(__DIR__ . '/uploads');
+
+Može vratiti nešto poput:
+[
+    '.',
+    '..',
+    'avatar.webp',
+    'document.pdf',
+    'old.txt',
+]
+
+Ove dve stavke:
+.
+..
+
+znače:
+.  → trenutni direktorijum
+.. → parent direktorijum
+
+pa ih obično filtriramo.
+Na primer:
+$dir = __DIR__ . '/uploads';
+
+$items = scandir($dir);
+
+if ($items === false) {
+    throw new RuntimeException('Could not read directory.');
+}
+
+foreach ($items as $item) {
+    if ($item === '.' || $item === '..') {
+        continue;
+    }
+
+    $path = $dir . '/' . $item;
+
+    if (is_file($path)) {
+        echo $item;
+    }
+}
+
+Važno je što scandir() vraća imena stavki, ne automatski pune putanje.
+Zato:
+$item
+
+može biti:
+avatar.webp
+
+a tek ti praviš:
+$path = $dir . '/' . $item;
+
+glob()
+Ako želiš pattern matching:
+$images = glob(
+    __DIR__ . '/uploads/*.webp'
+);
+
+može vratiti:
+[
+    '/.../uploads/avatar.webp',
+    '/.../uploads/hotel.webp',
+]
+
+Možeš tražiti više ekstenzija:
+$images = glob(
+    __DIR__ . '/uploads/*.{jpg,jpeg,png,webp}',
+    GLOB_BRACE
+);
+
+To je zgodno kada želiš određene tipove fajlova.
+Ali ekstenzija nije MIME validation
+Ovo je veoma važno.
+glob('*.jpg')
+
+samo znači:
+filename završava na .jpg
+
+Ne znači:
+ovo je zaista JPEG slika.
+
+Isto kao kod upload-a:
+extension
+≠
+trusted MIME/content type
+
+Za filesystem listing je extension filtering sasvim legitimno ako samo želiš organizaciju fajlova, ali ne koristiš ga kao security dokaz o sadržaju.
+opendir() / readdir()
+Postoji i niži nivo:
+$handle = opendir($dir);
+
+if ($handle === false) {
+    // error
+}
+
+while (($item = readdir($handle)) !== false) {
+    // process
+}
+
+closedir($handle);
+
+Mentalno je slično:
+scandir()
+→ učitaj listing kao array
+
+opendir/readdir
+→ iterativno čitaj entries
+
+Za većinu običnih direktorijuma scandir() je sasvim dovoljan i čitljiviji.
+Pitanje
+Pretpostavimo:
+$items = scandir(__DIR__ . '/uploads');
+
+Objasni:
+1. zašto će se pojaviti . i ..,
+2. zašto ih obično preskačemo,
+3. zašto posle scandir() i dalje često koristimo is_file() ili is_dir(),
+4. i koja je razlika između:
+scandir($dir)
+
+i:
+glob($dir . '/*.webp')
+
+---
+
+scandir() ce "skenirati" direktorijum i vratiti imena stavki (ne pune putanje) dok glob() radi parent matching, u ovom datom slucaju, vraca sve fajlove koji se zavrsavaju na .webp
+
+1. Stavke '.' i '..' oznacavaju . -> trenutni direktorijum a .. -> parent dir
+2. U iteracijama stavke navedene pod 1 cesto preskacemo jer nam samo trebaju imena fajlova od kojih cemo napraviti putanje.
+3. Koristimovi dalje is_file / is_dir jer uvek zelimo da proverimo da li je regularan fajl i da li dir postoji.
+4. Objasnio na pocetku
+Vrlo dobro — 9.4/10. Suštinu si uhvatio, samo dve sitne korekcije.
+
+Prvo, glob() radi pattern matching, ne “parent matching”. U našem primeru:
+
+glob($dir . '/*.webp')
+
+traži sve stavke koje odgovaraju obrascu *.webp.
+
+Drugo, kod treće tačke razlog za is_file() / is_dir() nije samo da proverimo da li nešto postoji, nego da utvrdimo kog je tipa pronađena stavka. scandir() može vratiti i fajlove i direktorijume, pa:
+
+$path = $dir . '/' . $item;
+
+if (is_file($path)) {
+    // regular file
+}
+
+if (is_dir($path)) {
+    // directory
+}
+
+Dakle mentalno:
+
+scandir()
+→ vrati entries direktorijuma
+
+is_file()/is_dir()
+→ utvrdi šta je svaki entry
+
+glob()
+→ vrati entries koji odgovaraju pattern-u

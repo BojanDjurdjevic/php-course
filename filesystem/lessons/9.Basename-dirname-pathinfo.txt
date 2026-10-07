@@ -1,0 +1,198 @@
+Lekcija 9 — basename(), dirname(), pathinfo() i rad sa putanjama
+Ovo će nam biti baš važno kada krenemo na upload fajlova.
+
+Pretpostavimo:
+
+$path = '/var/www/app/uploads/users/15/avatar.webp';
+
+basename()
+basename($path);
+
+vraća poslednji deo putanje:
+
+avatar.webp
+Dakle:
+
+$filename = basename($path);
+
+koristiš kada te zanima samo naziv fajla.
+
+dirname()
+dirname($path);
+
+vraća parent direktorijum:
+
+/var/www/app/uploads/users/15
+Možeš i više nivoa:
+
+dirname($path, 2);
+
+što ide dva parent nivoa gore.
+
+pathinfo()
+Ovo je veoma korisno:
+
+$info = pathinfo($path);
+
+može dati približno:
+
+[
+    'dirname' => '/var/www/app/uploads/users/15',
+    'basename' => 'avatar.webp',
+    'extension' => 'webp',
+    'filename' => 'avatar',
+]
+
+Možeš uzeti samo jedan deo:
+
+$extension = pathinfo(
+    $path,
+    PATHINFO_EXTENSION
+);
+
+ili:
+
+$name = pathinfo(
+    $path,
+    PATHINFO_FILENAME
+);
+
+Ali opet: extension nije MIME type
+Ako imamo:
+
+evil.php.jpg
+onda:
+
+pathinfo($path, PATHINFO_EXTENSION)
+
+daje:
+
+jpg
+To govori samo kako se filename završava.
+
+Ne govori šta se stvarno nalazi u fajlu.
+
+Zato kod upload security-ja:
+
+extension
+≠
+trusted file type
+Kasnije ćemo koristiti:
+
+finfo_file(...)
+
+odnosno Fileinfo extension, da proveravamo MIME na osnovu sadržaja fajla.
+
+basename() i user input
+Recimo:
+
+$userInput = '../../secret.txt';
+
+echo basename($userInput);
+
+dobio bi:
+
+secret.txt
+Zato basename() može pomoći kada očekuješ isključivo filename.
+
+Ali kao što smo već rekli:
+
+basename()
+nije kompletna filesystem security strategija
+Bolje je da user ne kontroliše putanju uopšte.
+
+Generisani filename
+Za upload ne želimo slepo da čuvamo originalni naziv:
+
+my summer photo (final!!!).jpg
+još manje:
+
+../../something.php
+Mnogo zdraviji obrazac je:
+
+$filename =
+    bin2hex(random_bytes(16))
+    . '.webp';
+
+na primer:
+
+a83f1c90d421f8335c2e87d9fc7f3ac1.webp
+Tada server kontroliše storage filename.
+
+Originalni naziv možeš eventualno čuvati posebno u bazi radi prikaza:
+
+original_name
+stored_name
+To su dve različite stvari.
+
+Pitanje
+Za putanju:
+
+$path = '/var/www/app/uploads/users/15/avatar.profile.webp';
+
+šta bi vratili:
+
+basename($path)
+
+dirname($path)
+
+pathinfo($path, PATHINFO_EXTENSION)
+
+pathinfo($path, PATHINFO_FILENAME)
+
+I drugo: zašto rezultat:
+
+PATHINFO_EXTENSION === 'jpg'
+
+nije dovoljan dokaz da je upload zaista JPEG slika?
+
+---
+
+Za:
+$path = '/var/www/app/uploads/users/15/avatar.profile.webp';
+
+dobijamo:
+basename($path);
+// avatar.profile.webp
+
+Tačno.
+dirname($path);
+// /var/www/app/uploads/users/15
+
+Tačno.
+pathinfo($path, PATHINFO_EXTENSION);
+// webp
+
+Tačno.
+Ali:
+pathinfo($path, PATHINFO_FILENAME);
+
+ne vraća isto što i basename().
+Vraća:
+avatar.profile
+
+Dakle:
+basename
+→ avatar.profile.webp
+
+filename
+→ avatar.profile
+
+extension
+→ webp
+
+To je važna razlika koju vredi znati napamet.
+I drugi deo ti je konceptualno potpuno tačan: ekstenzija govori samo šta piše u nazivu fajla, ne šta je stvarni sadržaj.
+Samo naziv PHP funkcije: nije file_finfo, nego tipično koristiš:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+$mime = $finfo->file($path);
+
+ili proceduralno:
+$finfo = finfo_open(FILEINFO_MIME_TYPE);
+
+$mime = finfo_file($finfo, $path);
+
+finfo_close($finfo);
+
+Za moderniji kod meni je objektna varijanta sasvim lepa.

@@ -1,0 +1,214 @@
+Lekcija 7 — Path traversal i bezbedne putanje
+Sad dolazimo do jedne od najvažnijih security tema filesystem modula.
+Ovaj kod je opasan:
+$file = $_GET['file'] ?? '';
+
+$path = __DIR__ . '/uploads/' . $file;
+
+$content = file_get_contents($path);
+
+Naizgled očekujemo:
+?file=avatar.webp
+
+pa dobijemo:
+.../uploads/avatar.webp
+
+Ali user kontroliše $file.
+Može pokušati:
+?file=../../config.php
+
+pa putanja konceptualno postaje:
+/uploads/../../config.php
+
+Filesystem rešava .. kao:
+idi jedan direktorijum iznad.
+
+I tako napadač pokušava da izađe iz dozvoljenog uploads direktorijuma.
+To je path traversal / directory traversal.
+Najbolja zaštita: nemoj ni prihvatati putanju od korisnika
+Mnogo bolji API je:
+/download.php?id=52
+
+onda:
+$file = $repository->findById(52);
+
+iz baze dobiješ nešto poput:
+uploads/users/15/document.pdf
+
+proveriš:
+da li file postoji
+da li trenutni user ima pravo na njega
+
+i tek onda radiš filesystem operaciju.
+Drugim rečima:
+user input
+→ ID
+
+server/database
+→ određuje path
+
+umesto:
+user input
+→ direktno određuje path
+
+To je mnogo zdraviji dizajn.
+basename() — korisno, ali ograničeno
+Ako stvarno očekuješ samo filename:
+$file = basename($_GET['file'] ?? '');
+
+na primer:
+../../secret.txt
+
+može postati:
+secret.txt
+
+To sprečava jednostavno korišćenje directory komponenti.
+Ali basename() nije univerzalna security strategija za svaki filesystem scenario.
+Mnogo bolje je razmišljati:
+Koje vrednosti uopšte dopuštam?
+
+Na primer generated filenames koje je kreirala aplikacija.
+realpath() + base directory check
+Pretpostavimo da fajl već mora postojati.
+Možemo:
+$baseDir = realpath(__DIR__ . '/uploads');
+
+$requested = realpath(
+    __DIR__ . '/uploads/' . $file
+);
+
+Ako realpath() vrati false:
+if ($requested === false) {
+    // file doesn't exist / path invalid
+}
+
+A onda proverimo da resolved path zaista ostaje unutar dozvoljenog direktorijuma.
+Konceptualno:
+BASE:
+/var/www/app/uploads
+
+REQUESTED:
+/var/www/app/uploads/users/avatar.webp
+→ OK
+
+
+REQUESTED:
+/var/www/app/config.php
+→ NIJE unutar uploads
+
+Ali ovde treba biti pažljiv sa pravilnim path boundary proverama; običan naivan str_starts_with() može imati edge case sa sličnim prefiksima ako ne normalizuješ separator/boundary kako treba.
+Za sada želim da zapamtiš prvenstveno:
+realpath()
+→ canonical resolved existing path
+
+i onda proveri:
+→ da li je i dalje unutar dozvoljenog base direktorijuma?
+
+User ID u putanji
+Ovo:
+$userId = 15;
+
+$dir = __DIR__ . "/uploads/$userId";
+
+je mnogo sigurnije kada $userId dolazi iz authenticated server-side session/modela.
+Ali ako radiš:
+$userId = $_GET['user_id'];
+
+i onda pristupaš:
+"/uploads/$userId"
+
+opet imaš problem ako nisi validirao i autorizovao pristup.
+Čak i ako je:
+user_id=16
+
+savršeno validan integer, ostaje pitanje:
+Da li user 15 sme da pristupa folderu usera 16?
+
+To više nije path validation, nego authorization.
+Opet isti princip iz Modula 3:
+valid input
+≠
+authorized action
+
+Pitanje
+Šta je bezbednosno problematično u ovom kodu?
+$file = $_GET['file'] ?? '';
+
+$path = __DIR__ . '/uploads/' . $file;
+
+if (is_file($path)) {
+    echo file_get_contents($path);
+}
+
+I koje bi ti rešenje preferirao:
+1. pokušavati da „sanitizuješ“ $file,
+2. ili da user šalje neki file_id, a server iz baze pronađe stvarnu putanju?
+Objasni zašto.
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+јуче 21:46
+U kodu je problematicno sto ni na koji nacin se ne proverava korisnicki input. Dakle, korisnik moze poslati nesto tipa /../../config.php i tako izvrsiti path traversal.
+
+Mozemo koristiti neku vrstu sanitizacije, mogao bi se koristiti i basename() i realpath() ali realni, najbolje je uopste ne verovati inputu, nego uzeti ga a zatim proveriti da li fajl postoji i da li user ima pravo na njega. Odnosno da server iz baze na pronadje pravu putanju.
+
+
+
+
+
+ 
+
+
+
+
+
+
+Tačno — 9.5/10.
+Najvažniji deo si pogodio: problem nije samo u tome što input „nije validiran“, nego što user direktno utiče na filesystem putanju:
+$path = __DIR__ . '/uploads/' . $file;
+
+To otvara prostor za:
+../../config.php
+../../../.env
+
+odnosno path traversal.
+I slažem se sa tvojim izborom: radije bih dizajnirao API ovako:
+/download.php?file_id=52
+
+pa:
+file_id
+↓
+validacija ID-a
+↓
+DB lookup
+↓
+authorization
+↓
+server dobija stored path
+↓
+filesystem operacija
+
+nego pokušavao da korisnički filename „čistim“ dok ne postane bezbedan.
+basename() i realpath() jesu korisni dodatni alati, ali su defense-in-depth, ne zamena za dobar dizajn.
+I još jedna nijansa: čak i path iz baze ne bih smatrao apsolutno svetim. Aplikacija ga je verovatno sama upisala, ali kod osetljivih operacija i dalje može imati smisla proveriti da resolved path ostaje unutar očekivanog storage direktorijuma.
+Mentalno:
+valid file_id
+≠
+authorized file
+
+authorized file
+≠
+automatski valid filesystem path
+
+Svaki sloj ima svoju odgovornost.
