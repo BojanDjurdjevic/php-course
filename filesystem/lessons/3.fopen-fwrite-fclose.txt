@@ -1,0 +1,149 @@
+Lekcija 3 — fopen(), fread(), fwrite(), fclose()
+
+file_get_contents() i file_put_contents() su odlični kada želiš da odjednom pročitaš ili upišeš sadržaj.
+Ali PHP ima i niži nivo rada preko file handle-a.
+Na primer:
+$handle = fopen($path, 'r');
+
+fopen() otvara fajl i vraća resource/stream handle koji koristiš za dalje operacije.
+Ako ne uspe:
+false
+
+pa:
+$handle = fopen($path, 'r');
+
+if ($handle === false) {
+    throw new RuntimeException('Could not open file.');
+}
+
+Onda možeš:
+$content = fread(
+    $handle,
+    filesize($path)
+);
+
+i na kraju:
+fclose($handle);
+
+Mentalno:
+fopen
+↓
+dobiješ handle
+↓
+read/write
+↓
+fclose
+
+Modes su veoma važni
+Na primer:
+fopen($path, 'r');
+
+znači:
+read only
+file mora postojati
+
+fopen($path, 'w');
+
+znači:
+write
+ako postoji → truncate na 0 bytes
+ako ne postoji → napravi
+
+Ovo je važna zamka: 'w' briše postojeći sadržaj čim otvoriš fajl.
+fopen($path, 'a');
+
+znači:
+append
+piši na kraj
+napravi fajl ako ne postoji
+
+fopen($path, 'x');
+
+je zanimljiv:
+create for writing
+ali FAIL ako fajl već postoji
+
+To može biti korisno kada ne želiš accidental overwrite.
+Postoje i + varijante:
+r+ → read + write
+w+ → read + write, truncate/create
+a+ → read + append
+
+Za sada mi je najvažnije da bez gledanja znaš:
+r → read
+w → write + overwrite/truncate
+a → append
+x → create only if nonexistent
+
+fwrite()
+Primer:
+$handle = fopen($path, 'a');
+
+if ($handle === false) {
+    throw new RuntimeException('Could not open file.');
+}
+
+$bytes = fwrite(
+    $handle,
+    "New log line\n"
+);
+
+if ($bytes === false) {
+    fclose($handle);
+
+    throw new RuntimeException('Could not write file.');
+}
+
+fclose($handle);
+
+I fwrite() opet vraća:
+int broj upisanih bytes
+ili false
+
+Kada koristiti shortcut funkcije, a kada handle?
+Za običan mali config/text fajl:
+file_get_contents()
+file_put_contents()
+
+su često najčistije.
+Za veliki fajl, streaming, parcijalno čitanje/pisanje, iterativnu obradu ili finiju kontrolu:
+fopen()
+fread()
+fgets()
+fwrite()
+fclose()
+
+imaju više smisla.
+Na primer ogroman log fajl ne želiš nužno ceo da ubaciš u RAM preko:
+file_get_contents($hugeFile);
+
+nego možeš da ga čitaš liniju po liniju.
+Pitanje
+Šta će se desiti ako imamo fajl:
+notes.txt
+
+Hello Bojan
+
+i uradimo:
+$handle = fopen($path, 'w');
+
+fwrite($handle, 'PHP');
+
+fclose($handle);
+
+A šta bi bilo drugačije da smo koristili:
+fopen($path, 'a');
+
+Objasni razliku između w i a svojim rečima.
+
+---
+
+w
+→ write
+→ create ako ne postoji
+→ truncate ako postoji
+
+a
+→ append
+→ create ako ne postoji
+→ ne briše postojeći sadržaj

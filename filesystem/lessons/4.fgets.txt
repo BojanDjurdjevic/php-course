@@ -1,0 +1,95 @@
+Lekcija 4 — fgets(), čitanje liniju po liniju i veliki fajlovi
+Pretpostavimo log fajl:
+2026-10-06 User 15 logged in
+2026-10-06 User 21 booked room 8
+2026-10-06 User 15 logged out
+
+Možemo ceo fajl učitati:
+$content = file_get_contents($path);
+
+Ali ako fajl ima 2 GB, to nije baš dobra ideja jer pokušavaš da ceo sadržaj ubaciš u memoriju.
+Zato:
+$handle = fopen($path, 'r');
+
+if ($handle === false) {
+    throw new RuntimeException('Could not open file.');
+}
+
+while (($line = fgets($handle)) !== false) {
+    // obradi jednu liniju
+}
+
+fclose($handle);
+
+Ovde je opet važan strict comparison:
+($line = fgets($handle)) !== false
+
+jer fgets() vraća string za pročitanu liniju, a false kada nema više podataka ili čitanje ne uspe.
+Ovo je streaming mentalni model:
+otvori fajl
+↓
+čitaj mali deo
+↓
+obradi
+↓
+čitaj sledeći
+↓
+zatvori fajl
+
+Prednost je što memory usage ostaje mali čak i ako je fajl ogroman.
+Možemo i:
+while (!feof($handle)) {
+    $line = fgets($handle);
+
+    if ($line === false) {
+        break;
+    }
+
+    // ...
+}
+
+ali meni je prvi obrazac često elegantniji.
+Još jedna sitnica: fgets() tipično zadržava newline:
+"2026-10-06 User logged in\n"
+
+pa ako ga ne želiš:
+$line = rtrim($line, "\r\n");
+
+Ne bih radio običan:
+trim($line)
+
+bez razloga ako whitespace unutar značenja linije može biti bitan; rtrim($line, "\r\n") precizno uklanja line ending.
+Pitanje
+Zašto bi za ogroman log fajl radije koristio:
+fopen() + fgets()
+
+nego:
+file_get_contents()
+
+i šta dobijaš kao return value iz fgets() kada uspešno pročita liniju, a šta kada više nema šta da pročita / čitanje ne uspe?
+
+---
+
+file_get_contents()
+→ učitava ceo fajl u memoriju
+
+fopen() + fgets()
+→ čita mali deo po mali deo
+→ mnogo manji memory footprint
+
+Za male fajlove file_get_contents() može čak biti jednostavniji i sasvim brz. Problem nastaje kada fajl postane velik.
+I return vrednosti si dobro rekao:
+$line = fgets($handle);
+
+uspeh:
+string
+
+failure / EOF:
+false
+
+zato:
+while (($line = fgets($handle)) !== false) {
+    // obrada
+}
+
+opet koristimo strict comparison.

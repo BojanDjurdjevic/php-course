@@ -1,0 +1,133 @@
+Lekcija 6 — copy(), rename(), unlink(), rmdir()
+Sada prelazimo na manipulisanje fajlovima.
+copy()
+Ako želiš kopiju fajla:
+$source = __DIR__ . '/storage/report.txt';
+$destination = __DIR__ . '/backup/report.txt';
+
+$result = copy($source, $destination);
+
+Na uspeh:
+true
+
+na failure:
+false
+
+Bitno: ako destination fajl već postoji, copy() ga može pregaziti.
+Zato ako overwrite nije dozvoljen:
+if (file_exists($destination)) {
+    // reject
+}
+
+pa tek onda copy().
+rename()
+rename($oldPath, $newPath);
+
+može služiti i za rename i za move.
+Na primer:
+rename(
+    __DIR__ . '/storage/a.txt',
+    __DIR__ . '/storage/b.txt'
+);
+
+menja ime.
+Ali:
+rename(
+    __DIR__ . '/storage/a.txt',
+    __DIR__ . '/archive/a.txt'
+);
+
+praktično pomera fajl u drugi direktorijum.
+Na uspeh vraća:
+true
+
+inače:
+false
+
+unlink()
+Za brisanje fajla:
+unlink($path);
+
+Važno: unlink() briše fajl, ne direktorijum.
+Zato često:
+if (is_file($path)) {
+    if (!unlink($path)) {
+        // delete failed
+    }
+}
+
+Ne bih slepo radio:
+unlink($_GET['file']);
+
+jer smo već rekli da user-controlled path + filesystem operacije mogu biti ozbiljan security problem.
+rmdir()
+Za direktorijum:
+rmdir($dir);
+
+ali postoji važna stvar:
+rmdir() po default-u radi samo ako je direktorijum prazan.
+
+Dakle:
+uploads/15/
+    avatar.webp
+
+ne možeš samo:
+rmdir('uploads/15');
+
+dok avatar.webp još postoji.
+Moraš prvo:
+unlink($avatar);
+
+pa onda:
+rmdir($userDir);
+
+To je isti obrazac koji si već praktično koristio kod image cleanup-a u svojim projektima.
+Delete file vs delete DB row
+Ovo je realna web-app tema.
+Recimo DB ima:
+users.avatar = uploads/15/avatar.webp
+
+Ako updateuješ avatar, moraš razmišljati o oba sistema:
+DATABASE
+FILESYSTEM
+
+Ako obrišeš DB path, a ne obrišeš fajl:
+orphan file
+
+Ako obrišeš fajl, a DB update padne:
+DB pokazuje na nepostojeći fajl
+
+Dakle filesystem operacije i DB transakcije nisu automatski jedna ACID transakcija. To kasnije zahteva pažljiv redosled i cleanup strategiju.
+Tipičan avatar replace flow
+Recimo user ima:
+old avatar
+→ uploads/15/old.webp
+
+i uploaduje novi.
+Često je sigurnije:
+1. validiraj novi upload
+2. sačuvaj novi fajl
+3. update DB na novi path
+4. ako je DB uspeo → obriši stari fajl
+
+nego:
+1. obriši stari fajl
+2. pokušaj da sačuvaš novi
+
+jer ako korak 2 padne, user ostaje bez starog avatara.
+To je važan princip:
+Ne uništavaj postojeće validno stanje pre nego što znaš da je zamena uspešna.
+
+Pitanje
+Imamo:
+$old = __DIR__ . '/uploads/15/avatar.webp';
+$new = __DIR__ . '/uploads/15/avatar-new.webp';
+
+Objasni razliku između:
+copy($old, $new);
+rename($old, $new);
+unlink($old);
+
+i šta bi se desilo sa originalnim avatar.webp fajlom nakon svake od te tri operacije.
+
+---

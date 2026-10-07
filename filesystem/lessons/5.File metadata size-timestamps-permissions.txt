@@ -1,0 +1,178 @@
+Lekcija 5 — File metadata: size, timestamps, permissions
+
+Sada prelazimo na informacije o fajlu, a ne njegov sadržaj.
+Pretpostavimo:
+$path = __DIR__ . '/storage/report.txt';
+
+filesize()
+$size = filesize($path);
+
+vraća veličinu fajla u bytes.
+Na primer:
+$size = 1048576;
+
+je otprilike:
+1 MB
+
+Praktično:
+$maxSize = 5 * 1024 * 1024;
+
+if (filesize($path) > $maxSize) {
+    // too large
+}
+
+Isto smo koristili kod:
+$_FILES['photo']['size']
+
+ali ovde proveravamo već postojeći fajl na filesystem-u.
+filemtime()
+$modifiedAt = filemtime($path);
+
+vraća Unix timestamp poslednje izmene fajla.
+Na primer:
+echo date('Y-m-d H:i:s', $modifiedAt);
+
+Može biti korisno za:
+cache invalidation
+last modified prikaz
+cleanup starih fajlova
+
+is_readable() i is_writable()
+is_readable($path);
+
+pita:
+Da li trenutni PHP proces može da čita ovu putanju?
+
+is_writable($path);
+
+pita:
+Da li PHP proces može da piše na ovu putanju?
+
+To je bitnije od pitanja:
+"Da li fajl samo postoji?"
+
+Jer možeš imati:
+file_exists($path) === true
+
+ali PHP nema permission da ga pročita.
+Permissions
+Na Linux/Unix sistemima često ćeš videti nešto poput:
+755
+644
+775
+
+Za direktorijume je često:
+755
+
+a za fajlove:
+644
+
+vrlo čest default obrazac.
+Neću još da te zatrpavam Unix permission bitovima do detalja, ali osnovno:
+r = read
+w = write
+x = execute
+
+i permissions se odnose na:
+owner
+group
+others
+
+Kod direktorijuma x praktično znači da možeš da „uđeš/traverse-uješ“ direktorijum.
+Zato direktorijum često ima:
+755
+
+dok običan text/image fajl često nema execute permission.
+chmod()
+PHP može:
+chmod($path, 0644);
+
+ili za direktorijum:
+chmod($dir, 0755);
+
+Ali važno:
+Ne treba nasumično stavljati 0777 samo zato što nešto „ne radi“.
+
+To je veoma česta loša praksa.
+0777 znači veoma široke permissions i često je nepotrebno.
+Bolje je razumeti ko je owner, koja grupa koristi fajl i koje minimalne dozvole su stvarno potrebne.
+Metadata funkcije mogu vratiti false
+Na primer:
+$size = filesize($path);
+
+if ($size === false) {
+    // could not get size
+}
+
+Isto važi za filemtime().
+Opet isti PHP pattern:
+success → konkretna vrednost
+failure → false
+
+Pitanje
+Pretpostavimo:
+$path = __DIR__ . '/storage/report.txt';
+
+Objasni razliku između:
+file_exists($path)
+is_readable($path)
+is_writable($path)
+filesize($path)
+filemtime($path)
+
+i posebno: zašto file_exists() sam po sebi nije dovoljan dokaz da PHP stvarno može da pročita ili izmeni fajl?
+
+---
+
+file_exists($path) -> samo proverava da li fajl postoji ali nije dovoljan za čitanje i pisanje jer ne pita ništa o dozvolama za čitanje i pisanje
+
+is_readable($path) -> konkretno pita ima li php dozvolu da čita fajl
+
+is_writable($path) -> konkretno pita da li php ima dozvolu da upisuje u fajl
+
+filesize($path) -> vraća veličinu fajla ili failure
+
+filemtime($path) -> ispisuje unix vreme poslednje izmene fajla ili false
+Tačno — 9.5/10. Sve si suštinski pogodio; samo dve male terminološke korekcije.
+
+filesize($path) ne vraća samo „veličinu ili failure“, nego konkretno:
+
+int $bytes
+
+na uspeh, odnosno:
+
+false
+
+na neuspeh.
+
+A filemtime($path) ne „ispisuje“ vreme, nego vraća Unix timestamp poslednje izmene:
+
+$modifiedAt = filemtime($path);
+
+na primer:
+
+1760000000
+
+pa ga tek ti pretvaraš u čitljiv datum:
+
+if ($modifiedAt !== false) {
+    echo date('Y-m-d H:i:s', $modifiedAt);
+}
+
+Dakle mentalni pregled:
+
+file_exists()
+→ postoji li putanja
+
+is_readable()
+→ sme li PHP proces da čita
+
+is_writable()
+→ sme li PHP proces da piše
+
+filesize()
+→ veličina u bytes | false
+
+filemtime()
+→ Unix timestamp poslednje izmene | false
+I da — ključna stvar je upravo to što si rekao: postojanje nije isto što i dozvola za korišćenje.
