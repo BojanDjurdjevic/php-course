@@ -1,5 +1,7 @@
 Lekcija 13 — Dimenzije slike, megapikseli i memory risk
+
 Sad ćemo malo preciznije da razdvojimo tri stvari:
+
 file size
 dimensions
 decoded memory
@@ -140,3 +142,29 @@ I drugo: da li bi pravilo:
 minimum 1200 × 800
 
 svrstao pre svega u security validation ili u business/quality validation?
+
+---
+
+Prvo: Slika od 3MB ali sa 12000 x 10000 bi svakako bila opasnija za memory usage, 
+zato se ne oslanjamo samo na $file['size'] nego proveravamo i $imageInfo = getimagesize($file['tmp_name']); 
+pa $imageInfo[0] za width i $imageInfo[1] za height.
+
+Drugo: ako govorimo o pravilu min resolution, to ne bismo svrstali u security validation nego u bussines pravilo, 
+samo po sebi neće naštetiti memoriji ali ako aplikacija zahteva neki minimum coverage, to je onda bussines rule
+
+---
+
+Tačno — 10/10. Obe stvari si sada potpuno jasno razdvojio.
+
+Kod slike B:
+
+3 MB
+12000 × 10000
+problem je što je upload fajl kompresovan, ali pri dekodiranju u memoriji biblioteka radi sa ogromnim brojem piksela. 
+Zato $file['size'] i memory cost nisu isto.
+
+I drugo: pravilo tipa:
+
+minimum 1200 × 800
+je pre svega business/quality validation. Ne štiti sistem od velikog memory usage-a; 
+samo kaže da slika mora biti dovoljno kvalitetna za namenu.
