@@ -1,0 +1,228 @@
+Lekcija 29 — Disk space, storage quotas i zašto validan upload ipak može da padne
+Do sada smo uglavnom gledali:
+Da li je korisnikov fajl validan?
+
+Ali postoji i druga strana:
+Da li server uopšte može da ga sačuva?
+
+Zamisli da upload prođe sve:
+error ✅
+size ✅
+MIME ✅
+dimensions ✅
+decode ✅
+
+a server disk je pun.
+Onda:
+imagewebp(...)
+
+ili:
+file_put_contents(...)
+
+može da padne.
+Zato validacija upload-a nikada nije garancija da će persistence uspeti.
+To je isti obrazac koji stalno ponavljamo:
+valid input
+≠
+successful side effect
+
+disk_free_space()
+PHP može da pita filesystem koliko slobodnog prostora ima:
+$free = disk_free_space($uploadDir);
+
+Na uspeh dobijaš broj bytes, a na failure:
+false
+
+Postoji i:
+$total = disk_total_space($uploadDir);
+
+za ukupan kapacitet filesystem-a.
+Na primer:
+$free = disk_free_space($uploadDir);
+
+if ($free === false) {
+    throw new RuntimeException(
+        'Could not determine free disk space.'
+    );
+}
+
+Međutim, ne bih za svaki običan upload pravio:
+if ($free > $fileSize) {
+    // definitely safe
+}
+
+i smatrao problem rešenim.
+Zašto? Zato što između provere i stvarnog write-a drugi proces može potrošiti prostor.
+Opet:
+check
+↓
+vreme prolazi
+↓
+use
+
+TOCTOU.
+Dakle, pre-check može pomoći, ali rezultat stvarnog write-a ostaje konačna istina.
+Storage quota na application nivou
+Ovo je druga tema.
+Recimo da supplier u BookYourHotel-u ima pravilo:
+maksimalno 100 hotelskih fotografija
+ili
+maksimalno 500 MB ukupnog storage-a
+
+To nije filesystem limitation.
+To je:
+business rule / application quota
+
+Na primer:
+$currentUsage = $repository->getStorageUsage($supplierId);
+
+if ($currentUsage + $newFileSize > $quota) {
+    $errors['photos'] =
+        'Storage quota exceeded.';
+}
+
+Dakle opet dva različita sloja:
+server disk capacity
+→ infrastructure concern
+
+supplier max 500 MB
+→ business rule
+
+Original size vs processed size
+Još jedna nijansa kod tvoje hotel galerije.
+User pošalje:
+JPEG 4 MB
+
+ali nakon:
+resize + WebP
+
+dobiješ:
+WebP 450 KB
+
+Ako quota meri ono što stvarno zauzima tvoj storage, onda treba računati:
+processed stored file size
+
+a ne nužno originalni upload size.
+Možeš posle encode-a:
+$storedSize = filesize($destination);
+
+if ($storedSize === false) {
+    // metadata read failed
+}
+
+i to upisati u DB.
+Zašto je korisno čuvati size u DB?
+Recimo tabela:
+hotel_images
+
+id
+hotel_id
+path
+mime
+size
+width
+height
+created_at
+
+Ako već prilikom upload-a znaš:
+size
+width
+height
+mime
+
+ne moraš svaki put kasnije da udaraš filesystem:
+filesize(...)
+getimagesize(...)
+
+za prikaz metadata ili računanje ukupne kvote.
+Možeš:
+SELECT SUM(size)
+FROM hotel_images
+WHERE hotel_id = ?
+
+To je mnogo efikasnije.
+Naravno, DB metadata može vremenom postati nesinhronizovana ako neko ručno dira fajlove na serveru, ali aplikacija normalno treba da kontroliše lifecycle.
+Failure tokom finalnog write-a
+Čak i ako smo pre toga imali:
+disk_free_space(...)
+
+i sve izgleda dobro, i dalje proveravamo:
+$result = imagewebp(
+    $image,
+    $destination,
+    82
+);
+
+if (!$result) {
+    throw new RuntimeException(
+        'Could not save processed image.'
+    );
+}
+
+Dakle:
+pre-check
+→ može pomoći
+
+actual operation return value
+→ odlučuje da li je operacija stvarno uspela
+
+To ti je isti princip kao:
+is_file()
+
+pre:
+file_get_contents()
+
+koji smo imali još na početku modula.
+Pitanje
+Pretpostavimo da supplier ima application quota od 500 MB, a server disk trenutno ima još 30 GB slobodno.
+Supplier je već potrošio:
+499 MB
+
+i pokušava da sačuva novu obrađenu sliku od:
+3 MB
+
+Da li je problem:
+filesystem capacity
+
+ili:
+business/application rule
+
+?
+I drugo: zašto čak i ako:
+disk_free_space($dir)
+
+kaže da ima dovoljno mesta, i dalje moraš proveriti rezultat stvarnog imagewebp(), file_put_contents() ili druge write operacije?
+
+---
+
+Prvo: ovde je problem bussines app rule, 
+jer server disk ima dovoljno prostora ali je supp prema aplikaciji ogranićen.
+
+Drugo: Zato što ne znamo nikada da li se dogodio neki write failure. 
+Dakle ako i ima dovoljno mesta na disku, to ne znači da će se fajl 100% upisati, zato proveravamo.
+
+---
+
+Tačno — 10/10.
+Prvo: to je čisto business/application quota pitanje.
+server free space: 30 GB ✅
+supplier quota: 500 MB
+supplier used: 499 MB
+new processed image: 3 MB
+
+Supplier bi završio na:
+502 MB
+
+dakle application rule ga odbija iako infrastruktura ima prostora.
+Drugo si takođe potpuno tačno rekao: disk_free_space() je samo pre-check. Ne garantuje uspešan write. Između provere i upisa može da se promeni stanje filesystem-a, permissions mogu praviti problem, disk/mount može imati grešku itd.
+Zato:
+pre-check
+≠
+write guarantee
+
+nego:
+$result = imagewebp(...);
+
+if ($result === false) {
+    // stvarni write failure
+}

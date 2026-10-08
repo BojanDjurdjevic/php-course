@@ -1,0 +1,282 @@
+Lekcija 30 — File upload service: kako sve što smo učili složiti u čist flow
+Sad je vreme da spojimo skoro ceo Modul 4 u jednu arhitektonsku sliku.
+Nećemo još raditi završni coding challenge, nego prvo da vidiš kako bih ja podelio odgovornosti.
+Recimo da imamo hotel gallery upload.
+Controller / request boundary
+Controller prima raw input:
+$files = $_FILES['photos'] ?? null;
+
+Njegov posao nije da ručno obrađuje WebP, resize, cleanup itd.
+Više ovako:
+HTTP request
+↓
+normalize upload input
+↓
+validate upload
+↓
+pozovi service
+↓
+handle success/error response
+
+Upload validator
+Recimo:
+validateUploadedImages(...)
+
+Njegova odgovornost:
+structure
+↓
+UPLOAD_ERR
+↓
+count
+↓
+size
+↓
+MIME
+↓
+getimagesize
+↓
+dimensions
+↓
+business validation
+
+i rezultat:
+[
+    [
+        'tmp_path' => '/tmp/php123',
+        'mime' => 'image/jpeg',
+        'size' => 2_100_000,
+        'width' => 3000,
+        'height' => 2000,
+    ],
+    ...
+]
+
+Dakle posle toga više ne radimo sa raw $_FILES.
+Image processor
+Poseban sloj može da radi:
+validated image
+↓
+decode
+↓
+orientation
+↓
+resize / crop
+↓
+encode WebP
+↓
+save temp/target
+
+Na primer:
+$processed = $imageProcessor->process(
+    $validatedImage
+);
+
+i možda vrati:
+[
+    'stored_name' => 'a83f....webp',
+    'mime' => 'image/webp',
+    'size' => 380_000,
+    'width' => 1600,
+    'height' => 1200,
+]
+
+Storage service
+Drugi sloj može da zna:
+gde se fajl fizički čuva
+kako se pravi directory
+kako se dobija relative path
+kako se radi cleanup
+
+Recimo:
+$path = $storage->storeHotelImage(
+    hotelId: 42,
+    tempPath: $processedPath
+);
+
+i vrati:
+hotels/42/a83f.webp
+
+DB ne mora da zna:
+/var/www/...
+
+Repository / persistence
+Tek onda:
+$imageRepository->create([
+    'hotel_id' => 42,
+    'path' => $relativePath,
+    'mime' => 'image/webp',
+    'size' => 380000,
+    'width' => 1600,
+    'height' => 1200,
+]);
+
+Dakle:
+HTTP concern
+≠
+validation concern
+≠
+image processing concern
+≠
+filesystem concern
+≠
+DB persistence concern
+
+To je SRP.
+A gde ide cleanup?
+E tu service obično koordinira više slojeva.
+Na primer:
+validate all
+↓
+process/store files
+↓
+insert DB rows
+↓
+success
+
+Ako DB padne:
+rollback DB
+↓
+cleanup files
+
+Dakle neki viši application service može biti taj koji zna ceo workflow.
+Na primer mentalno:
+$galleryService->uploadImages(
+    $hotel,
+    $validatedImages
+);
+
+a unutra:
+save files
+↓
+remember saved paths
+↓
+DB transaction
+↓
+insert records
+↓
+commit
+↓
+if fail → cleanup saved files
+
+Zašto ne jedna ogromna klasa?
+Možeš napraviti:
+UploadEverythingService
+
+koji radi:
+$_FILES parsing
+validation
+finfo
+getimagesize
+GD
+WebP
+mkdir
+DB
+authorization
+cleanup
+response
+
+ali tada dobiješ servis koji zna previše.
+Teže ga je:
+testirati
+menjati
+reuse-ovati
+debugovati
+
+Mnogo bolji mentalni model:
+Validator
+→ da li smemo prihvatiti input?
+
+Processor
+→ kako transformišemo sliku?
+
+Storage
+→ gde i kako čuvamo fajl?
+
+Repository
+→ šta zapisujemo u DB?
+
+Application Service
+→ kojim redosledom sve to orkestriramo?
+
+To je praktično ono što već radiš u Laravel projektima, samo sada vidiš gde su granice.
+Laravel paralela
+U Laravel svetu to bi moglo biti nešto poput:
+FormRequest
+→ validation
+
+UploadedFile
+→ upload abstraction
+
+Intervention Image
+→ image processing
+
+Storage facade / disk
+→ filesystem abstraction
+
+Model / Repository
+→ DB persistence
+
+Service
+→ orchestration
+
+I sad već tačno znaš šta je ispod frameworka.
+
+Pitanje
+
+Ako praviš HotelGalleryService, koje od ovih odgovornosti bi mu dao direktno, a koje bi delegirao drugim komponentama?
+1. proveri UPLOAD_ERR
+2. proveri MIME
+3. resize/crop
+4. encode WebP
+5. napravi storage folder
+6. sačuvaj file
+7. insertuj DB row
+8. cleanup fajlova ako DB padne
+9. proveri da li supplier sme da menja taj hotel
+
+Ne treba mi kod — samo kako bi podelio odgovornosti i zašto.
+
+---
+
+Pa ako je to orchestring Service - onda bih sve ovo što si naveo podelio u više drugih klasa, koje bih pozivao u servisu, 
+e sad ako si mislio na inage processing, onda bih mu samo dao da radi 3 i 4 tj resize/crtop i encode to webp.
+
+---
+
+Da — upravo tako. 10/10. HotelGalleryService sam namerno nazvao orchestration/application service, ne image processor.
+On ne treba lično da zna detalje finfo, GD parametara, mkdir() ili SQL-a. Njegov posao je da kaže šta se dešava i kojim redosledom.
+Ja bih tih 9 odgovornosti rasporedio ovako:
+UploadValidator
+├─ 1. UPLOAD_ERR
+├─ 2. MIME
+├─ size
+├─ dimensions
+└─ ostala upload pravila
+
+ImageProcessor
+├─ 3. resize/crop
+└─ 4. encode WebP
+
+FileStorage / ImageStorage
+├─ 5. napravi storage folder
+└─ 6. sačuvaj/promote file
+
+ImageRepository
+└─ 7. insert DB row
+
+HotelGalleryService
+├─ orkestrira sve prethodno
+├─ DB transaction
+└─ 8. cleanup fajlova ako proces padne
+
+Policy / Authorization layer
+└─ 9. da li supplier sme da menja hotel
+
+Kod 9 postoji mala arhitektonska odluka. U Laravelu bih veoma često autorizaciju rešio pre ulaska u servis, recimo Policy:
+$this->authorize('update', $hotel);
+
+pa servis već dobija autorizovanog korisnika/hotel.
+Ali za kritičan domain operation možeš imati i defense-in-depth u application layer-u. Ono što ne bih želeo jeste da 
+ImageProcessor zna bilo šta o supplieru ili hotel permissions.
+Tako da si potpuno dobro prepoznao: ako sam pod HotelGalleryService mislio image processing komponentu, onda su 3 i 4 njena oblast. 
+Ali ako je stvarno HotelGalleryService, onda je to dirigent orkestra, a ne violinista. 😄

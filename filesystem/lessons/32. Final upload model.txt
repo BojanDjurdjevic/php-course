@@ -1,0 +1,176 @@
+Lekcija 32 — Konačni upload mentalni model
+
+Pre interview checkpoint-a hoću da zaključamo ceo lifecycle jednom slikom.
+
+Za recimo upload hotel fotografija:
+HTTP REQUEST
+    ↓
+multipart/form-data
+    ↓
+$_FILES
+    ↓
+────────────────────────────
+REQUEST / UPLOAD VALIDATION
+────────────────────────────
+field postoji?
+UPLOAD_ERR?
+collection count?
+size?
+server-side MIME?
+getimagesize?
+dimensions?
+business rules?
+    ↓
+VALIDATED UPLOAD DATA
+    ↓
+────────────────────────────
+IMAGE PROCESSING
+────────────────────────────
+decode
+auto-orient
+resize / crop
+encode WebP
+    ↓
+TEMP / STAGING FILE
+    ↓
+────────────────────────────
+FILESYSTEM STORAGE
+────────────────────────────
+safe random filename
+directory
+promote/save
+relative path
+    ↓
+────────────────────────────
+DATABASE
+────────────────────────────
+transaction
+insert metadata
+    ↓
+commit
+    ↓
+────────────────────────────
+SUCCESS
+────────────────────────────
+
+A svaki failure ima svoje mesto:
+validation fails
+→ ništa nije sačuvano
+→ 422 / errors
+
+processing fails
+→ cleanup temp
+→ exception
+
+filesystem save fails
+→ cleanup
+→ exception
+
+DB fails after file save
+→ DB rollback
+→ filesystem cleanup
+→ exception
+
+authorization fails
+→ ništa ne obrađuj
+→ 403
+
+To je, po meni, glavna stvar koju treba da poneseš iz ovog modula.
+Još jedan veoma važan redosled
+Authorization treba da bude rano.
+Ne želimo:
+upload 10 fotografija
+↓
+decode 10 fotografija
+↓
+resize 10 fotografija
+↓
+encode 10 WebP fajlova
+↓
+tek onda:
+"Ups, ovaj supplier uopšte ne sme da menja hotel."
+
+😄
+Bolje:
+authentication
+↓
+find hotel
+↓
+authorization
+↓
+tek onda expensive upload validation / processing
+
+Jer nema smisla trošiti CPU, memory i disk na request koji svakako nema pravo da izvrši operaciju.
+Validate-all pre process-all
+Kod više fajlova:
+authorize
+↓
+normalize
+↓
+validate ALL files
+↓
+ima greške?
+    YES → stop
+↓
+process/save ALL
+
+Ne:
+validate file 1
+save file 1
+validate file 2
+save file 2
+validate file 3
+→ error
+
+jer onda praviš partial state.
+Metadata koju bih finalno čuvao
+Za tvoju hotel galeriju nešto poput:
+id
+hotel_id
+path
+mime
+size
+width
+height
+is_primary
+created_at
+
+na primer:
+path:
+hotels/42/8ad731....webp
+
+mime:
+image/webp
+
+size:
+382144
+
+width:
+1600
+
+height:
+1200
+
+Original filename bih čuvao samo ako stvarno postoji business/UX razlog.
+
+Za običnu hotel galeriju ti često ni ne treba.
+
+Time smo završili teorijski deo Modula 4. ✅
+
+I iskreno, prošli smo ga mnogo dublje od običnog „kako radi $_FILES“. 
+Pokrili smo od fopen() i paths do upload security-ja, GD-a, transactional-like cleanup-a, private/public storage-a, 
+symlinkova, locking-a i orchestration dizajna.
+
+Sada idemo kao u Modulu 3:
+
+1. Interview checkpoint
+   → jedno pitanje
+   → tvoj odgovor
+   → moja ocena/korekcija
+
+2. Coding challenges
+
+   → nekoliko zadataka
+   → jedan po jedan
+
+3. Završna ocena Modula 4

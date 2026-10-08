@@ -142,3 +142,36 @@ public/storage/
 
 ---
 
+Laravel radi nesto pout
+
+public/storage
+        ↓ symlink
+storage/app/public
+
+Dakle fizicki sfajl nalazi na: 
+storage/app/public/hotels/42/photo.webp
+
+Ali, browser ide na
+
+/storage/hotels/42/photo.webp
+
+Ovaj pristup je bolji od copy() jer bi sa copy dobili fizicki 2 ista fajla na razlicitim mestima
+
+---
+
+Tačno — 10/10.
+Upravo tako radi mentalni model:
+public/storage
+        ↓ symlink
+storage/app/public
+
+Dakle fajl fizički postoji jednom, na primer:
+storage/app/public/hotels/42/photo.webp
+
+a browser mu pristupa kroz:
+/storage/hotels/42/photo.webp
+
+Symlink je praktično filesystem pokazivač/prečica, ne druga kopija fajla.
+Zato je bolji od copy() pristupa: nema dupliranja storage-a, 
+nema rizika da jedna kopija bude izmenjena a druga ostane stara, 
+i Laravel zadržava urednu granicu između storage/ i javnog web root-a.

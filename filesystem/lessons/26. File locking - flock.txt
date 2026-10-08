@@ -1,0 +1,234 @@
+Lekcija 26 — File locking: flock() i concurrent writes
+Sada idemo na concurrency na filesystem nivou.
+Već smo pomenuli:
+file_put_contents(
+    $path,
+    $data,
+    LOCK_EX
+);
+
+Ali ispod toga postoji eksplicitniji mehanizam:
+flock()
+
+Recimo da dva PHP request-a pokušavaju istovremeno da upišu u isti log fajl:
+Request A
+↓
+write
+
+Request B
+↓
+write
+
+Bez koordinacije može doći do race condition-a ili isprepletanog sadržaja.
+Exclusive lock
+Možemo:
+$handle = fopen($path, 'a');
+
+if ($handle === false) {
+    throw new RuntimeException(
+        'Could not open file.'
+    );
+}
+
+if (!flock($handle, LOCK_EX)) {
+    fclose($handle);
+
+    throw new RuntimeException(
+        'Could not acquire lock.'
+    );
+}
+
+fwrite(
+    $handle,
+    "User booked room\n"
+);
+
+flock($handle, LOCK_UN);
+
+fclose($handle);
+
+Mentalno:
+fopen
+↓
+LOCK_EX
+↓
+imam ekskluzivan pristup
+↓
+write
+↓
+LOCK_UN
+↓
+fclose
+
+LOCK_EX znači:
+exclusive lock
+
+odnosno drugi proces koji poštuje isti locking mehanizam ne bi trebalo istovremeno da piše u taj fajl.
+Shared lock
+Postoji i:
+LOCK_SH
+
+što znači shared lock.
+Koristi se uglavnom za čitanje.
+Više procesa može imati shared lock istovremeno:
+reader A ─┐
+reader B ─┼→ shared lock
+reader C ─┘
+
+ali writer sa LOCK_EX mora da čeka.
+Mentalno:
+LOCK_SH
+→ više reader-a može
+
+LOCK_EX
+→ jedan exclusive writer
+
+LOCK_UN
+flock($handle, LOCK_UN);
+
+otključava fajl.
+fclose() takođe oslobađa lock, ali je lepše eksplicitno pokazati lifecycle.
+Blocking ponašanje
+Po default-u:
+flock($handle, LOCK_EX)
+
+može čekati dok lock ne postane dostupan.
+Možeš koristiti i:
+LOCK_EX | LOCK_NB
+
+gde NB znači:
+non-blocking
+
+Dakle:
+if (!flock(
+    $handle,
+    LOCK_EX | LOCK_NB
+)) {
+    // neko drugi trenutno drži lock
+}
+
+Tada PHP neće čekati, nego operacija odmah može vratiti false.
+LOCK_EX nije isto što i DB transaction
+Ovo je bitno.
+flock() koordinira pristup konkretnom file resource-u.
+Ne daje ti:
+database rollback
+filesystem rollback
+distributed transaction
+
+To je samo synchronization primitive za fajl.
+Dakle:
+flock
+→ concurrency coordination
+
+DB transaction
+→ atomicity/consistency za DB operacije
+
+Nisu ista stvar.
+Advisory locking
+Još jedna važna nijansa: flock() je uglavnom advisory lock.
+To znači da radi kako treba kada svi procesi koji pristupaju fajlu poštuju locking protocol.
+Ako proces B kaže:
+Mene ne zanima lock
+
+i direktno uradi:
+file_put_contents($path, $data);
+
+onda lock nije magična barijera protiv svakog mogućeg procesa.
+Zato je bitno da aplikacija dosledno koristi isti locking obrazac.
+Gde je ovo korisno?
+Na primer:
+custom log
+counter
+flat-file cache
+JSON file storage
+shared generated file
+
+Recimo JSON counter:
+[
+    'downloads' => 120
+]
+
+Ako dva request-a urade:
+read 120
+↓
+increment
+↓
+write 121
+
+istovremeno, možeš izgubiti jedan increment.
+To je klasičan lost update.
+Sa lock-om:
+lock
+↓
+read
+↓
+modify
+↓
+write
+↓
+unlock
+
+smanjuješ taj problem.
+Pitanje
+Zamisli da dva request-a istovremeno rade:
+$handle = fopen($path, 'a');
+
+fwrite(
+    $handle,
+    "New booking\n"
+);
+
+fclose($handle);
+
+Zašto bi mogao da uvedeš:
+flock($handle, LOCK_EX)
+
+pre fwrite()?
+I objasni razliku između:
+LOCK_SH
+LOCK_EX
+LOCK_UN
+LOCK_NB
+
+svojim rečima.
+
+---
+
+Prvo: da bih sprecio da se izgubi jedan upis
+
+LOCK_SH - shared lock, sto znaci vise procesa moze imati shared lock
+LOCK_EX - jedan executove writr
+
+LOCK_UN - otkljucava fajl
+LOCK_NB non blocking
+
+---
+
+Da — 9.5/10. Suštinu si pogodio, samo bih prvu rečenicu malo precizirao.
+LOCK_EX ne uvodimo samo da se „ne izgubi jedan upis“, nego šire da bismo obezbedili da samo jedan writer u tom trenutku radi kritičnu sekciju nad fajlom. To je posebno važno kada operacija nije samo jedan fwrite(), nego nešto poput:
+read
+↓
+modify
+↓
+write
+
+Tu bez lock-a lako dobiješ lost update.
+Tvoje definicije su tačne:
+LOCK_SH
+→ shared lock
+→ više reader-a može istovremeno
+
+LOCK_EX
+→ exclusive lock
+→ jedan writer dobija ekskluzivan pristup
+
+LOCK_UN
+→ release / unlock
+
+LOCK_NB
+→ non-blocking
+→ nemoj čekati ako lock trenutno nije dostupan
+
+Kod LOCK_EX | LOCK_NB dobijaš:
+pokušaj exclusive lock, ali odmah vrati failure ako ga neko drugi već drži.

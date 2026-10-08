@@ -1,0 +1,232 @@
+Lekcija 27 — Atomic write pattern za config / JSON fajlove
+Sada jedna vrlo praktična stvar.
+Pretpostavimo da aplikacija čuva:
+settings.json
+
+sa sadržajem:
+{
+    "maintenance": false,
+    "max_guests": 4
+}
+
+Naivan update bi bio:
+$data = json_encode($settings);
+
+file_put_contents(
+    $path,
+    $data,
+    LOCK_EX
+);
+
+To je često dovoljno za jednostavne slučajeve, ali postoji još sigurniji obrazac kada ne želiš da finalni fajl ikada ostane polovično upisan.
+Problem direktnog overwrite-a
+Zamisli:
+settings.json
+↓
+otvori za overwrite
+↓
+stari sadržaj nestane
+↓
+počinje upis novog sadržaja
+↓
+proces pukne
+
+Možeš završiti sa:
+praznim fajlom
+
+ili nepotpunim JSON-om.
+Na primer:
+{
+    "maintenance":
+
+što više nije validan JSON.
+Temp + rename pattern
+Sigurniji flow:
+1. napravi temp fajl
+2. upiši kompletan novi sadržaj
+3. proveri write success
+4. rename temp → final
+
+Na primer:
+$tmpPath = $path . '.tmp';
+
+$bytes = file_put_contents(
+    $tmpPath,
+    $json,
+    LOCK_EX
+);
+
+if ($bytes === false) {
+    throw new RuntimeException(
+        'Could not write temporary file.'
+    );
+}
+
+if (!rename($tmpPath, $path)) {
+    @unlink($tmpPath);
+
+    throw new RuntimeException(
+        'Could not replace file.'
+    );
+}
+
+Mentalno:
+old valid file
+↓
+new temp file se gradi sa strane
+↓
+temp potpuno uspešan
+↓
+promote / rename
+↓
+new valid file
+
+To je isti princip koji smo koristili kod avatara.
+Zašto je ovo bolje?
+Dok temp nije potpuno spreman:
+settings.json
+
+ostaje netaknut.
+Ako temp write pukne:
+cleanup temp
+
+i stari finalni fajl ostaje validan.
+Tek kada imamo kompletan novi fajl, pokušamo replacement.
+JSON validation pre write-a
+Još bolje:
+$json = json_encode(
+    $settings,
+    JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT
+);
+
+Ako encoding padne:
+JsonException
+
+i još nismo dirali filesystem.
+Dakle:
+serialize / encode
+↓
+temp write
+↓
+promote
+
+To je vrlo čist pipeline.
+Čitanje JSON fajla
+Obrnuti smer:
+$content = file_get_contents($path);
+
+if ($content === false) {
+    throw new RuntimeException(
+        'Could not read settings file.'
+    );
+}
+
+$data = json_decode(
+    $content,
+    true,
+    512,
+    JSON_THROW_ON_ERROR
+);
+
+Dakle opet:
+filesystem success
+≠
+data format success
+
+Fajl može postojati i biti čitljiv, ali sadržati invalid JSON.
+To su dva odvojena failure layer-a.
+File integrity vs application validity
+Na primer:
+{
+    "max_guests": -500
+}
+
+je savršeno validan JSON.
+Ali možda je business-invalid.
+Dakle:
+file readable
+↓
+JSON valid
+↓
+schema / application validation
+↓
+usable data
+
+Ista filozofija kao ceo kurs: svaki boundary ima svoju proveru.
+Pitanje
+Zašto je sigurnije da update settings.json radiš ovako:
+encode
+↓
+write temp
+↓
+rename temp → final
+
+nego da direktno uradiš:
+file_put_contents(
+    $finalPath,
+    $json
+);
+
+?
+I drugo: ako je fajl uspešno pročitan sa file_get_contents(), da li to automatski znači da je njegov JSON sadržaj validan i business-validan?
+
+---
+
+Prvo: Zato što tako radimo preventivu u slučaju da writting pukne. Na primer ako pokušamo da pregazimo stari fajl, 
+stari se gubi a novi još nije napravljen, zato je bolje napraviti sa strane privremeni fajl pa kada proverimo da je uspeo - promote. 
+Imamo novi validni fajl umesto starog, a ako pukne, stari ostaje dostupan.
+
+Drugo: Ne znači. Dakle prvo proveravamo da li je fajl uspešan tj da li je poslat i uspešno pročitan, 
+onda idemo u proveru da li je JSON validan ili malformed pa tek onda ide bussines logika gde proveravamo 
+da li je poslata vrednost prihvatljiva za našu aplikaciju.
+
+---
+
+Tačno — 10/10. Ovo si objasnio baš kako treba.
+
+Kod prvog dela si uhvatio ključni invariant:
+stari validni fajl
+↓
+novi se priprema sa strane
+↓
+novi je kompletno uspešan?
+    NE → cleanup temp, stari ostaje
+    DA → promote
+↓
+stari se tek tada zamenjuje
+
+To je isti obrazac koji smo već videli kod avatara i multiple upload rollback-a: ne uništavaj validno postojeće stanje dok zamena nije spremna.
+I drugi deo je potpuno tačan. file_get_contents() odgovara samo na pitanje:
+„Da li sam uspeo da pročitam bytes iz fajla?“
+
+Ne govori ništa o tome da li su ti bytes validan JSON, niti da li je taj JSON prihvatljiv našoj aplikaciji.
+Dakle:
+filesystem validation
+↓
+file readable?
+
+format validation
+↓
+valid JSON?
+
+application validation
+↓
+ima li očekivanu strukturu i tipove?
+
+business validation
+↓
+jesu li vrednosti dozvoljene?
+
+Na primer:
+{
+    "max_guests": -500
+}
+
+je:
+
+čitljiv fajl ✅
+validan JSON ✅
+možda čak očekivana struktura ✅
+business-validan ❌
+
+Odlično razdvajanje slojeva.

@@ -1,0 +1,235 @@
+Lekcija 31 — File validation vs file processing vs persistence failure
+Ovo ćemo sada još jednom precizno razdvojiti, jer je izuzetno dobro interview pitanje.
+Zamisli kompletan flow:
+USER UPLOAD
+   ↓
+VALIDATION
+   ↓
+PROCESSING
+   ↓
+FILESYSTEM SAVE
+   ↓
+DATABASE PERSISTENCE
+
+Svaki nivo može da padne iz drugog razloga.
+1. Validation failure
+Primer:
+MIME = application/pdf
+
+a očekujemo sliku.
+To je:
+400/422-type problem
+
+odnosno korisnički input ne odgovara contract-u.
+Tu ne treba:
+throw new RuntimeException('Server exploded');
+
+nego normalan validation error:
+$errors['photo'] = 'Unsupported image type.';
+
+2. Processing failure
+Upload je validan JPEG:
+image/jpeg ✅
+size ✅
+dimensions ✅
+
+ali:
+imagecreatefromjpeg(...)
+
+ili Intervention decode/encode neočekivano padne.
+To više nije običan:
+"korisnik nije uneo validno polje"
+
+Može biti corrupted edge case, library problem, memory problem itd.
+Tu često ide exception + logging.
+3. Filesystem failure
+Sve je uspešno obrađeno, ali:
+imagewebp($image, $destination)
+
+vrati:
+false
+
+Mogući razlozi:
+permissions
+disk full
+mount problem
+directory problem
+filesystem error
+
+To je infrastrukturni failure.
+4. Database failure
+Fajl je već uspešno napravljen:
+hotels/42/abc.webp
+
+ali:
+INSERT INTO hotel_images ...
+
+padne.
+Sada mora da reaguje orchestration service:
+DB rollback
++
+filesystem cleanup
+
+Zašto je ova podela važna?
+Jer ne želiš sve da tretiraš ovako:
+catch (Throwable $e) {
+    return 'Invalid image.';
+}
+
+To bi sakrilo pravi problem.
+Ako je disk pun, korisniku možeš dati generičnu poruku:
+The image could not be saved.
+
+ali interno želiš log:
+Filesystem write failed:
+hotel_id=42
+destination=...
+
+Ako je MIME pogrešan, to nije 500 Internal Server Error.
+To je validation problem.
+Dakle:
+expected bad input
+→ validation result
+
+unexpected processing/infrastructure problem
+→ exception
+
+Ovo je veoma važna granica.
+Exceptions ne treba koristiti za svaki validation rule
+Ne bih radio:
+if ($mimeNotAllowed) {
+    throw new Exception(
+        'Only JPEG allowed'
+    );
+}
+
+ako očekujemo da korisnici povremeno uploaduju pogrešne tipove fajla.
+To je normalan application flow.
+Bolje:
+$errors[$field] = 'Unsupported image type.';
+
+Exception čuvamo više za:
+"ovo je trebalo da radi, ali nešto neočekivano nije uspelo"
+
+na primer:
+if (!mkdir(...)) {
+    throw new RuntimeException(...);
+}
+
+Failures i HTTP status
+Grubo, ne kao apsolutno pravilo:
+invalid user upload
+→ 422 Unprocessable Content
+
+not authenticated
+→ 401
+
+not authorized
+→ 403
+
+hotel/file doesn't exist
+→ 404
+
+unexpected processing/storage/DB failure
+→ 500
+
+Ako je forma klasičan web POST, možda nećeš direktno pokazivati JSON status body, već PRG + flash/errors, ali HTTP mentalni model ostaje isti.
+Laravel paralela
+Laravel dosta ovoga već razdvaja:
+FormRequest validation
+→ validation exception / 422
+
+Policy
+→ authorization exception / 403
+
+ModelNotFound
+→ 404
+
+unexpected Throwable
+→ 500 + logging
+
+A tvoj application service onda treba da vodi računa o cross-resource cleanup-u.
+
+---
+
+Pitanje 31
+Klasifikuj mi sledeća četiri slučaja:
+A) User uploaduje PDF umesto JPEG/PNG/WebP.
+
+B) Slika prođe validation, ali imagewebp() ne uspe da sačuva output.
+
+C) Slika je sačuvana, ali INSERT u bazu padne.
+
+D) Supplier pokušava da doda sliku hotelu koji pripada drugom supplieru.
+
+Za svaki mi reci da li je prvenstveno:
+validation
+processing/filesystem
+persistence
+authorization
+
+i kako bi aplikacija trebalo okvirno da reaguje.
+
+---
+
+A -> validation - upisati u erorr bag, status 422
+B -> processing - Bacamo exception
+C -> persistence - bacamo Exception - može i status 500
+D -> authorization - upisujemo error, a status je 403, neautorizovani korisnik.
+
+---
+
+Vrlo dobro — 9.6/10. Sve četiri kategorije si pogodio. Samo dve nijanse bih ispravio.
+Za A potpuno tačno:
+PDF umesto JPEG/PNG/WebP
+→ validation failure
+→ error bag
+→ 422
+
+To je očekivan pogrešan input, ne exception.
+Za B takođe:
+validation prošao
+↓
+imagewebp() save FAILED
+→ processing/filesystem failure
+→ exception
+→ tipično 500
+→ logujemo pravi uzrok
+
+Bitno je da korisniku ne vratimo:
+Invalid image
+
+ako je stvarni problem možda disk/permissions.
+Za C si pogodio persistence failure, ali ovde je ključna još jedna akcija:
+image saved ✅
+DB INSERT ❌
+↓
+DB rollback
+↓
+cleanup upravo sačuvane slike
+↓
+exception / 500
+
+U suprotnom ostaje orphan file.
+Kod D kategorija i 403 su potpuno tačni:
+supplier pokušava menjati tuđ hotel
+→ authorization failure
+→ 403 Forbidden
+
+Samo terminološki: ne bih rekao „neautorizovani korisnik“ u smislu unauthenticated. To se često pomeša:
+401 Unauthorized
+→ zapravo: nisi authenticated / nema validne autentikacije
+
+403 Forbidden
+→ znamo ko si, ali nemaš pravo na ovu operaciju
+
+Dakle supplier jeste prijavljen, samo nije ovlašćen da menja taj hotel.
+I još nešto: authorization failure obično ne bih stavljao u isti validation $errors bag kao:
+$errors['photo']
+
+nego bih ga tretirao kao poseban authorization flow / exception.
+Laravel ti to baš lepo razdvaja:
+$this->authorize('update', $hotel);
+
+→ 403
+dok validation ide kroz FormRequest/error bag.

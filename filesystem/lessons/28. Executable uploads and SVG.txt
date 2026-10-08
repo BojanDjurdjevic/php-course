@@ -1,0 +1,245 @@
+Lekcija 28 — Executable uploads, SVG i zašto „image“ nije uvek bezazlen
+Ovo je jedna od poslednjih važnih security tema pre nego što krenemo na završni praktični deo Modula 4.
+Do sada smo za slike dozvoljavali:
+$allowedMimes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+];
+
+Primetio si da nisam ubacivao:
+image/svg+xml
+
+iako je SVG „slika“.
+Zašto?
+Zato što SVG nije običan raster image poput JPEG/PNG/WebP.
+SVG je XML dokument i može sadržati aktivan sadržaj.
+Konceptualno:
+<svg>
+    ...
+    <script>
+        // JavaScript
+    </script>
+</svg>
+
+Zbog toga upload korisničkog SVG-a i njegovo direktno serviranje sa tvog domena može otvoriti dodatne XSS/security probleme.
+Zato je za tipičnu hotel galeriju sasvim zdravo reći:
+JPEG ✅
+PNG ✅
+WebP ✅
+SVG ❌
+
+osim ako baš imaš razlog da SVG podržavaš i znaš kako ćeš ga bezbedno sanitizovati/servirati.
+Uploadovan PHP fajl u public direktorijumu
+Još ozbiljniji scenario.
+Zamisli veoma loš upload validator:
+$destination =
+    __DIR__
+    . '/public/uploads/'
+    . $file['name'];
+
+move_uploaded_file(
+    $file['tmp_name'],
+    $destination
+);
+
+Napadač pošalje:
+shell.php
+
+Ako web server izvršava PHP u tom uploads folderu, mogao bi pokušati da pristupi:
+/uploads/shell.php
+
+i server bi potencijalno mogao da ga izvrši, a ne samo posluži kao običan fajl.
+To je razlog više zašto:
+user filename
++ public writable folder
++ executable extensions
+
+može biti vrlo opasna kombinacija.
+Naša zaštita ima više slojeva
+Za hotel slike već imamo odličan pipeline:
+UPLOAD_ERR_OK
+↓
+size
+↓
+finfo MIME allowlist
+↓
+getimagesize
+↓
+dimensions
+↓
+decode image
+↓
+encode ponovo kao WebP
+↓
+server-generated random.webp
+
+Obrati pažnju koliko je re-encoding koristan.
+Ako prihvatimo stvarnu JPEG/PNG/WebP sliku i sami je dekodiramo pa napravimo novi:
+random.webp
+
+ne čuvamo slepo originalne bytes pod originalnim filename-om.
+Mi kreiramo novi output asset.
+To značajno smanjuje attack surface kod obične image galerije.
+Double extension
+Filename:
+photo.php.jpg
+
+sam po sebi ne mora značiti da je fajl PHP.
+Ali upravo zato ne radimo:
+$extension = pathinfo(
+    $file['name'],
+    PATHINFO_EXTENSION
+);
+
+i onda:
+„Piše jpg, znači sigurno JPEG.“
+
+Ne.
+Mi gledamo sadržaj:
+$finfo->file($tmpPath);
+
+pa za image contract dodatno:
+getimagesize($tmpPath);
+
+i onda eventualno decode/re-encode.
+Originalni filename nam je praktično samo display metadata.
+Private storage pomaže, ali nije zamena za validation
+Ako uploadujemo dokument u:
+storage/private/
+
+dobro je što ga web server neće direktno izvršavati kroz URL.
+Ali ni tada ne kažemo:
+„Pošto je private, mogu prihvatiti bilo šta.“
+
+I dalje validiramo:
+size
+MIME
+allowed types
+business rules
+authorization
+
+Security najbolje funkcioniše u slojevima.
+Web server configuration
+U production sistemu možeš dodatno konfigurisati upload direktorijume tako da se script execution ne dozvoljava.
+To je još jedan defense-in-depth sloj.
+Ali aplikacija i dalje mora pravilno da validira upload.
+Mentalno:
+application validation
++
+safe filename
++
+safe storage location
++
+web server configuration
+
+a ne:
+„imam jednu proveru, dovoljno je“
+
+Content-Type kod serving-a
+Čak i ako fajl ima random ime:
+abc123.dat
+
+browser behavior zavisi i od toga kako ga serviraš.
+Zato kod private download-a eksplicitno određujemo odgovarajući:
+Content-Type
+
+i često:
+Content-Disposition: attachment
+
+za fajlove koje ne želimo inline prikazivati.
+Opet: response handling je deo security dizajna.
+Najvažnije za tvoj slučaj
+Za BookYourHotel-like gallery ja bih praktično radio:
+input:
+JPEG / PNG / WebP
+
+↓ validate
+
+↓ decode
+
+↓ resize
+
+↓ encode
+
+output:
+random.webp
+
+i to je mnogo sigurniji i uredniji contract nego:
+„primi bilo kakav image/* i sačuvaj original“
+
+Pitanje
+Zašto ti je za hotel gallery sigurniji ovaj pristup:
+allowlist JPEG/PNG/WebP
+↓
+server-side MIME check
+↓
+getimagesize
+↓
+decode
+↓
+re-encode kao WebP
+↓
+random generated filename
+
+nego:
+ako filename završava na .jpg/.png/.svg
+→ sačuvaj original direktno u public/uploads
+
+I posebno: zašto SVG ne bi automatski tretirao isto kao JPEG ili PNG samo zato što mu MIME počinje sa image/?
+
+---
+
+Prvo:
+ako bismo slepo prihvatili ekstenziju samo po nazivu fajla, bilo bi veoma rizično jer je to user controlled data, 
+i ne znamo da li je samo lažno nazvano kao slika.jpeg ili se možda krije neki drugi mime, 
+zato bismo mime proverili sa $finfo->file(slika.jpeg) da server proveri koji je stvarni mime datoteke 
+a nakon toga možemo videti i size i sve što nam treba za dalji handling. Zato je bolje za moj hotelapp 
+da koristimo baš pipeline koji si izložio sa svim proverama.
+
+Drugo:
+
+SVG prvo ne bih ni prihvatao osim ako to baš aplikacija zahteva u nekim slučajevima, 
+kada bih ga morao i na pravi način proveriti i obraditi - snitizovati, 
+jer SVG nije običan raster image kao jpeg, png i webP, nego je xml i može sadržati aktivan sadržaj. 
+Zato upload SVG-a i direktno serviranje sa domena može otvoriti dodatne XSS-secure probleme. 
+Zato, svakako bih proverio sa finfo i odbacio ako je svg u slučaju moje hotel aplikacije.
+
+---
+
+Odlično — 9.8/10. Security mentalni model ti je sada baš dobar.
+Samo dve male preciznosti. finfo pozivamo nad stvarnim temp path-om:
+$mime = $finfo->file($file['tmp_name']);
+
+ne nad korisničkim nazivom poput slika.jpeg.
+
+I u našem upload pipeline-u bih size proveru ostavio pre MIME inspekcije, 
+jer je jeftina i već imamo veličinu iz upload metadata:
+
+UPLOAD_ERR_OK
+↓
+size
+↓
+finfo MIME
+↓
+MIME allowlist
+↓
+getimagesize
+↓
+dimensions
+↓
+decode
+↓
+re-encode
+
+Ali suština tvog odgovora je potpuno tačna.
+Za SVG si pogodio najvažnije: image/* nije automatski sinonim za „bezopasna raster slika“. 
+
+SVG je XML-based format i može imati aktivan sadržaj, pa za hotel galeriju gde nam ne treba jednostavno kažemo:
+
+JPEG ✅
+PNG ✅
+WebP ✅
+SVG ❌
+
+To je mnogo bolje nego pokušavati da rešavamo problem koji aplikacija uopšte nema potrebu da podrži.
