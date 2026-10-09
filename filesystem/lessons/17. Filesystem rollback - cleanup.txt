@@ -1,5 +1,7 @@
 Lekcija 17 — Filesystem rollback / cleanup strategija
+
 Ovo je vrlo važna tema i direktno se vezuje za ono što si već radio sa DB transakcijama.
+
 Recimo da treba da sačuvamo 4 obrađene slike:
 photo 0
 photo 1
@@ -7,6 +9,7 @@ photo 2
 photo 3
 
 Sve su prethodno validirane.
+
 Počnemo save:
 photo 0 → saved
 photo 1 → saved
@@ -23,6 +26,7 @@ throw new RuntimeException(...);
 
 ostaju orphan fajlovi.
 Zato treba da pratimo šta smo uspešno napravili.
+
 Na primer:
 $savedPaths = [];
 
@@ -56,6 +60,7 @@ throw new RuntimeException(
 );
 
 To je naš ručni filesystem rollback.
+
 Bolji obrazac sa try/catch
 Čistije:
 $savedPaths = [];
@@ -97,13 +102,17 @@ To veoma liči na:
 DB::transaction(...)
 
 mentalno, samo što filesystem rollback moraš sam da napišeš.
+
 Ali šta ako i cleanup pukne?
+
 Odlično pitanje koje se javlja u production sistemima.
+
 Recimo:
 unlink($path)
 
 vrati false.
 Ne želiš da cleanup failure potpuno sakrije originalni problem.
+
 Zato možeš logovati cleanup problem:
 foreach ($savedPaths as $path) {
     if (is_file($path) && !unlink($path)) {

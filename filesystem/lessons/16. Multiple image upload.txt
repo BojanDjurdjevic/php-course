@@ -154,6 +154,7 @@ ako ima grešaka
 
 To daje atomic-like UX na application nivou.
 Za neke sisteme, npr. bulk media uploader, partial success može imati smisla.
+
 Ali mora biti namerna odluka.
 Velika zamka: partial filesystem success
 Pretpostavimo da radiš ovako:
@@ -168,7 +169,9 @@ Zato je često bolje:
 2. ako bilo šta nije validno → ništa ne čuvaj
 3. ako je sve validno → processing/save
 
-To ti je vrlo sličan princip kao database transaction mentalni model, samo filesystem nema običan ACID transaction koji rešava sve umesto tebe.
+To ti je vrlo sličan princip kao database transaction mentalni model, 
+samo filesystem nema običan ACID transaction koji rešava sve umesto tebe.
+
 Još bolji flow
 Za multiple image upload:
 normalize $_FILES

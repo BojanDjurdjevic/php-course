@@ -1,0 +1,1061 @@
+Krećemo od jednog reusable image validatora. Još bez resize-a i bez DB-a.
+
+Napiši:
+function validateUploadedImage(
+    mixed $file,
+    string $field,
+    array &$errors,
+    bool $required = true,
+    int $maxSize = 5 * 1024 * 1024,
+    int $maxPixels = 25_000_000
+): ?array
+
+Treba da radi sledeće:
+- Ako $file === null i $required === false → return null bez greške.
+- Ako upload ima UPLOAD_ERR_NO_FILE i optional je → return null.
+- Ako je required i nema fajla → error.
+- Proveri da je $file array i da ima potrebne ključeve: tmp_name, error, size.
+- UPLOAD_ERR_OK mora proći; ostale kodove pretvori u smislen error.
+- size mora biti > 0 i <= $maxSize.
+- MIME utvrdi server-side preko:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+Dozvoli samo:
+image/jpeg
+image/png
+image/webp
+
+- getimagesize() mora uspeti.
+- $width * $height ne sme biti veći od $maxPixels.
+- Za sada ne radi resize, WebP ni save.
+Ako je sve validno, želim:
+[
+    'tmp_path' => '...',
+    'mime' => 'image/jpeg',
+    'size' => 123456,
+    'width' => 1920,
+    'height' => 1080,
+]
+
+Važno: ne vraćaj raw:
+$file['type']
+
+kao validated MIME.
+I probaj da error handling za UPLOAD_ERR_* ne bude samo:
+'Upload failed.'
+
+nego da makar razlikuješ INI_SIZE/FORM_SIZE, PARTIAL, NO_FILE i infrastrukturne greške.
+Pošalji samo funkciju. Pregledaću je kao i do sada — detaljno, minimalne korekcije, pa ocena.
+
+---
+
+Pogledati filesystem/files/FileValidator.php 
+
+---
+
+Ovo je baš jaka funkcija. Dao bih ti 9.8/10. Najvažnije: nemaš samo niz if provera, nego si napravio čist validation boundary koji raw $_FILES pretvara u server-side proverene podatke.
+Posebno mi se sviđa što si otišao čak malo dalje od minimuma zadatka sa:
+if (!is_uploaded_file($tmp)) {
+    $errors[$field] = 'Invalid upload.';
+    return null;
+}
+
+i sa:
+if ($imageInfo === false || $imageInfo['mime'] !== $mime)
+
+To pokazuje da razmišljaš slojevito, a ne samo „MIME je prošao, gotovo“.
+Šta je dobro urađeno
+Optional/required handling ti je vrlo čist:
+if ($file === null) {
+    if ($required) {
+        $errors[$field] = 'The file is required!';
+    }
+
+    return null;
+}
+
+pa zatim dodatno:
+if ($fileError === UPLOAD_ERR_NO_FILE && !$required) {
+    return null;
+}
+
+Dakle lepo razlikuješ:
+missing + optional
+→ validno null
+
+NO_FILE + optional
+→ validno null
+
+missing / NO_FILE + required
+→ validation error
+
+Strukturu takođe proveravaš pre pristupa:
+if (!is_array($file))
+
+pa:
+foreach (['tmp_name', 'error', 'size'] as $key) {
+    if (!array_key_exists($key, $file)) {
+
+i tek onda tipove. To je tačno onaj boundary pattern koji smo vežbali u Modulu 3.
+UPLOAD_ERR_* deo je odličan:
+$errorStr = match ($fileError) {
+    UPLOAD_ERR_INI_SIZE,
+    UPLOAD_ERR_FORM_SIZE =>
+        'The file is too large.',
+
+    UPLOAD_ERR_NO_FILE =>
+        'No file was uploaded.',
+
+    UPLOAD_ERR_PARTIAL =>
+        'The file is partially uploaded, please try again.',
+
+    ...
+};
+
+Jedino typo:
+partialy
+
+→
+partially
+
+ali to nema veze sa logikom.
+MIME flow je baš kako treba:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+$mime = $finfo->file($tmp);
+
+pa allowlist:
+$allowedMimes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+];
+
+if (
+    $mime === false ||
+    !in_array($mime, $allowedMimes, true)
+)
+
+To je mnogo bolje nego bilo šta zasnovano na:
+$file['type']
+$file['name']
+
+A posebno je dobro što ih uopšte nema u finalnom validated output-u.
+Jedna stvar koju bih promenio
+Ovde si proverio:
+if (
+    !is_int($file['error']) ||
+    !is_string($file['tmp_name']) ||
+    !is_int($file['size'])
+)
+
+ali kasnije ne koristiš:
+$file['size']
+
+nego:
+$size = filesize($tmp);
+
+To nije greška — zapravo mi se sviđa što si za finalni validated size uzeo veličinu stvarnog temp fajla sa filesystem-a.
+Ali onda imamo malu nedoslednost: proveravamo $file['size'] kao obavezno polje i int, a posle ga praktično ignorišemo.
+Imaš dve dobre opcije.
+Možeš ostaviti ovako, jer ipak validiraš strukturu očekivanog PHP upload entry-ja. To je potpuno legitimno.
+Ili možeš dodatno proveriti consistency:
+$size = filesize($tmp);
+
+if ($size === false || $size <= 0) {
+    $errors[$field] = 'The file is empty or unreadable.';
+    return null;
+}
+
+if ($size !== $file['size']) {
+    $errors[$field] = 'Invalid upload size.';
+    return null;
+}
+
+Ali ja ovo ne bih nužno forsirao za običnu aplikaciju. Bitnije je da application size rule primenjuješ nad vrednošću kojoj si odlučio da veruješ.
+Jedna production nijansa
+Ovaj deo:
+UPLOAD_ERR_NO_TMP_DIR,
+UPLOAD_ERR_CANT_WRITE,
+UPLOAD_ERR_EXTENSION =>
+    'The upload could not be completed.',
+
+je sasvim prihvatljiv za naš validator i zadatak.
+Ali seti se našeg razgovora: ove greške su više:
+server / infrastructure failures
+
+nego:
+user validation failures
+
+U ozbiljnijoj aplikaciji mogao bi imati:
+NO_FILE / INI_SIZE / FORM_SIZE / PARTIAL
+→ validation/user-facing flow
+
+NO_TMP_DIR / CANT_WRITE / EXTENSION
+→ log + RuntimeException / server failure
+
+Na primer:
+if (in_array($fileError, [
+    UPLOAD_ERR_NO_TMP_DIR,
+    UPLOAD_ERR_CANT_WRITE,
+    UPLOAD_ERR_EXTENSION,
+], true)) {
+    throw new RuntimeException(
+        'Server could not complete file upload.'
+    );
+}
+
+Ali ne bih ti sada menjao funkciju zbog toga, jer smo zadatak eksplicitno postavili kao validator sa error bag-om. Samo želim da vidiš arhitektonsku razliku.
+getimagesize() deo
+Ovo:
+$imageInfo = getimagesize($file['tmp_name']);
+
+možeš samo radi konzistentnosti napisati:
+$imageInfo = getimagesize($tmp);
+
+jer si već napravio:
+$tmp = $file['tmp_name'];
+
+Minimalno, ali čitljivije.
+A ova provera:
+if (
+    $imageInfo === false ||
+    $imageInfo['mime'] !== $mime
+)
+
+je vrlo dobra defense-in-depth provera.
+Dimenzije su takođe dobro rešene:
+$width = $imageInfo[0];
+$height = $imageInfo[1];
+
+if (
+    $width <= 0 ||
+    $height <= 0 ||
+    $width * $height > $maxPixels
+)
+
+i najvažnije — ovo se događa pre GD/Intervention decode-a. To je upravo ono interview pitanje koje smo malopre radili.
+Finalni output
+Ovo mi je možda najvažniji deo cele funkcije:
+return [
+    'tmp_path' => $tmp,
+    'mime' => $mime,
+    'size' => $size,
+    'width' => $width,
+    'height' => $height,
+];
+
+Input:
+raw $_FILES
+client metadata
+PHP metadata
+unvalidated state
+
+Output:
+validated temp path
+server-detected MIME
+actual size
+server-read dimensions
+
+To je baš ono što smo želeli.
+ImageProcessor sada može da dobije ovu strukturu i uopšte ne mora da zna šta je $_FILES.
+Moja finalna minimalno doterana verzija tvog koda
+Ne bih ti menjao strukturu, samo sitnice:
+function validateUploadedImage(
+    mixed $file,
+    string $field,
+    array &$errors,
+    bool $required = true,
+    int $maxSize = 5 * 1024 * 1024,
+    int $maxPixels = 25_000_000
+): ?array {
+
+    if ($file === null) {
+        if ($required) {
+            $errors[$field] = 'The file is required!';
+        }
+
+        return null;
+    }
+
+    if (!is_array($file)) {
+        $errors[$field] = 'The file must be an array type.';
+        return null;
+    }
+
+    foreach (['tmp_name', 'error', 'size'] as $key) {
+        if (!array_key_exists($key, $file)) {
+            $errors[$field] = 'There are missing file fields.';
+            return null;
+        }
+    }
+
+    if (
+        !is_int($file['error']) ||
+        !is_string($file['tmp_name']) ||
+        !is_int($file['size'])
+    ) {
+        $errors[$field] = 'Invalid upload data.';
+        return null;
+    }
+
+    $fileError = $file['error'];
+
+    if (
+        $fileError === UPLOAD_ERR_NO_FILE &&
+        !$required
+    ) {
+        return null;
+    }
+
+    if ($fileError !== UPLOAD_ERR_OK) {
+
+        $errorStr = match ($fileError) {
+            UPLOAD_ERR_INI_SIZE,
+            UPLOAD_ERR_FORM_SIZE =>
+                'The file is too large.',
+
+            UPLOAD_ERR_NO_FILE =>
+                'No file was uploaded.',
+
+            UPLOAD_ERR_PARTIAL =>
+                'The file was only partially uploaded, please try again.',
+
+            UPLOAD_ERR_NO_TMP_DIR,
+            UPLOAD_ERR_CANT_WRITE,
+            UPLOAD_ERR_EXTENSION =>
+                'The upload could not be completed.',
+
+            default =>
+                'Unknown upload error.',
+        };
+
+        $errors[$field] = $errorStr;
+
+        return null;
+    }
+
+    $tmp = $file['tmp_name'];
+
+    if (!is_uploaded_file($tmp)) {
+        $errors[$field] = 'Invalid upload.';
+        return null;
+    }
+
+    $size = filesize($tmp);
+
+    if ($size === false || $size <= 0) {
+        $errors[$field] = 'The file is empty or unreadable.';
+        return null;
+    }
+
+    if ($size > $maxSize) {
+        $errors[$field] = 'The file is too large.';
+        return null;
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+
+    $mime = $finfo->file($tmp);
+
+    $allowedMimes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+    ];
+
+    if (
+        $mime === false ||
+        !in_array($mime, $allowedMimes, true)
+    ) {
+        $errors[$field] =
+            'Only JPEG, PNG and WebP images are allowed.';
+
+        return null;
+    }
+
+    $imageInfo = getimagesize($tmp);
+
+    if (
+        $imageInfo === false ||
+        ($imageInfo['mime'] ?? null) !== $mime
+    ) {
+        $errors[$field] = 'Invalid image file.';
+        return null;
+    }
+
+    $width = $imageInfo[0];
+    $height = $imageInfo[1];
+
+    if (
+        $width <= 0 ||
+        $height <= 0 ||
+        $width * $height > $maxPixels
+    ) {
+        $errors[$field] =
+            'The image dimensions are too large.';
+
+        return null;
+    }
+
+    return [
+        'tmp_path' => $tmp,
+        'mime' => $mime,
+        'size' => $size,
+        'width' => $width,
+        'height' => $height,
+    ];
+}
+
+Coding Challenge 1: 9.8/10 ✅
+I meni je posebno važno što si praktično bez pomoći spojio skoro sve iz teorije: 
+optional/required semantics, upload status, boundary type checks, server-side MIME, 
+filesystem size, real image check, pixel guard i validated payload.
+Sledeći challenge bih sada prirodno podigao jedan nivo: uzmemo array photos[], 
+normalizujemo PHP-ovu nezgodnu $_FILES strukturu, validiramo sve ovom funkcijom 
+i napravimo indexed error bag tipa photos.2, 
+uz pravilo all-or-nothing validation.
+
+-----------------------------------------------------------------
+
+Coding Challenge 2 — multiple image upload + normalization + indexed error bag + all-or-nothing validation.
+Pretpostavimo HTML:
+<input
+    type="file"
+    name="photos[]"
+    multiple
+>
+
+PHP ti daje ovu nezgodnu strukturu:
+$_FILES['photos'] = [
+    'name' => [
+        0 => 'hotel.jpg',
+        1 => 'spa.png',
+        2 => 'restaurant.webp',
+    ],
+    'type' => [
+        0 => 'image/jpeg',
+        1 => 'image/png',
+        2 => 'image/webp',
+    ],
+    'tmp_name' => [
+        0 => '/tmp/phpA',
+        1 => '/tmp/phpB',
+        2 => '/tmp/phpC',
+    ],
+    'error' => [
+        0 => UPLOAD_ERR_OK,
+        1 => UPLOAD_ERR_OK,
+        2 => UPLOAD_ERR_OK,
+    ],
+    'size' => [
+        0 => 850000,
+        1 => 1200000,
+        2 => 430000,
+    ],
+];
+
+Tvoj zadatak
+Napiši dve funkcije.
+Prva:
+function normalizeUploadedFiles(
+    mixed $files,
+    string $field,
+    array &$errors
+): ?array
+
+Treba da pretvori PHP strukturu u:
+[
+    [
+        'name' => 'hotel.jpg',
+        'type' => 'image/jpeg',
+        'tmp_name' => '/tmp/phpA',
+        'error' => UPLOAD_ERR_OK,
+        'size' => 850000,
+    ],
+    [
+        'name' => 'spa.png',
+        'type' => 'image/png',
+        'tmp_name' => '/tmp/phpB',
+        'error' => UPLOAD_ERR_OK,
+        'size' => 1200000,
+    ],
+    // ...
+]
+
+Ovde još ne validiraš MIME, dimensions itd. Samo proveravaš da multiple-upload struktura ima smisla i normalizuješ je.
+Obavezno proveri da je $files array i da postoje:
+name
+type
+tmp_name
+error
+size
+
+i da su svih pet vrednosti nizovi.
+Druga funkcija:
+function validateUploadedImages(
+    mixed $files,
+    string $field,
+    array &$errors,
+    int $minFiles = 1,
+    int $maxFiles = 5
+): ?array
+
+Ona treba da:
+1. pozove normalizeUploadedFiles(),
+2. proveri broj fajlova,
+3. validira svaki fajl pomoću tvoje postojeće:
+validateUploadedImage(...)
+
+4. koristi indexed error keys:
+photos.0
+photos.1
+photos.2
+
+5. nastavi da validira sve fajlove i kada jedan padne — collect-all,
+6. ako postoji makar jedna greška, vrati:
+null
+
+7. ako su svi validni, vrati:
+[
+    [
+        'tmp_path' => '/tmp/phpA',
+        'mime' => 'image/jpeg',
+        'size' => 850000,
+        'width' => 1920,
+        'height' => 1080,
+    ],
+    [
+        ...
+    ],
+]
+
+Dakle finalni array ne treba da sadrži raw:
+name
+type
+
+nego samo validated data koje već vraća tvoj prvi validator.
+Collection-level pravila
+Za sada:
+minimum 1 slika
+maximum 5 slika
+
+Ako ih je 0:
+$errors['photos'] = 'At least one photo is required.';
+
+Ako ih je više od 5:
+$errors['photos'] = 'You may upload a maximum of 5 photos.';
+
+A pojedinačne greške ostaju:
+$errors['photos.1']
+$errors['photos.3']
+
+Najvažnija zamka
+Nemoj uraditi:
+foreach (...) {
+    $validated = validateUploadedImage(...);
+
+    if ($validated === null) {
+        return null;
+    }
+}
+
+jer time više nemaš collect-all.
+Želim da dobiješ, recimo:
+[
+    'photos.1' => 'The file is too large.',
+    'photos.3' => 'Only JPEG, PNG and WebP images are allowed.',
+]
+
+u jednom request-u.
+I još jedna stvar za razmišljanje: PHP multiple-upload struktura može teorijski biti neusklađena, npr:
+count($files['name']) !== count($files['tmp_name'])
+
+Nemoj pretpostaviti da su svi nizovi automatski iste dužine.
+Pošalji mi obe funkcije. Ne treba još nikakav save, WebP processing, DB niti cleanup — Challenge 2 se završava na potpuno validiranom multiple-upload payload-u.
+
+---
+
+opet isti fajl, samo nove funkcije.
+
+---
+
+Ovo je opet vrlo dobro urađeno — 9.7/10. Najvažnije: pogodio si sve što sam tražio — normalizaciju, proveru strukture, collection-level rules, reuse validateUploadedImage(), indexed error bag i collect-all ponašanje.
+Posebno mi se sviđa što nisi proverio samo count() nizova, nego si otišao korak dalje:
+$indexes = array_keys($files['name']);
+
+foreach ($keys as $key) {
+    if (array_keys($files[$key]) !== $indexes) {
+        $errors[$field] = 'The structure of the photo array is corrupted.';
+        return null;
+    }
+}
+
+Ovo je čak robusnije od običnog:
+count($files['name']) === count($files['tmp_name'])
+
+jer dva niza mogu imati isti broj elemenata, a različite indekse. Lep detalj.
+I ovaj deo je potpuno pogođen:
+foreach ($files as $index => $file) {
+    $valid = validateUploadedImage(
+        $file,
+        "$field.$index",
+        $errors,
+        true
+    );
+
+    if ($valid === null) {
+        $hasErrors = true;
+        continue;
+    }
+
+    $validated[] = $valid;
+}
+
+Dakle ako:
+photo 0 ✅
+photo 1 ❌ size
+photo 2 ✅
+photo 3 ❌ MIME
+
+ne staješ kod 1, nego dobiješ:
+[
+    'photos.1' => 'The file is too large.',
+    'photos.3' => 'Only JPEG, PNG and WebP images are allowed.',
+]
+
+a funkcija na kraju vraća:
+null
+
+To je tačno traženi all-or-nothing validation contract.
+Jedna stvar koju bih stvarno promenio
+U normalizaciji trenutno radiš:
+$normalized[] = [
+    ...
+];
+
+Time ponovo indeksiraš array od:
+0, 1, 2...
+
+Čak i ako originalni PHP array ima indekse:
+[
+    2 => ...,
+    5 => ...
+]
+
+normalizovani postaje:
+[
+    0 => ...,
+    1 => ...
+]
+
+Pošto si već toliko lepo proverio originalne indekse, ja bih ih i sačuvao:
+foreach ($files['name'] as $index => $name) {
+    $normalized[$index] = [
+        'name' => $name,
+        'type' => $files['type'][$index],
+        'tmp_name' => $files['tmp_name'][$index],
+        'error' => $files['error'][$index],
+        'size' => $files['size'][$index],
+    ];
+}
+
+Za normalan browser upload verovatno će svakako biti 0,1,2, ali ovako contract ostaje konzistentan:
+raw photos[5]
+↓
+normalized photos[5]
+↓
+error photos.5
+
+To je čistije.
+Ovaj deo je dobar
+if (
+    count($files) === 1 &&
+    ($files[0]['error'] ?? null) === UPLOAD_ERR_NO_FILE
+) {
+    $files = [];
+}
+
+Dobro si prepoznao klasičan PHP slučaj gde:
+<input type="file" name="photos[]" multiple>
+
+nije dobio nijedan izbor, ali $_FILES može ipak predstavljati jedan UPLOAD_ERR_NO_FILE entry.
+Jedina nijansa: ako sačuvaš originalne indekse kako sam gore predložio, ne bih računao da postoji baš $files[0].
+Mogao bi elegantnije:
+if (count($files) === 1) {
+    $firstFile = reset($files);
+
+    if (
+        is_array($firstFile) &&
+        ($firstFile['error'] ?? null) === UPLOAD_ERR_NO_FILE
+    ) {
+        $files = [];
+    }
+}
+
+Ali za standardni browser payload tvoja trenutna verzija radi.
+Još jedna production nijansa
+Zamisli neki čudan payload:
+[
+    0 => ['error' => UPLOAD_ERR_OK, ...],
+    1 => ['error' => UPLOAD_ERR_NO_FILE, ...],
+]
+
+Tvoj:
+$count = count($files);
+
+kaže 2, iako drugi zapravo nije uploadovan fajl.
+Za naš zadatak je to sasvim prihvatljivo jer će drugi entry kasnije pasti kroz validateUploadedImage().
+U production reusable multiple-upload validatoru bih ipak odlučio šta znači collection count:
+- broj file input entry-ja, ili
+- broj stvarno pokušano uploadovanih fajlova.
+Za običan multiple input uglavnom nećeš ni dobijati gomilu praznih entry-ja, tako da ovo nije problem koji bih sada komplikovao.
+Finalna verzija koju bih ja ostavio
+Tvoja druga funkcija praktično može ostati kakva jeste. U prvoj bih promenio samo očuvanje index-a:
+function normalizeUploadedFiles(
+    mixed $files,
+    string $field,
+    array &$errors
+): ?array {
+
+    if (!is_array($files)) {
+        $errors[$field] = 'Photos must be an array type.';
+        return null;
+    }
+
+    $keys = [
+        'name',
+        'type',
+        'tmp_name',
+        'error',
+        'size',
+    ];
+
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $files)) {
+            $errors[$field] = 'There are missing file fields.';
+            return null;
+        }
+
+        if (!is_array($files[$key])) {
+            $errors[$field] = "The file $key must be an array.";
+            return null;
+        }
+    }
+
+    $indexes = array_keys($files['name']);
+
+    foreach ($keys as $key) {
+        if (array_keys($files[$key]) !== $indexes) {
+            $errors[$field] =
+                'The structure of the photo array is corrupted.';
+
+            return null;
+        }
+    }
+
+    $normalized = [];
+
+    foreach ($files['name'] as $index => $name) {
+        $normalized[$index] = [
+            'name' => $name,
+            'type' => $files['type'][$index],
+            'tmp_name' => $files['tmp_name'][$index],
+            'error' => $files['error'][$index],
+            'size' => $files['size'][$index],
+        ];
+    }
+
+    return $normalized;
+}
+
+Coding Challenge 2: 9.7/10 ✅
+I sad već imamo lep pipeline:
+$_FILES['photos']
+↓
+normalizeUploadedFiles()
+↓
+validateUploadedImages()
+↓
+[
+    validated image,
+    validated image,
+    validated image
+]
+
+-----------------------------------------------
+
+Coding Challenge 3 — Processing + staging + rollback
+
+Sad prelazimo na ozbiljniji deo.
+Pretpostavi da već dobiješ:
+$validatedImages = [
+    [
+        'tmp_path' => '...',
+        'mime' => 'image/jpeg',
+        'size' => 2_000_000,
+        'width' => 3200,
+        'height' => 2400,
+    ],
+    // ...
+];
+
+Napiši funkciju:
+function processAndStoreImages(
+    array $validatedImages,
+    int $hotelId,
+    string $storageRoot
+): array
+
+Za sada ne moraš stvarno koristiti GD ako hoćeš da fokus ostane na filesystem flow-u. Možeš napraviti helper:
+processImageToWebp(
+    string $source,
+    string $destination
+): bool
+
+i pretpostaviti da on odradi resize + WebP.
+Glavna funkcija treba da:
+1. napravi hotel folder ako ne postoji:
+$storageRoot/hotels/$hotelId
+
+2. za svaku sliku generiše:
+bin2hex(random_bytes(16)) . '.webp'
+
+3. obradi je prvo u staging/temp fajl,
+4. tek nakon uspešne obrade promoviše je na finalni path,
+5. vodi evidenciju svih uspešno napravljenih finalnih fajlova,
+6. ako bilo koja slika padne tokom processing/save faze:
+   - cleanup svih prethodno napravljenih finalnih fajlova,
+   - cleanup trenutnog temp fajla ako postoji,
+   - baci RuntimeException,
+7. ako sve prođe, vrati metadata:
+[
+    [
+        'path' => 'hotels/42/abc.webp',
+        'mime' => 'image/webp',
+        'size' => 382000,
+    ],
+    ...
+]
+
+Važno: u path želim relative storage path, ne absolute filesystem path.
+Za sada nema DB-a. Challenge 3 završavamo na:
+validated images
+↓
+processing
+↓
+staging
+↓
+filesystem save
+↓
+all-or-nothing cleanup
+↓
+stored metadata
+
+Ovde me najviše zanima kako ćeš organizovati try/catch, $savedPaths, temp fajlove i cleanup.
+
+---
+
+Ovo je vrlo dobro arhitektonski rešeno, ali imaš jednu ozbiljnu sitnu grešku u processImageToWebp() koja bi trenutno oborila ceo processing. Zbog nje trenutnoj verziji dajem 9.2/10, a nakon te ispravke si praktično na 9.8/10.
+Najvažniji bug je ovde:
+$image = match ($mime) {
+    'image/jpeg' => imagecreatefromjpeg($destination),
+    'image/png'  => imagecreatefrompng($destination),
+    'image/webp' => imagecreatefromwebp($destination),
+    default      => false,
+};
+
+Treba da čitaš source, ne destination:
+$image = match ($mime) {
+    'image/jpeg' => imagecreatefromjpeg($source),
+    'image/png'  => imagecreatefrompng($source),
+    'image/webp' => imagecreatefromwebp($source),
+    default      => false,
+};
+
+Mentalno:
+$source
+→ PHP temporary uploaded image
+→ decode
+
+$destination
+→ novi staging WebP
+→ encode/write
+
+Trenutno pokušavaš da dekodiraš $destination, koji u tom momentu još ni ne postoji.
+Ostatak orchestration flow-a ti je, međutim, baš dobar.
+Posebno mi se sviđa:
+$tempPath = $hotelDir . DIRECTORY_SEPARATOR . $name . 'tmp';
+
+$finalPath = $hotelDir . DIRECTORY_SEPARATOR . $name;
+
+pa:
+processImageToWebp(..., $tempPath, ...)
+
+i tek onda:
+rename($tempPath, $finalPath)
+
+To je upravo staging → promote pattern koji smo učili.
+Još bolje je što $tempPath postavljaš na null tek kada je promote uspeo:
+$tempPath = null;
+$savedPaths[] = $finalPath;
+
+Znači ako:
+rename(...)
+
+padne, catch i dalje zna koji temp fajl treba da obriše.
+I ovo je odličan detalj:
+$savedPaths[] = $finalPath;
+
+$size = filesize($finalPath);
+
+if ($size === false) {
+    throw new RuntimeException(...);
+}
+
+Zašto je redosled dobar? Zato što čak i ako filesize() padne nakon što je finalni fajl već kreiran, $finalPath je već u $savedPaths, pa će catch uraditi cleanup.
+To je baš dobro razmišljanje.
+Tvoj rollback:
+catch (\Throwable $e) {
+
+    if ($tempPath !== null && is_file($tempPath)) {
+        unlink($tempPath);
+    }
+
+    foreach ($savedPaths as $savedPath) {
+        if (is_file($savedPath)) {
+            unlink($savedPath);
+        }
+    }
+
+    throw $e;
+}
+
+je takođe dobar. Dakle:
+photo 0 → saved
+photo 1 → saved
+photo 2 → processing fails
+
+catch
+↓
+cleanup current temp
+↓
+delete photo 0
+↓
+delete photo 1
+↓
+rethrow
+
+Tačno traženi all-or-nothing filesystem flow.
+Imam još tri manje dorade.
+Prvo, temp naziv bih čisto zbog čitljivosti pisao:
+$tempPath =
+    $hotelDir
+    . DIRECTORY_SEPARATOR
+    . $name
+    . '.tmp';
+
+Trenutno dobijaš nešto poput:
+abc.webp.tmp
+
+ako dodaš '.tmp', dok sada dobijaš:
+abc.webptmp
+
+Oba rade kao filesystem filename, ali prvi jasnije govori šta je.
+Drugo, cleanup operacije mogu i same pasti. Trenutno:
+unlink($savedPath);
+
+ignorišeš rezultat. Za ovaj challenge je to sasvim dovoljno, ali production verzija bi makar logovala:
+if (is_file($savedPath) && !unlink($savedPath)) {
+    error_log("Could not cleanup file: $savedPath");
+}
+
+i onda i dalje:
+throw $e;
+
+da cleanup failure ne sakrije originalnu grešku.
+Treće, u processImageToWebp() imaš resurse/slike koje više ne koristiš nakon resize-a. Kod:
+$resized = imagescale(...);
+
+$image = $resized;
+
+stari $image više ti ne treba. Kod batch processing-a je dobro razmišljati o oslobađanju image buffer-a jer mogu biti veliki. Ne bih ti zbog toga sada komplikovao funkciju, ali to postaje relevantno kada obrađuješ 5–10 velikih slika u jednom request-u.
+Još jedan detalj: ovo je dobro:
+$storageRoot = rtrim($storageRoot, '/\\');
+
+i:
+$hotelDir =
+    $storageRoot
+    . DIRECTORY_SEPARATOR
+    . 'hotels'
+    . DIRECTORY_SEPARATOR
+    . $hotelId;
+
+a finalno u DB metadata vraćaš:
+'path' => "hotels/$hotelId/$name",
+
+što je relative storage path, a ne absolute server path. Baš ono što smo učili.
+Tvoj processImageToWebp() bih minimalno popravio ovako:
+function processImageToWebp(
+    string $source,
+    string $destination,
+    string $mime,
+    int $maxWidth = 1600,
+    int $quality = 82
+): bool {
+
+    $image = match ($mime) {
+        'image/jpeg' => imagecreatefromjpeg($source),
+        'image/png'  => imagecreatefrompng($source),
+        'image/webp' => imagecreatefromwebp($source),
+        default      => false,
+    };
+
+    if ($image === false) {
+        return false;
+    }
+
+    if (!imagepalettetotruecolor($image)) {
+        return false;
+    }
+
+    imagealphablending($image, false);
+    imagesavealpha($image, true);
+
+    if (imagesx($image) > $maxWidth) {
+
+        $resized = imagescale(
+            $image,
+            $maxWidth,
+            -1,
+            IMG_BICUBIC
+        );
+
+        if ($resized === false) {
+            return false;
+        }
+
+        $image = $resized;
+
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+    }
+
+    return imagewebp(
+        $image,
+        $destination,
+        $quality
+    );
+}
+
+Dakle rezultat za Challenge 3:
+architecture / SRP         10/10
+staging strategy           10/10
+rollback logic             10/10
+relative paths             10/10
+error propagation          10/10
+GD processing               8/10 zbog source/destination buga
+
+---------------------------------------------------
+
+
