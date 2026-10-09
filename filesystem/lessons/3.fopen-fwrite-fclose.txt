@@ -1,8 +1,10 @@
 Lekcija 3 — fopen(), fread(), fwrite(), fclose()
 
 file_get_contents() i file_put_contents() su odlični kada želiš da odjednom pročitaš ili upišeš sadržaj.
+
 Ali PHP ima i niži nivo rada preko file handle-a.
 Na primer:
+
 $handle = fopen($path, 'r');
 
 fopen() otvara fajl i vraća resource/stream handle koji koristiš za dalje operacije.

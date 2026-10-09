@@ -1,0 +1,979 @@
+PITANJE 1:
+
+Koja je razlika između filesystem path-a, relative/storage path-a i public URL-a? 
+Šta bi od toga tipično čuvao u bazi za uploadovanu sliku i zašto?
+
+---
+
+filesystem path je putanja na kojoj čuvamo fajl u fajl sistemu.
+
+relaitve/storage path je relativna putanja do fajla, koju najčešće čuvamo u bazi
+
+public URL je putanja do kroz browser, ako na domenu na primer: bookyourhotelapp.com/uploads/15/slika.webp
+
+U bazu bih sačuvao relative path iz prostog razloga što uvek može doći 
+do promene domena ili store-a pa je ovo snajbolje kako bi se izbeglo ručno refaktorisanje svih zapisa.
+
+---
+
+Odlično — 9.5/10.
+Suštinski si sve pogodio. Samo bih malo izoštrio formulacije da zvuče interview-ready.
+filesystem path nije samo „putanja na kojoj čuvamo fajl“, nego konkretno putanja koju koristi OS/PHP, na primer:
+/var/www/app/public/uploads/15/slika.webp
+
+relative/storage path je logička relativna putanja, na primer:
+uploads/15/slika.webp
+
+ili čak:
+hotels/15/slika.webp
+
+ako storage layer već zna root.
+public URL je ono preko čega browser pristupa javnom fajlu, na primer:
+https://bookyourhotelapp.com/uploads/15/slika.webp
+
+I potpuno si dobro rekao šta bih čuvao u bazi:
+relative/storage path
+
+jer tada DB nije vezana ni za konkretan filesystem root, ni za domen/CDN. Ako se promeni server path ili domen, menjaš storage/config mapping, a ne hiljade DB redova.
+
+Tvoj interview odgovor bih samo malo uglačao ovako, mentalno:
+Filesystem path je fizička putanja na serveru koju koristi PHP/OS. 
+Relative/storage path je logička relativna putanja koju aplikacija koristi da locira fajl unutar storage-a. 
+Public URL je adresa preko koje browser pristupa javnom fajlu. 
+
+U bazi bih čuvao relative/storage path 
+jer je nezavisan od konkretnog server path-a, domena i CDN-a.
+
+To je odgovor za 10/10.
+
+--------------------------------------------------
+
+PITANJE 2
+
+Zašto ne bi trebalo verovati $_FILES['type'] i originalnom filename-u prilikom upload-a? 
+Kako bi proverio stvarni tip fajla i kako bi generisao bezbedan stored filename?
+
+---
+
+Zato što su type i name user controlled a mi moramo imati pravu proveru koju će utvrditi server a ne da slepo verujemo korisničkom unosu.
+
+Zato bih type proverio sa finfo() gde bi php proverio tačan mime.
+
+Što se tiče imena, svakako bih generisao bezbedno ime. Najčešće se radi sa bin2hex(random_bytes(16)) . "$extension"; 
+ali ovde treba naglasiti da ovim načinom iako je šansa za koliziju veoma mala, promilna, ipak ovo nije 100% unique name.
+
+---
+
+Vrlo dobro — 9.4/10.
+Najvažnije si rekao tačno: $_FILES['type'] i $_FILES['name'] ne tretiramo kao pouzdanu osnovu za security odluke, jer dolaze sa client/request strane. Server treba sam da proveri sadržaj.
+Za MIME bih intervju odgovor malo precizirao ovako:
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+
+$mime = $finfo->file($file['tmp_name']);
+
+pa onda allowlist:
+$allowed = [
+    'image/jpeg' => 'jpg',
+    'image/png'  => 'png',
+    'image/webp' => 'webp',
+];
+
+if (!isset($allowed[$mime])) {
+    // reject
+}
+
+Onda je posebno dobro da ekstenziju ne uzimaš iz originalnog filename-a, nego iz server-side potvrđenog MIME-a:
+$extension = $allowed[$mime];
+
+$filename =
+    bin2hex(random_bytes(16))
+    . '.'
+    . $extension;
+
+Jedina stvar koju bih korigovao je ovo:
+„šansa za koliziju je promilna“
+
+Nije promilna — to bi zapravo bilo ogromno. Sa random_bytes(16) imaš 128-bitni random prostor, 
+pa je šansa za slučajnu koliziju ekstremno, astronomski mala u normalnoj web aplikaciji. Ali dobro je što si rekao da ipak 
+nije matematički 100% nemoguća.
+
+Interview-ready verzija bi bila:
+
+Ne verujem $_FILES['type'] ni originalnom imenu jer su client-controlled metadata. 
+MIME određujem server-side preko finfo nad tmp_name, zatim ga proveravam kroz allowlist. 
+Ekstenziju dobijam iz potvrđenog MIME-a, a stored filename generišem server-side, npr. bin2hex(random_bytes(16)) . '.' . $extension, 
+čime praktično eliminišem kolizije i ne koristim korisničko ime kao filesystem authority.
+
+To je 10/10 odgovor.
+
+------------------------------------------------------------------
+
+PITANJE 3
+
+Objasni preporučeni redosled validacije jednog image upload-a od trenutka kada dobiješ $_FILES['photo'] 
+do trenutka kada si spreman da ga obradiš i sačuvaš. 
+Zašto je redosled bitan?
+
+---
+
+Prvo da razjasnimo zašto je redosled bitan? Iz prostog razloga jer ako neki korak nije prošao kako treba, nema potrebe dalje proveravati. 
+Na primer, required file odnosno slika, nije ni stigla -> zašto proveravati MIME? Aplikacija ne odobrava određeni size, slika je preko toga
+ -> zašto mučiti memoriju sa uređivanjem MIME-a resize i crop, a posebno ako korisnik koji ju je poslao nije autorizovan.
+
+Dakle, redosled bi bio:
+
+Prvo i osnovno, proveriti da li je user autentifikovan i autorizovan, tj da li može izvršiti ovu radnju.
+
+Zatim:
+
+Fajl postoji? -> Upload error? -> ako je kolekcija, collection count? -> size? -> server proveren MIME ? 
+-> imagesize - dimensions -> ovde idemo u pripremu validiranih data, da ne bismo vukli $_FILES svuda po aplikaciji.
+
+Zatim:
+
+ide image processing -> decode, orientation, resize / crop, encode to webp i tek sada možemo razmišljati da napravimo privremeni / staging fajl, 
+a sada dolazimo do Filesystem storag:
+
+generišemo safe random name -> pravimo directory -> promotion tj save i pripremamo relative path za bazu.
+
+Sada bi bilo dobro imati repository, pa idemo transaction -> insert data ->> commit, a ako bude rollback
+
+Važno je da ne zaboravimo da uradimo cleanup da ne bismo ostavili orphan files.
+
+Ovo naravno važi za svaki failure po naosob:
+
+processing fails -> čistimo temp vraćamo exception
+filesystem saving fails -> cleanup i exception
+Bazu smo rekli.
+
+
+PS. Naravno kada sam objašnjavao zašto je bitan redosled, 
+već sam rekao da ako padnu autorization, validation i file exists -> ništa neće biti obrađeno / sačuvano i korisniku se vraća error. 
+I glavna poenta je kod više fajlova, da ili snimimo sve ili da nemamo ništa... zato je cleanup važan
+
+---
+
+Ovo je veoma jak odgovor — 9.8/10. Na pravom intervjuu bih ga ocenio kao odgovor nekoga ko ne zna samo $_FILES, nego razume kompletan upload lifecycle.
+Najbolji deo ti je što nisi samo nabrojao provere, nego si objasnio zašto redosled postoji. 
+Tačno: nema smisla trošiti CPU/RAM na finfo, decode, resize ili WebP encoding ako request već nema pravo da izvrši operaciju ili upload nije ni uspeo.
+
+Tvoj mentalni flow bih praktično zadržao:
+authentication
+↓
+resource lookup
+↓
+authorization
+↓
+upload postoji / expected structure
+↓
+UPLOAD_ERR
+↓
+collection count (ako je multiple upload)
+↓
+size
+↓
+server-side MIME (finfo)
+↓
+MIME allowlist
+↓
+getimagesize
+↓
+dimensions / pixel limits / business rules
+↓
+VALIDATED UPLOAD DATA
+
+Tu mi se posebno sviđa što si rekao:
+da ne bismo vukli $_FILES svuda po aplikaciji
+
+To je važna arhitektonska poenta.
+Onda:
+validated upload
+↓
+decode
+↓
+orientation
+↓
+resize / crop
+↓
+encode WebP
+↓
+temporary/staging output
+↓
+promote/store
+↓
+relative path
+↓
+DB persistence
+
+I na kraju failure handling:
+processing failure
+→ cleanup temp
+→ exception
+
+filesystem failure
+→ cleanup
+→ exception
+
+DB failure
+→ rollback DB
+→ cleanup saved files
+→ exception
+
+Kod multiple upload-a si pogodio i najvažniji invariant:
+validate ALL first
+↓
+tek onda process/save
+
+ako contract kaže all-or-nothing:
+ili sve
+ili ništa
+
+To je odličan odgovor.
+Dve sitne preciznosti.
+Prvo, safe random filename i staging nisu nužno strogo tek posle celog processing-a. U praksi često prvo generišeš temp/staging destination:
+$tmpName = bin2hex(random_bytes(16)) . '.webp';
+
+pa image processor direktno encode-uje u taj temp fajl. Bitna stvar nije tačan trenutak generisanja imena, 
+nego da finalno application state ne smatra fajl stabilnim dok processing nije uspeo.
+Drugo, DB transakcija ne „obuhvata“ filesystem:
+DB transaction ✅ za DB
+filesystem ❌ nije deo rollback-a
+
+zato upravo orchestration service mora ručno da koordinira cleanup. To si već suštinski rekao.
+Na intervjuu bih tvoj odgovor skratio na 60–90 sekundi, ali sadržajno je vrlo dobar.
+
+---------------------------------------------------------
+
+PITANJE 4
+
+Koja je razlika između move_uploaded_file(), rename() i copy()? 
+Zašto bi za početno premeštanje PHP upload-a iz temporary lokacije preferirao move_uploaded_file() umesto običnog rename()?
+
+---
+
+move_uploaded_file() - premešta fajl ali samo ako je on dosao putem HTTP-a. Php ovde proverava tmp_name i ako ima bilo kakva greska vraca false.
+
+rename() - prvenstveno preimenuje fajl ako se stavi isti folder na primer uploads/abc.webp 
+-> uploads/abd.webp, ali moze i da premesta fajl iz jednog foldera u drugi ako se navede drugi folder, npr tmp/abc.webp.
+
+copy() sluzi da prekopira fajl. Old fajl ostaje na svom mestu a new, tj kopirani odlazi na zeljeno mesto u zeljeni folder. 
+E sad, ako je tamo u tom drugom folderu vec postojeci fajl sa istim imenom ovaj copy() new fajl ce ga pregaziti, 
+pa zato ako app to ne dozvoljava treba prvo proveriti sa file_exists()
+
+move_uploaded_file() bih pre koristio nego rename() iz vise razloga:
+
+1. Konzistentnost i čitljivost koda -> zna se da radim isključivo sa upload-om a ne neko izmestanje u filesystem-u.
+
+2. A monoho vaznije: sto move_uploaded_file() vec proverava da li je fajl stigao preko HTTP-a, dakle zbog bezbednosti je svakako bolje
+
+---
+
+Odlično — 9.7/10. Suštinski si sve pogodio, posebno razlog zašto je move_uploaded_file() bolji izbor za prvi korak nakon validacije upload-a.
+Najvažnija mala korekcija je ova formulacija:
+„PHP ovde proverava tmp_name i ako ima bilo kakva greška vraća false.“
+
+Preciznije: move_uploaded_file() proverava da li je source path zaista fajl koji je uploadovan kroz PHP HTTP POST upload mehanizam. Ne proverava ponovo sve UPLOAD_ERR_* uslove umesto tebe — zato smo i rekli da $file['error'] moraš proveriti ranije.
+Dakle:
+move_uploaded_file(
+    $file['tmp_name'],
+    $destination
+);
+
+će vratiti false ako source nije validan PHP-uploaded file ili ako samo premeštanje ne uspe.
+Tvoje razlike su dobre:
+move_uploaded_file()
+→ specijalizovan za PHP HTTP upload
+→ source mora biti validan uploaded file
+→ move na destination
+→ success true / failure false
+
+rename()
+→ generička filesystem operacija
+→ rename ili move
+→ nema upload-specific proveru
+
+copy()
+→ pravi kopiju
+→ source ostaje
+→ destination dobija kopiju
+
+I kod copy() si dobro naveo overwrite rizik. Samo zapamti da je:
+if (!file_exists($destination)) {
+    copy(...);
+}
+
+koristan pre-check, ali nije atomska zaštita od concurrency-ja — upravo zbog TOCTOU problema koji smo već radili.
+Za intervju bih tvoj završni deo formulisao ovako:
+Za početni transfer PHP upload-a preferiram move_uploaded_file() jer je semantički namenjen toj operaciji 
+i dodatno proverava da source zaista potiče iz PHP HTTP upload mehanizma. 
+rename() je generička filesystem operacija i nema tu upload-specific proveru.
+
+To je praktično 10/10.
+
+---
+
+Interview pitanje 5
+Zašto nije dovoljno proveriti samo veličinu uploadovanog image fajla u MB? 
+Kako vrlo kompresovana slika male veličine na disku može ipak napraviti problem sa memorijom 
+i kako bi to sprečio pre nego što je pošalješ u GD ili Intervention Image?
+
+---
+
+Nije dovoljno iz prostog razloga sto kompresovana slika moze lako da ima size 2MB a onda resoluciju 12000 x 10000 sto bi bas namucilo memoriju.
+
+Zato bih osim provere size radio sa getimagesize() i pregledao width i height.
+
+Pa bih onda uradio lepo resize ako je fotka veca od ocekivanog, recino da sam postavio max width 1600, a ako je manje od toga ostavio kako jeste.
+Kod resize jos treba voditi racuna o aspect ratio koji dobijemo deljenjem max sirine sa sirinom slike koju obradjujemo.
+
+Jos jedna dobra praksa je decode i encode to webp, ali to ne mora biti vezano za ovu size temu.
+
+---
+
+Vrlo dobro — 9.2/10. Glavnu poentu si pogodio: file size na disku nije isto što i decoded memory usage.
+Primer koji si dao je baš dobar:
+2 MB JPEG
+12000 × 10000 px
+
+može biti relativno mali kao kompresovan fajl, ali kada ga GD dekodira radi sa ogromnim brojem piksela i potrošnja RAM-a može eksplodirati.
+Najvažnija korekcija je ova: resize ne sme biti prva zaštita, jer da bi GD uradio resize, prvo uglavnom mora da dekodira originalnu sliku u memoriju. Ako je original ekstremno velik, možeš pasti na memory limit pre nego što uopšte stigneš do resize-a.
+Zato pre decode-a radiš:
+$imageInfo = getimagesize($file['tmp_name']);
+
+if ($imageInfo === false) {
+    // invalid image
+}
+
+$width = $imageInfo[0];
+$height = $imageInfo[1];
+
+$maxPixels = 25_000_000;
+
+if ($width * $height > $maxPixels) {
+    // reject before GD decode
+}
+
+Možeš uz pixel count imati i:
+if ($width > 6000 || $height > 6000) {
+    // reject
+}
+
+Tek nakon toga:
+dimensions safe
+↓
+decode
+↓
+resize/downscale
+↓
+encode WebP
+
+Druga mala korekcija: ovo:
+$maxWidth / $sourceWidth
+
+nije aspect ratio, nego scale factor.
+Na primer:
+$scale = 1600 / 3200;
+// 0.5
+
+Aspect ratio same slike je:
+$aspectRatio = $sourceWidth / $sourceHeight;
+
+npr:
+3200 / 2400 = 1.333...
+
+Kod proporcionalnog resize-a scale factor primenjuješ na obe dimenzije:
+$newWidth = (int) round($sourceWidth * $scale);
+$newHeight = (int) round($sourceHeight * $scale);
+
+Tako čuvaš aspect ratio.
+Dakle interview-ready odgovor bi bio:
+Nije dovoljno proveriti samo MB jer kompresovana slika može imati mali file size, ali ogroman broj piksela. 
+Pre nego što je dekodiram kroz GD ili Intervention, koristim getimagesize() da proverim width, 
+height i po mogućnosti ukupan pixel count. Ako prelazi dozvoljeni limit, odbijam je pre decode-a da zaštitim memoriju. 
+Tek nakon toga je bezbedno dekodirati, proporcionalno smanjiti i eventualno re-encode-ovati u WebP.
+
+To je 10/10 verzija.
+
+------------------------------------------------------------------
+
+PITANJE 6
+
+Imaš multiple upload od 5 slika i business pravilo kaže: ili se svih 5 uspešno sačuva ili nijedna. 
+Kako bi organizovao 
+validation, processing, filesystem save i DB insert tako da ne ostanu partial state 
+i orphan fajlovi ako treća slika ili DB insert padnu?
+
+---
+
+Prvo bih naravno radio validation svake slike zasebno. 
+Proveravamo size, mime i sl a ako ne prođe jedna vraćamo sve, a ako sve prođu, napraviti validated niz, 
+koji će kasnije proći sledeće provere.
+
+Onda bismo prešli na processing i zadržali isti princip kao u validaciji. Dakle, ako recimo resize ne uspe na jednoj, vraćamo sve.
+
+Zatim bih prešao na filesystem save, tu bih ukoliko jedna padne, obavezno uradio cleanup uspešno snimljenih.
+
+Na kraju DB insert, ako transakcija padne i uradi rollback, vraćamo se nazad na filesystem 
+(filesystem nije deo DB transakcije sam po sebi i to su dva odvojena pojma, ako padne db insert, 
+neće se automatski unlinkovati snimljeni fajlovi), 
+i radimo unlink svih slika koje smo zaprimili u celom ovom procesu, u ovom slučaju svih 5.
+
+---
+
+Odlično — 9.8/10. Ovo je veoma dobar odgovor 
+jer jasno razdvajaš validation, processing, filesystem i DB transaction, 
+i najvažnije: razumeš da DB rollback ne vraća filesystem unazad.
+
+Tvoj flow bih samo malo formalizovao:
+
+1. VALIDATE ALL
+   → ako jedna padne:
+     reject ceo request
+     ništa još nije sačuvano
+
+2. PROCESS ALL
+   → resize/crop/encode u temp/staging
+   → ako jedna padne:
+     cleanup svih temp rezultata
+     exception
+
+3. SAVE / PROMOTE ALL
+   → vodi evidenciju $savedPaths
+   → ako treća padne:
+     unlink već sačuvanih 1 i 2
+     cleanup temp
+     exception
+
+4. DB TRANSACTION
+   → INSERT metadata za svih 5
+   → ako bilo koji INSERT padne:
+     rollback DB
+     unlink svih 5 filesystem fajlova
+     exception
+
+5. COMMIT
+   → success
+
+
+Posebno je jak ovaj deo tvog odgovora:
+filesystem nije deo DB transakcije sam po sebi
+
+To je jedna od najbitnijih stvari ovog modula.
+Jedina sitna dorada: u processing fazi, ako radiš staging, 
+možda već postoje fizički temp fajlovi. 
+Zato „ako resize padne, vraćamo sve“ treba tehnički da znači:
+
+reject operation
++
+cleanup svega što je processing do tada napravio
+
+Ne samo prekid funkcije.
+A kod DB failure-a, da — ako smo svih 5 već finalno sačuvali, rollbackujemo DB i brišemo svih 5 sa filesystem-a.
+To je praktično 10/10 production mental model.
+
+------------------------------------------------
+
+PITANJE 7 
+
+Koja je razlika između public i private storage-a? Zašto random, 
+teško pogodljiv filename nije dovoljan da privatni dokument bude bezbedan 
+ako se nalazi ispod public web root-a? Kako bi organizovao download privatnog dokumenta?
+
+---
+
+Osnovna razlika između public i private storage-a je ta što je public javno izložen, 
+odnosno može mu se pristupiti preko browsera dok u private ne može. Zato je dobra praksa sve "osetljive" fajlove, dokumente, 
+držati u private storage. Unique random name takođe ne garantuje da će fajl biti zaštićen ako se nalazi u public, jer iako je 
+verovatnoća da se path pogodi veoma mala, ipak informacija može da procuri i onda imamo nezgodnu situaciju.
+
+Organizacija downloada privatnog dokumenta:
+
+GET /documetnts/15/download
+
+Php uzima id usera i proverava identitet, dakle 
+
+Authenticated user -> da li je authorized access -> nađemo file u DB i tek onda read/send
+
+Naglašavam da u headeru treba podesiti Content-Type (najčešće application/pdf) 
+a takođe i Content-Disposition: attachment (ako je download, bolje nego inline)
+
+---
+
+Vrlo dobro — 9.4/10. Suština ti je tačna, posebno deo da unguessable URL nije authorization.
+Samo bih ispravio jednu bitnu stvar u download flow-u: kod:
+GET /documents/15/download
+
+15 je tipično document/file ID, ne user ID.
+Bolji flow:
+authenticated user
+↓
+validate document_id
+↓
+DB lookup documenta
+↓
+404 ako ne postoji
+↓
+authorization:
+da li ovaj user sme da pristupi baš tom dokumentu?
+↓
+resolve server-controlled private path
+↓
+is_file / is_readable
+↓
+response headers
+↓
+readfile()
+↓
+exit
+
+Ovo što si rekao za random filename je potpuno tačno:
+/public/files/a83f91....pdf
+
+može biti gotovo nemoguće pogoditi, ali ako URL procure:
+browser → web server → file
+
+nema nikoga ko će pitati:
+„Da li ovaj korisnik ima pravo da ga vidi?“
+
+Zato:
+random filename
+→ korisno
+
+private storage + authorization
+→ security boundary
+
+Još dve sitne preciznosti. Content-Type nije nužno application/pdf; 
+treba da odgovara pouzdano poznatom tipu konkretnog dokumenta. 
+A:
+Content-Disposition: attachment
+
+je dobar izbor ako želimo download, 
+dok inline može imati smisla ako želimo da browser prikaže npr. PDF.
+Interview-ready odgovor bi ti bio otprilike:
+Public storage je direktno dostupan preko web servera, 
+dok private storage nije javno adresabilan i pristup mu kontroliše aplikacija. 
+Random filename nije authorization, jer ako URL procure, javni fajl se može skinuti bez provere identiteta. 
+Za private download bih autentifikovao korisnika, validirao file ID, pronašao dokument u bazi, proverio authorization, 
+resolve-ovao trusted filesystem path, proverio da fajl postoji i može da se čita, 
+postavio odgovarajuće response headers i poslao ga preko readfile().
+
+To je 10/10 verzija.
+
+---------------------------------------
+
+PITANJE 8
+
+Objasni razliku između file_exists(), is_file(), is_dir(), 
+is_readable() i is_writable(). Zašto provera poput is_file($path) 
+pre file_get_contents($path) ipak ne garantuje da će čitanje uspeti?
+
+---
+
+file_exists() -> proverava da li fajl postoji
+is_file() -> proverava ne samo da li postoji nego i da li je u pitanju fajl
+is_dir() proverava da li je direktorijum postojeći
+is_readable() -> da li ima dozvole za čitanje fajla permissions
+is_writable() -> da li ima dozvole za čitanje zadatog fajla
+
+provera is_file pre file_get_contents ne garantuje da će čitanje uspeti zbog TOCTOU problema:
+
+Time of check -> time of use 
+
+Jer u međuvremenu fajl može biti obrisan
+
+---
+
+Vrlo dobro — 9.5/10. TOCTOU si odmah prepoznao, što mi je posebno dobar znak.
+Samo dve korekcije.
+file_exists() ne proverava nužno samo fajl, nego da li nešto postoji na toj putanji — može biti fajl ili direktorijum:
+file_exists($path)
+
+Dok:
+is_file($path)
+
+proverava da li je konkretno regularan fajl, a:
+is_dir($path)
+
+da li je direktorijum.
+I ovde ti je verovatno samo omaška:
+is_writable()
+
+nije „dozvola za čitanje“, nego:
+da li trenutni PHP proces može da piše na tu putanju.
+
+Dakle:
+file_exists()
+→ postoji li nešto na path-u
+
+is_file()
+→ da li je regularan fajl
+
+is_dir()
+→ da li je direktorijum
+
+is_readable()
+→ PHP može da čita
+
+is_writable()
+→ PHP može da piše
+
+A drugi deo ti je odličan. Ovo:
+if (is_file($path)) {
+    $content = file_get_contents($path);
+}
+
+nije garancija, jer između dve operacije može da se promeni stanje:
+is_file() ✅
+↓
+drugi proces obriše fajl
+↓
+file_get_contents() ❌
+
+To je upravo TOCTOU — Time Of Check To Time Of Use.
+Osim brisanja, između provere i čitanja mogu se promeniti permissions, mount može postati nedostupan itd. Zato je pre-check koristan, ali return value stvarne operacije ostaje konačna istina:
+$content = file_get_contents($path);
+
+if ($content === false) {
+    // actual read failed
+}
+
+------------------------------------------------------
+
+PITANJE 9:
+
+Koja je razlika između file_get_contents() / file_put_contents() i rada preko fopen(), fgets(), fread(), fwrite()? Kada bi izabrao jedan, a kada drugi pristup?
+
+I dodatno objasni šta znače ova četiri fopen() moda:
+r
+w
+a
+x
+
+Posebno obrati pažnju na to šta se dešava ako fajl već postoji.
+
+---
+
+file_get_contents() i file_put_contents() su odlični kada želimo odjednom da pročitamo 
+ili upišemo sadržaj i kada očekujemo srednji i manji fajl, 
+ili na primer neki JSON, ali PHP ima i niži nivo rada preko file hanlde-a. 
+
+Zato ako imamo ogromne fajlove radije bih koristio fopen i drugare :)
+
+r - read
+w - write
+a - append
+x - execute
+
+Važno je napomenuti da 'w' odmah obriše sav sadržaj predhodni prilikom otvaranja, 
+pa ako želimo samo da dodamo novi sadržaj bolje je 'a'.
+
+Takođe, važno da posle fopen() -> read/write ne zaboravimo fclose
+
+---
+
+Vrlo dobro — 8.8/10. Glavna ideja ti je dobra, ali ima jedna bitna greška:
+x ≠ execute
+
+Kod fopen():
+r → read
+w → write + truncate/create
+a → append/create
+x → create for writing, ali FAIL ako fajl već postoji
+
+Dakle x je praktično exclusive create.
+Na primer:
+$handle = fopen($path, 'x');
+
+ako $path ne postoji:
+→ fajl se napravi
+
+ako već postoji:
+→ fopen() vraća false
+
+To je korisno kada ne želiš accidental overwrite.
+Ostalo si lepo objasnio. file_get_contents() i file_put_contents() su high-level shortcut funkcije za situacije kada ti odgovara da obradiš sadržaj odjednom:
+file_get_contents()
+→ ceo sadržaj u string
+
+file_put_contents()
+→ ceo sadržaj upiši
+
+Dok handle pristup:
+fopen()
+fgets()
+fread()
+fwrite()
+fclose()
+
+daje finiju kontrolu i omogućava streaming/obradu u delovima.
+Kod ogromnog log fajla bih, kao što si rekao, radije radio:
+$handle = fopen($path, 'r');
+
+while (($line = fgets($handle)) !== false) {
+    // process line
+}
+
+fclose($handle);
+
+nego:
+$content = file_get_contents($path);
+
+jer ne moramo ceo fajl odjednom držati u memoriji.
+I odlična napomena za w:
+postojeći fajl:
+Hello
+
+fopen($path, 'w')
+↓
+odmah truncate na 0 bytes
+
+pre nego što si uopšte pozvao fwrite().
+Dok:
+a
+→ čuva postojeći sadržaj
+→ piše na kraj
+
+Još bih na intervjuu ubacio return vrednosti, 
+jer lepo pokazuju PHP preciznost koju smo vežbali:
+
+file_get_contents()
+→ string | false
+
+file_put_contents()
+→ int broj upisanih bytes | false
+
+fopen()
+→ stream resource | false
+
+fgets()
+→ string | false
+
+fwrite()
+→ int broj upisanih bytes | false
+
+I da — fclose() treba da zatvori handle kada završimo.
+
+------------------------------------------------
+
+Šta je path traversal attack? Kako nastaje kod file download/upload funkcionalnosti i kako bi ga sprečio?
+
+Recimo da vidiš:
+$file = $_GET['file'] ?? '';
+
+$path = __DIR__ . '/uploads/' . $file;
+
+if (is_file($path)) {
+    readfile($path);
+}
+
+Objasni šta napadač može pokušati i koji bi ti dizajn bio bezbedniji.
+
+---
+
+To je pokušaj napadača da kroz file upload ubaci svoju putanju i pokuža da pročita važne fajlove poput config ili env.
+
+Zato je loše verovati korisničkom inputu kao u gore navedenom kodu, 
+jer šta ako korisnik pošalje /../../config.php i sl, jer je to user controlled.
+
+Postoji i način da se proverava sa basname ili realpath, npr basename zaobilazi /../.. ali ovo je i dalje ograničeno.
+
+Najbolji pristup:
+
+Uopšte ne verovati korisničkom inputu, nego lepo sve proveriti:
+
+Primimo id fajla i pronađemo ga u bazi, proverimo da li fajl postoji, pa da li user ima pravo na njega pa tek onda idemo na filesystem operaciju.
+
+Dakle server određuje putanju a ne user.
+
+---
+
+Vrlo dobro — 9.5/10. Glavna ideja ti je potpuno tačna: problem nastaje kada korisnik direktno utiče na filesystem path.
+Samo jedna važna terminološka korekcija: path traversal nije nužno vezan za file upload. Mnogo tipičniji primer je download/read endpoint kao ovaj:
+$file = $_GET['file'] ?? '';
+
+$path = __DIR__ . '/uploads/' . $file;
+
+Napadač može pokušati:
+../../config.php
+../../../.env
+
+pa pokušava da „izađe“ iz dozvoljenog uploads direktorijuma i pristupi fajlovima van njega.
+Odlično si prepoznao da:
+basename(...)
+
+može pomoći samo u određenom scenariju. Na primer:
+basename('../../config.php');
+// config.php
+
+Ali to nije univerzalno security rešenje.
+I realpath() je korisniji kada želiš canonical path:
+$resolved = realpath($requestedPath);
+
+pa proveriš da li se resolved path i dalje nalazi unutar dozvoljenog base direktorijuma. 
+Ali i to je defense-in-depth, ne moj prvi izbor za dizajn API-ja.
+Najbolji deo tvog odgovora je ovo:
+user šalje file_id
+↓
+validacija ID-a
+↓
+DB lookup
+↓
+authorization
+↓
+server određuje trusted path
+↓
+filesystem access
+
+To je mnogo bolji dizajn od:
+user → direktno šalje path
+
+I još jedna fina razlika:
+file postoji
+≠
+user sme da mu pristupi
+
+Zato authorization mora da bude deo flow-a.
+Interview-ready verzija bi bila:
+Path traversal nastaje kada user-controlled input utiče na filesystem putanju i napadač preko ../ 
+pokušava da izađe iz dozvoljenog direktorijuma. Umesto da korisnik šalje filename ili path, radije bih primao file ID, 
+validirao ga, pronašao zapis u bazi, proverio authorization i tek onda koristio server-controlled stored path. basename() 
+i realpath() mogu biti dodatni zaštitni slojevi, ali dobar API dizajn je primarna zaštita.
+
+To je praktično 10/10.
+
+----------------------------------------------------
+
+PITANJE 11:
+
+Zašto je obrazac write temp file → proveri uspeh → rename/promote na final path sigurniji od direktnog overwrite-a postojećeg fajla?
+
+I dodatno: šta bi uradio sa temp fajlom ako finalni rename() ili kasniji DB update ne uspe?
+
+---
+
+Sigurnije je uvek imati temp fajl spreman iz razloga sto uvek imamo mogucnost pucanja filesystem akcije ili DB updatea - 
+sto su 2 sasvim odvojene radnje a mi smo ti koji ove radnje povezujemo. I onda moze da se desi da izgubimo stari fajl a upis novog pukne, 
+pa nemamo nista, a ovako dok god novi ne bude overen i stabilan i dostupan, imamo stari.
+
+Dakle, model bi bio (otprilike):
+
+Napravim privremen fajl
+
+Pokusam da ga smestim na faj sistem,
+
+Pokusam DB update baze, 
+
+Ako uspe brisem old file a ako ne uspe cleanup new file.
+
+---
+
+Tačno — 9.8/10. Posebno je dobro što si odmah naglasio da su filesystem i 
+DB dva odvojena sistema i da aplikacija mora da koordinira njihovu konzistentnost.
+Tvoj invariant je potpuno ispravan:
+dok nova verzija nije potvrđena
+→ stara validna verzija ostaje netaknuta
+
+Flow bih samo malo preciznije zapisao:
+1. napravi / obradi temp file
+2. proveri da je temp write uspeo
+3. promote/rename temp → new final file
+4. pokušaj DB update old_path → new_path
+
+ako DB update uspe:
+→ delete old file
+→ success
+
+ako DB update padne:
+→ DB ostaje/rollbackuje na old_path
+→ delete new final file
+→ old file ostaje
+
+ako rename/promote padne:
+→ cleanup temp
+→ DB se uopšte ne menja
+→ old file ostaje
+
+To je ključna prednost nad direktnim:
+overwrite old
+
+jer kod overwrite-a možeš uništiti jedinu ispravnu verziju pre nego što znaš da je replacement uspešan.
+Još jedna odlična interview rečenica koju već praktično razumeš:
+DB transaction može rollbackovati DB stanje, ali ne može automatski da uradi unlink() fajla; 
+filesystem cleanup je odgovornost aplikacije.
+
+To je 10/10 verzija odgovora.
+
+----------------------------------------------------------------
+
+PITANJE 12:
+
+Čemu služi flock() i koja je razlika između LOCK_SH, LOCK_EX, LOCK_UN i LOCK_NB?
+
+I praktični deo: imamo JSON fajl sa counterom:
+{
+    "downloads": 120
+}
+
+Dva request-a istovremeno rade:
+read 120
+increment
+write 121
+
+Kako može nastati lost update, i kako bi locking pomogao?
+
+---
+
+flock() inače služi za privremeno "zaključavanje" fajla dok se neka radnja 
+vrši nad njim radi bolje koordinacije i prevencije od race conditioning-a.
+
+LOCK_SH -> shared lock -> više procesa, više reader-a može
+
+LOCK_EX -> jedan exclusive writer
+
+LOCK_UN -> otključava fajl
+
+LOCK_NB -> non blocking - nemoj čekati ako lock trenutno nije dostupan.
+
+Kod LOCK_EX | LOCK_NB zajedno dobijamo:
+pokušaj exclusive lock, ali odmah vrati failure ako ga neko drugi već drži.
+
+U tvom gore primeru bez zaključavanja može doći do lost updates:
+
+Request 2 će pregaziti request 1 i nećemo imati nikakav podatak o request 1.
+
+---
+
+Tačno — 9.7/10. flock() i sve četiri konstante si objasnio vrlo dobro.
+Samo bih precizirao lost update deo. Nije baš da „nemamo nikakav podatak o requestu 1“, 
+nego oba request-a mogu pročitati isto početno stanje:
+downloads = 120
+
+Request A reads 120
+Request B reads 120
+
+A: 120 + 1 → writes 121
+B: 120 + 1 → writes 121
+
+Finalno imamo:
+121
+
+a trebalo je:
+122
+
+Dakle jedan increment je izgubljen.
+Sa exclusive lock-om kritična sekcija postaje:
+LOCK_EX
+↓
+read
+↓
+increment
+↓
+write
+↓
+LOCK_UN
+
+Request B mora da sačeka da A završi, pa dobiješ:
+A reads 120 → writes 121
+B reads 121 → writes 122
+
+Važna stvar je da lock mora obuhvatiti ceo read-modify-write ciklus, ne samo fwrite().
