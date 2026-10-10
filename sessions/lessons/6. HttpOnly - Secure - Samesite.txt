@@ -1,0 +1,235 @@
+Lekcija 6 — HttpOnly, Secure, SameSite
+
+Sad dolazimo do tri najvažnija cookie security atributa.
+
+Za session cookie ovo je veoma bitno jer session ID praktično tretiramo kao credential.
+
+Moderni setcookie():
+setcookie(
+    'example',
+    'value',
+    [
+        'expires' => time() + 3600,
+        'path' => '/',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]
+);
+
+HttpOnly
+Ako cookie ima:
+HttpOnly
+
+browser ga neće normalno izložiti JavaScript-u kroz:
+document.cookie
+
+To je posebno važno za session cookie.
+Bez HttpOnly, XSS skripta bi mogla pokušati:
+document.cookie
+
+i potencijalno ukrasti session ID.
+Sa HttpOnly:
+JavaScript
+→ ne može direktno pročitati cookie
+
+Ali važna nijansa:
+HttpOnly ne rešava XSS.
+
+Ako imaš XSS, napadačev JS i dalje može izvršavati request-ove u kontekstu korisnika.
+Dakle:
+HttpOnly
+→ otežava krađu cookie vrednosti
+
+HttpOnly
+≠
+XSS zaštita
+
+Secure
+Secure
+
+znači da browser cookie šalje samo preko HTTPS-a.
+Dakle:
+https://example.com ✅
+http://example.com  ❌
+
+Za production authentication/session cookie:
+Secure = true
+
+je praktično standard ako aplikacija radi preko HTTPS-a.
+Cilj je da session ID ne putuje preko nezaštićenog HTTP transporta.
+SameSite
+Ovo kontroliše ponašanje cookie-ja kod cross-site request-ova.
+Najčešće vrednosti:
+Strict
+Lax
+None
+
+SameSite=Strict
+Najstrože ponašanje.
+Cookie se uglavnom ne šalje kada request dolazi iz cross-site konteksta.
+Dobro za security, ali može pokvariti UX u nekim legitimnim flow-ovima.
+Recimo user klikne link sa drugog sajta prema tvojoj aplikaciji — ponašanje može biti strože nego što želiš.
+SameSite=Lax
+Vrlo čest balans.
+Pomaže protiv velikog broja CSRF scenarija, ali dozvoljava određene normalne top-level navigacije.
+Za mnogo klasičnih web aplikacija:
+SameSite=Lax
+
+je dobar default.
+SameSite=None
+Dozvoljava cross-site slanje cookie-ja.
+Ali moderni browseri zahtevaju:
+SameSite=None
++
+Secure
+
+Ovo ti može trebati ako stvarno imaš cross-site arhitekturu kojoj trebaju cookies.
+Ali ne biraš None bez razloga.
+PHP session cookie konfiguracija
+Ne moraš session cookie ručno praviti sa setcookie().
+Pre session_start() možeš konfigurisati:
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+session_start();
+
+Tada PHP koristi te parametre za session cookie.
+Važan redosled:
+session_set_cookie_params()
+↓
+session_start()
+
+ne obrnuto.
+Jer kada session krene, cookie parametri za tu session već treba da budu definisani.
+Još dva dobra PHP session podešavanja
+Često ćeš videti:
+session.use_only_cookies = 1
+
+što znači:
+session ID koristi samo kroz cookies, ne kroz URL mehanizme.
+
+I:
+session.use_strict_mode = 1
+
+što pomaže da PHP ne prihvati proizvoljan neinicijalizovan session ID kao legitimnu postojeću session.
+Ovo je korisno protiv određenih fixation scenarija.
+Možeš ih postaviti i pre session start-a:
+ini_set('session.use_only_cookies', '1');
+ini_set('session.use_strict_mode', '1');
+
+u zavisnosti od konfiguracije aplikacije/servera.
+Dobar production-ish session bootstrap
+Konceptualno:
+ini_set('session.use_only_cookies', '1');
+ini_set('session.use_strict_mode', '1');
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+session_start();
+
+Na lokalnom development-u bez HTTPS-a:
+'secure' => false
+
+može biti potrebno.
+Ali production preko HTTPS-a:
+'secure' => true
+
+Šta svaki atribut rešava?
+Mentalno:
+HttpOnly
+→ JavaScript ne može direktno pročitati cookie
+→ smanjuje rizik krađe session ID-a kroz XSS
+
+Secure
+→ cookie samo preko HTTPS
+→ štiti transport cookie-ja
+
+SameSite
+→ kontroliše cross-site slanje
+→ pomaže protiv CSRF-a
+
+Važno:
+HttpOnly ≠ CSRF zaštita
+Secure ≠ XSS zaštita
+SameSite ≠ kompletna CSRF zaštita u svakom scenariju
+
+Svaki rešava drugi problem.
+Pitanje 6
+Objasni svojim rečima čemu služe:
+HttpOnly
+Secure
+SameSite
+
+i reci koje bi vrednosti otprilike stavio za session cookie klasične production PHP web aplikacije koja radi preko HTTPS-a.
+
+---
+
+HttpOnly nam sluzi da obezbedi da se cookies salju iskljucivo preko HTTP-a 
+i da JS ne moze čitati cookie putem document.cookie. Vrednost postavljamo na true. 
+Ovo smanjuje rizik od XSS napada, mada samo po sebi nije kompletna zastita od istog.
+
+Secure - u produkciji obavezno na true a u lokalu ce biti potrebno falxse, 
+jer ovo obezbeđuje da se cookie salje samo preko sigurne veze: https://
+
+SameSite - obicno biramo srednji "mod" za produkciju a to je Lax, a postoje jos Strict i None.
+Ovo obezbedjuje da cookies mogu da se salju samo preko istog sajta i smanjuje rizik od CSRF napada 
+mada nije potpuna zastita od istog. Zato u Laravelu dodatno postoji csrf token
+
+---
+
+Vrlo dobro — 9.2/10. Samo dve nijanse treba da ispravimo jer su bitne na intervjuu.
+Kod HttpOnly ovo:
+„cookies se šalju isključivo preko HTTP-a“
+
+nije baš tačno. HttpOnly nema veze sa tim da li ide HTTP ili HTTPS — to je posao Secure.
+HttpOnly=true znači:
+cookie se i dalje automatski šalje kroz HTTP request
+ali JavaScript ne može da mu pristupi preko document.cookie
+
+Dakle:
+HttpOnly → ograničava JS pristup cookie-ju
+Secure   → ograničava transport na HTTPS
+
+I lepo si rekao za XSS: HttpOnly smanjuje posledice XSS-a, naročito direktnu krađu session ID-ja, ali ne sprečava samu XSS ranjivost.
+Druga nijansa je SameSite=Lax. Nije baš:
+„cookie se šalje samo preko istog sajta“
+
+jer bi to više ličilo na vrlo pojednostavljen opis Strict.
+Lax je kompromis:
+same-site request → cookie se normalno šalje
+
+određene cross-site top-level navigacije
+npr. klik na običan link → može se poslati
+
+većina cross-site POST/iframe scenarija
+→ cookie se ne šalje
+
+Zato je dobar default za mnogo klasičnih web aplikacija.
+Tvoja production konfiguracija bi, dakle, bila odlična:
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+session_start();
+
+I tačno za Laravel: SameSite je defense-in-depth, dok za state-changing forme/requestove Laravel koristi CSRF token kao eksplicitnu CSRF zaštitu.
+Mentalna mapa za pamćenje:
+HttpOnly → JS
+Secure   → HTTPS
+SameSite → cross-site requests / CSRF

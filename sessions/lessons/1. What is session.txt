@@ -1,0 +1,340 @@
+Lekcija 1 — Šta je session i šta radi session_start()
+Najvažnija stvar odmah:
+SESSION
+≠
+COOKIE
+
+Cookie živi kod klijenta/browsera.
+Session podaci tipično žive server-side.
+Browser uglavnom čuva samo session ID u cookie-ju.
+Mentalno:
+Browser
+    |
+    | Cookie:
+    | PHPSESSID=abc123...
+    v
+Server
+    |
+    | abc123... → pronalazi odgovarajuću session storage
+    v
+$_SESSION
+
+Dakle ako uradimo:
+session_start();
+
+$_SESSION['user_id'] = 15;
+$_SESSION['role'] = 'supplier';
+
+browser ne dobija cookie:
+user_id=15
+role=supplier
+
+nego tipično nešto poput:
+PHPSESSID=abc123xyz...
+
+A server pomoću tog ID-a pronalazi session podatke:
+[
+    'user_id' => 15,
+    'role' => 'supplier',
+]
+
+To je vrlo važna razlika.
+Šta radi session_start()?
+Kada pozoveš:
+session_start();
+
+PHP otprilike radi sledeće:
+1. Pogleda da li request već nosi session ID
+   npr. PHPSESSID cookie
+
+2. Ako nosi:
+   → pokušava da pronađe postojeću session
+
+3. Ako ne nosi:
+   → može kreirati novu session / novi session ID
+
+4. Učitava session podatke u:
+   $_SESSION
+
+Dakle:
+session_start();
+
+nije samo:
+„uključi $_SESSION“.
+
+To je zapravo povezivanje trenutnog HTTP request-a sa odgovarajućim server-side session state-om.
+Prvi request
+User prvi put dolazi na:
+/account.php
+
+Kod:
+session_start();
+
+$_SESSION['name'] = 'Bojan';
+
+Browser još nema session cookie.
+PHP kreira session ID, recimo:
+a8f13d...
+
+i response šalje:
+Set-Cookie: PHPSESSID=a8f13d...
+
+Browser ga zapamti.
+Sledeći request
+Browser kasnije traži:
+/dashboard.php
+
+i automatski šalje:
+Cookie: PHPSESSID=a8f13d...
+
+Na serveru:
+session_start();
+
+echo $_SESSION['name'];
+
+PHP vidi session ID:
+a8f13d...
+
+pronađe session podatke i ponovo populira:
+$_SESSION['name'];
+
+sa:
+Bojan
+
+Zato session daje privid kontinuiteta preko više HTTP request-ova, iako je HTTP sam po sebi stateless.
+HTTP je stateless
+Bez session-a:
+Request 1
+→ server obradi
+→ završi
+
+Request 2
+→ server nema inherentno pojma da je isti korisnik
+
+Session uvodi vezu:
+Request 1
+PHPSESSID = abc
+
+Request 2
+PHPSESSID = abc
+
+Request 3
+PHPSESSID = abc
+
+pa server može da kaže:
+„Ovi request-ovi pripadaju istoj session-i.“
+
+Ali veoma važno:
+session ID
+≠
+user ID
+
+Session ID je nasumični identifikator session-a.
+User ID može biti podatak unutar session-a:
+$_SESSION['user_id'] = 15;
+
+Nemoj nikada mentalno spajati:
+PHPSESSID=15
+
+sa user ID-jem. To nisu isti koncepti.
+Gde PHP čuva session podatke?
+Po default-u PHP često koristi filesystem session storage.
+Konfiguracija može imati nešto poput:
+session.save_handler = files
+
+i:
+session.save_path = ...
+
+Dakle server može imati session fajl povezan sa session ID-em.
+Konceptualno:
+session id:
+abc123
+
+server session data:
+user_id = 15
+role = supplier
+
+Ali session storage ne mora biti filesystem.
+Može biti:
+files
+Redis
+database
+custom session handler
+
+Zato je korisno razmišljati apstraktno:
+session ID
+→ ključ
+
+session storage
+→ server-side state
+
+Laravel ti kasnije omogućava session drivere poput file/database/Redis, ali isti mentalni model ostaje.
+$_SESSION
+Nakon:
+session_start();
+
+možeš:
+$_SESSION['cart_id'] = 52;
+
+$_SESSION['user'] = [
+    'id' => 15,
+    'name' => 'Bojan',
+];
+
+i u kasnijem request-u, nakon novog:
+session_start();
+
+čitati:
+$cartId = $_SESSION['cart_id'] ?? null;
+
+Važno: session_start() pre output-a
+Pošto session često mora da pošalje cookie/header, ovo može biti problem:
+echo 'Hello';
+
+session_start();
+
+Možeš dobiti:
+headers already sent
+
+Isto pravilo koje već znaš sa:
+header(...)
+setcookie(...)
+
+Zato obično:
+<?php
+
+session_start();
+
+// logic...
+
+pre HTML output-a.
+Da li $_SESSION postoji bez session_start()?
+Možeš tehnički imati superglobal kao strukturu u nekim situacijama, ali za normalan session lifecycle ne treba raditi sa njim pre:
+session_start();
+
+jer tada nisi otvorio/učitao session state za trenutni request.
+Praktično pravilo:
+Ako request koristi session podatke, prvo session_start().
+
+Session cookie obično ne sadrži session podatke
+Ovo želim baš da zakucamo.
+Ako imamo:
+$_SESSION['user_id'] = 15;
+$_SESSION['role'] = 'admin';
+
+browser tipično nema:
+user_id=15
+role=admin
+
+nego samo:
+PHPSESSID=random-session-id
+
+Zbog toga korisnik ne može jednostavno da promeni:
+role=admin
+
+u svom session cookie-ju, jer role nije tamo.
+Ali ako napadač ukrade validan session ID, to postaje druga priča — to ćemo kasnije zvati session hijacking.
+Laravel paralela
+Kad u Laravelu radiš:
+session(['user_name' => 'Bojan']);
+
+ili:
+$request->session()->put(
+    'user_name',
+    'Bojan'
+);
+
+framework ti apstrahuje isti koncept:
+session cookie
+↓
+session ID
+↓
+session driver
+↓
+session data
+
+I Laravel authentication obično koristi session mehanizam za standardni web guard, samo sa mnogo više infrastrukture oko toga.
+Mentalni model za „2 ujutru“
+HTTP je stateless.
+
+session_start()
+→ pronađi ili pokreni session
+→ koristi session ID iz cookie-ja
+→ učitaj server-side podatke
+→ napravi $_SESSION
+
+browser čuva:
+session ID
+
+server čuva:
+session data
+
+Pitanje 1
+Objasni svojim rečima šta se desi kroz ova dva request-a:
+Prvi:
+session_start();
+
+$_SESSION['user_id'] = 15;
+
+Drugi, nekoliko sekundi kasnije:
+session_start();
+
+echo $_SESSION['user_id'];
+
+Posebno mi reci:
+1. šta browser čuva,
+2. šta server čuva,
+3. kako PHP u drugom request-u zna koju session treba da učita.
+
+---
+
+Request je stateless, što znači request 2 nema pojma ko je poslao u requestu 1 i da li je isti korisnil.
+
+Zato imamo sesiju, session_start:
+
+pregleda da li request nosi session id, 
+Ako nosi, prema njemu pokuša daPronađe sesiju a ako ne, kreira novi session
+Učitava podatke sesije u superglobal $_SESSION
+
+Dakle, server čuva sve session podatke (u ovom slučaju user_id), kreira cookie u kom browseru šalje samo session ID tipa PHPSESSID=....
+
+Browser čuva cookie koji u sebi nosi session ID a NE user_id niti bilo kakve podatke koji se čuvaju u sesiji na serveru. 
+Prilikom svakog narednog requesta, browser šalje cookie i tako server dobije session ID na osnovu koga izvlači podatke sesije i učitava u $_SESSION.
+
+Važno: Session nije Cookie ! Podaci sesije se čuvaju na serveru, a cookie se čuva u browseru (kreira se na serveru) 
+i nosi samo session ID (eventualno neke manje važne podatke, tipa preference usera: dark/light)
+
+---
+
+Odlično — 9.8/10. Mentalni model ti je već praktično skroz tačan.
+Najvažnije si pogodio:
+HTTP request je stateless
+↓
+browser šalje session ID kroz cookie
+↓
+PHP preko ID-a pronalazi server-side session state
+↓
+session_start()
+↓
+podaci se učitavaju u $_SESSION
+
+I ovo je posebno važno:
+SESSION ≠ COOKIE
+
+Server čuva:
+$_SESSION['user_id'] = 15;
+
+dok browser tipično čuva samo nešto poput:
+PHPSESSID=abc123...
+
+Jedina mala korekcija je tvoja poslednja rečenica. Preference poput:
+theme=dark
+language=sr
+
+mogu zaista biti čuvane u cookie-jima, ali to bi uglavnom bili drugi cookie-ji, ne sam session cookie PHPSESSID.
+Dakle browser može imati:
+PHPSESSID=abc123...   ← session cookie
+theme=dark            ← običan application cookie
+language=sr           ← običan application cookie
+
+PHPSESSID i dalje služi kao ključ za session state.

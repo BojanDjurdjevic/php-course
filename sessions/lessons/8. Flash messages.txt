@@ -1,0 +1,208 @@
+Lekcija 8 — Flash messages
+
+Flash message je podatak koji treba da postoji samo za sledeći request.
+
+Tipičan primer:
+
+POST /hotel/create
+↓
+hotel uspešno kreiran
+↓
+redirect /hotels
+↓
+"Hotel successfully created."
+↓
+poruka nestaje
+
+Ovo je klasičan PRG obrazac koji smo već radili:
+POST
+↓
+Redirect
+↓
+GET
+
+Problem je: kako preneti poruku iz POST request-a u sledeći GET?
+
+Tu session savršeno odgovara.
+
+Najjednostavniji flash
+U POST handler-u:
+session_start();
+
+$_SESSION['flash'] = 'Hotel successfully created.';
+
+header('Location: /hotels.php');
+exit;
+
+U /hotels.php:
+session_start();
+
+$message = $_SESSION['flash'] ?? null;
+
+unset($_SESSION['flash']);
+
+pa:
+if ($message !== null) {
+    echo htmlspecialchars($message);
+}
+
+Mentalno:
+Request 1
+$_SESSION['flash'] = "Saved!"
+↓
+redirect
+↓
+Request 2
+read flash
+↓
+unset flash
+↓
+Request 3
+flash više ne postoji
+
+Zato se zove flash — kratko živi.
+
+Zašto session, a ne cookie?
+
+Mogao bi tehnički koristiti cookie, ali to bi bilo nepotrebno komplikovano i client-side.
+Flash message je server-side application state koji treba da traje jedan redirect.
+
+Session je prirodniji:
+
+POST request
+↓
+server upiše flash u session
+↓
+redirect
+↓
+sledeći GET pročita
+↓
+obriše
+
+Bolji helper dizajn
+Umesto da svuda ručno radiš:
+$_SESSION['flash'] = ...
+
+možeš napraviti:
+function flash(string $key, string $message): void
+{
+    $_SESSION['_flash'][$key] = $message;
+}
+
+i:
+function getFlash(string $key): ?string
+{
+    $message = $_SESSION['_flash'][$key] ?? null;
+
+    unset($_SESSION['_flash'][$key]);
+
+    return $message;
+}
+
+Upotreba:
+flash(
+    'success',
+    'Hotel successfully created.'
+);
+
+nakon redirect-a:
+$message = getFlash('success');
+
+Flash errors + old input
+Ovo postaje korisno kod forme.
+POST:
+if ($errors !== []) {
+    $_SESSION['_flash']['errors'] = $errors;
+    $_SESSION['_flash']['old'] = $_POST;
+
+    header('Location: /hotel/create.php');
+    exit;
+}
+
+Sledeći GET:
+$errors = getFlash('errors') ?? [];
+$old    = getFlash('old') ?? [];
+
+Laravel ti ovo apstrahuje kroz stvari poput:
+return back()
+    ->withErrors($errors)
+    ->withInput();
+
+i kasnije:
+old('name')
+
+Dakle iza Laravel magije je praktično isti koncept:
+session
++
+data marked for next request
++
+automatic cleanup
+
+Jedna bitna security nijansa
+Ako flash poruka sadrži user-controlled podatke:
+flash(
+    'success',
+    "Hotel {$hotelName} created."
+);
+
+i $hotelName dolazi od korisnika, prilikom HTML output-a i dalje treba escaping:
+echo htmlspecialchars(
+    $message,
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+Session nije sanitizer.
+To što je podatak prošao kroz:
+$_POST
+→ $_SESSION
+
+ne čini ga automatski bezbednim za HTML output.
+Laravel paralela
+Vanilla:
+$_SESSION['_flash']['success'] =
+    'Hotel created.';
+
+Laravel:
+return redirect()
+    ->route('hotels.index')
+    ->with('success', 'Hotel created.');
+
+Isti mentalni model, samo framework upravlja lifecycle-om.
+Pitanje 8
+Objasni zašto je flash message prirodno vezan za session i PRG flow.
+I šta bi bilo pogrešno u ovome:
+$_SESSION['_flash']['success'] =
+    "Welcome, " . $_POST['name'];
+
+pa kasnije:
+echo $_SESSION['_flash']['success'];
+
+bez htmlspecialchars()?
+
+---
+
+Prvo: flash, odnosno kratke poruke su prirodne za PRG jer treba samo korisniku da vrate poruku 
+koja ce trajati jedan request i ne ostaju kasnije.
+
+Drugo: lose je jer su korisnicki inputi non trusted i moramo escapovati kroz htmlspecialchars, 
+kako bismo smanjili rizik od XSS
+
+---
+
+Tačno — 9.8/10.
+Prvi deo je precizan: flash poruka je idealna za PRG jer joj je životni vek praktično:
+POST
+→ upiši u session
+→ redirect
+→ sledeći GET pročita
+→ obriši
+
+Drugi deo takođe tačan. Jedina nijansa: htmlspecialchars() ne „čisti“ input unapred, nego ga bezbedno enkoduje za HTML output kontekst. Dakle problem nije što je podatak bio u session-u, nego što je originalno user-controlled i izlazi u HTML.
+echo htmlspecialchars(
+    $_SESSION['_flash']['success'],
+    ENT_QUOTES,
+    'UTF-8'
+);
+
+To je prava zaštita na mestu output-a.

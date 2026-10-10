@@ -1,0 +1,213 @@
+Lekcija 2 — Session ID i session cookie lifecycle
+
+Sada ćemo malo dublje u ono što browser zapravo šalje.
+
+Kada pozoveš:
+session_start();
+
+PHP koristi ime session cookie-ja. Default je često:
+PHPSESSID
+
+Možeš ga videti sa:
+session_name();
+
+Na primer:
+echo session_name();
+// PHPSESSID
+
+A trenutni session ID:
+session_id();
+
+Na primer:
+session_start();
+
+echo session_id();
+// e8h3m2...
+
+Važno:
+session_name()
+→ ime cookie-ja
+
+session_id()
+→ njegova trenutna ID vrednost
+
+Mentalno:
+PHPSESSID=e8h3m2...
+↑         ↑
+name      session ID
+
+Kako nastaje novi session
+Prvi request:
+session_start();
+
+Browser još nema:
+PHPSESSID
+
+PHP generiše novi session ID.
+Response zatim može sadržati:
+Set-Cookie: PHPSESSID=abc123...
+
+Browser pamti cookie.
+Na sledećem request-u:
+Cookie: PHPSESSID=abc123...
+
+PHP vidi:
+abc123
+
+i koristi ga da pronađe odgovarajući server-side state.
+Session cookie može biti privremen
+Default session cookie je često takozvani session cookie u browser smislu.
+To znači da nema klasičan daleki expiration timestamp i browser ga tipično čuva do završetka browser session-a.
+Ali ovo ne znači:
+„server-side session zauvek postoji dok je browser otvoren.“
+
+Server-side session ima svoj lifecycle i garbage collection.
+Dakle postoje dva povezana, ali odvojena životna veka:
+browser cookie lifetime
+≠
+server-side session data lifetime
+
+Ovo će postati veoma bitno kada budemo pričali o login persistence-u.
+Session ID je credential-like secret
+Ovo je veoma važno.
+Ako je:
+PHPSESSID=abc123
+
+vezan za session u kojoj postoji:
+$_SESSION['user_id'] = 15;
+
+onda neko ko ukrade validan:
+abc123
+
+može pokušati da se predstavi kao ista session.
+Zato session ID ne posmatramo kao bezazleni identifier.
+Mentalno je bliže:
+privremenom credential-u.
+
+Zato ga treba zaštititi kroz cookie flags koje ćemo kasnije raditi:
+HttpOnly
+Secure
+SameSite
+
+i zato ćemo raditi:
+session_regenerate_id();
+
+posle login-a.
+Session ID nije dokaz identiteta sam po sebi
+Mala nijansa.
+Session ID kaže:
+„Ovaj request pripada session-u X.“
+
+A tek podaci unutar session-a mogu reći:
+$_SESSION['user_id'] = 15;
+
+odnosno:
+„Session X je authenticated kao user 15.“
+
+Zato možeš imati session i za anonymous user-a:
+$_SESSION['cart'] = [...];
+
+bez ikakvog login-a.
+Session nije isto što i authentication.
+Authentication samo može koristiti session.
+Anonymous session primer
+User nije loginovan, ali dodaje hotel u favorites:
+session_start();
+
+$_SESSION['favorites'][] = 42;
+
+Browser i dalje dobija:
+PHPSESSID=...
+
+i session postoji.
+Tek kasnije možeš imati:
+$_SESSION['user_id'] = 15;
+
+nakon login-a.
+Dakle:
+session
+→ generalni state između request-ova
+
+authentication session
+→ session koja sadrži authenticated identity
+
+session_id() pre i posle session_start()
+Obično radiš:
+session_start();
+
+$id = session_id();
+
+Tada znaš koji session je aktivan.
+
+Možeš tehnički ručno menjati session ID pre startovanja session-a, 
+ali to nije nešto što želimo da radimo u normalnom application flow-u.
+Mi želimo da PHP bezbedno upravlja generisanjem session ID-ja.
+Nemoj session ID stavljati u URL
+Istorijski su postojali sistemi koji rade nešto poput:
+/dashboard.php?PHPSESSID=abc123
+
+To je loša ideja.
+URL može završiti u:
+browser history
+logs
+analytics
+referrer headers
+screenshots
+
+Session ID želimo u odgovarajućem cookie-ju, ne u URL-u.
+Ukratko
+session_name()
+→ PHPSESSID
+
+session_id()
+→ random ID trenutne session
+
+browser:
+PHPSESSID=<id>
+
+server:
+<id> → session data
+
+session može postojati i bez login-a
+
+ukraden session ID može biti security problem
+
+Pitanje 2
+Objasni mi razliku između:
+session_name();
+session_id();
+
+i zašto kažemo da session ID treba tretirati skoro kao privremeni credential, a ne kao običan bezazleni broj/identifier.
+
+---
+
+session_name je ime cookie, dok je session_id njegova trenutna ID vrednost.
+
+ID treba tretirati kao privremeni credential iz prostog razloga što sesija može sadržati i auth podatke, tipa user_id 
+i onda ako neko ukrade session_ID imamo security problem.
+
+Zato je dobra praksa recimo da se radi regenerate_id nakon login-a. Takođe, ne treba session id slati kroz url, nego samo u cookie.
+
+---
+
+Tačno — 9.8/10.
+Samo jedna terminološka preciznost: session_name() vraća ime session mehanizma, koje se u uobičajenoj cookie-based konfiguraciji koristi kao ime session cookie-ja, najčešće:
+PHPSESSID
+
+A:
+session_id();
+
+vraća vrednost trenutnog session ID-ja.
+Dakle tipično:
+session_name() → PHPSESSID
+session_id()   → a8f3c9...
+
+I potpuno si tačno objasnio zašto je ID security-sensitive. Ako session sadrži:
+$_SESSION['user_id'] = 15;
+
+onda neko ko uspešno preuzme validan session ID može pokušati da koristi već autentifikovanu session. 
+Zato session ID tretiramo kao tajnu, ne kao običan user ID.
+
+I da, obe tvoje napomene su bitne:
+session ID → cookie, ne URL
+session_regenerate_id() → nakon uspešnog login-a

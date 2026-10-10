@@ -1,0 +1,148 @@
+Lekcija 9 — Session hijacking dublje
+
+Sad da zaokružimo ono što smo već dotakli.
+
+Session hijacking znači:
+
+napadač dođe do validnog session ID-ja već autentifikovanog korisnika 
+i koristi ga kao da je taj korisnik.
+
+Primer:
+Žrtva:
+PHPSESSID=XYZ123
+$_SESSION['user_id'] = 15
+
+Ako napadač ukrade:
+XYZ123
+
+i pošalje ga serveru kao svoj session cookie, 
+server može da pomisli da request pripada istoj authenticated session.
+
+To je razlog zašto session ID tretiramo kao credential.
+Kako session ID može procureti?
+Tipični vektori:
+- XSS koji može da pristupi cookie-ju ako nema HttpOnly
+- nezaštićen HTTP transport ako nema Secure
+- session ID u URL-u/logovima
+- malware/browser compromise
+- loše logovanje ili debug output
+- kopiranje cookie-ja iz nesigurnog okruženja
+Zato koristimo više slojeva odbrane:
+HttpOnly
+Secure
+SameSite
+session.use_only_cookies
+session.use_strict_mode
+session_regenerate_id()
+HTTPS
+XSS zaštita
+razuman session lifetime
+logout / invalidation
+
+Nijedna pojedinačna mera nije dovoljna sama.
+Da li vezivati session za IP adresu?
+Neki pokušavaju:
+$_SESSION['ip'] = $_SERVER['REMOTE_ADDR'];
+
+pa odbiju request ako se IP promeni.
+To može praviti probleme zbog:
+- mobilnih mreža
+- VPN-a
+- proxy-ja
+- NAT-a
+- promene mreže
+Zato strogo vezivanje za IP često narušava UX i nije univerzalno dobra zaštita.
+Može biti signal za risk scoring, ali ne bih ga koristio kao osnovni session mehanizam u našem projektu.
+Isto važi za User-Agent: može pomoći kao slab signal, ali nije jaka autentikaciona tajna.
+Pitanje 9
+Objasni razliku između:
+session fixation
+session hijacking
+
+i navedi bar tri konkretne mere koje smanjuju rizik od session hijacking-a.
+
+---
+
+Session fixation je kada regenerisemo sesiju nakon logina na primer 
+ili bilo koje akcije gde se sa nizeg prelazi na visi nivo prema php manual, 
+a radi smanjenja rizika od XSS napada kada napadac fiksira/koristi session ID.
+
+Hijacking je ustvari kada napadac ukrade podatke tj session id a jedan od nacina curenja jeste 
+i kada se salje putem url-a
+
+Zato neki od nivoa zastite jestu:
+
+HttpOnly
+Secure
+SameSite
+session.use_only_cookies
+session.use_strict_mode
+session_regenerate_id()
+HTTPS
+XSS zaštita
+razuman session lifetime
+logout / invalidation
+
+---
+Dobar spisak mera, ali ovde imaš jednu važnu konceptualnu zamenu, pa bih dao 8.7/10.
+Session fixation nije regeneracija session-a. Regeneracija je odbrana protiv fixation-a.
+Session fixation je scenario:
+napadač zna / nametne session ID
+↓
+žrtva koristi taj ID
+↓
+žrtva se loginuje
+↓
+aplikacija zadrži isti ID
+↓
+napadač i dalje zna ID autentifikovane sesije
+
+Dakle ključ problema je:
+isti session ID ostane važeći pre i posle privilege change-a
+
+Zato radimo:
+session_regenerate_id(true);
+
+nakon login-a ili drugog značajnog privilege escalation-a.
+I još jedna korekcija: fixation nije prvenstveno „zbog XSS napada“. 
+XSS može biti jedan od načina kompromitacije session-a, 
+ali fixation je zaseban napad zasnovan na tome da napadač unapred zna ili nametne session ID.
+
+Hijacking si objasnio dobro:
+postojeća validna authenticated session
+↓
+napadač ukrade session ID
+↓
+koristi ga kao svoj credential
+
+I da, slanje session ID-ja kroz URL povećava rizik curenja kroz history, logs, referrer itd.
+Tvoj spisak zaštita je odličan:
+HttpOnly
+Secure
+SameSite
+session.use_only_cookies
+session.use_strict_mode
+session_regenerate_id()
+HTTPS
+XSS zaštita
+razuman lifetime
+logout / invalidation
+
+Samo bih ih mentalno razdvojio:
+session_regenerate_id()
+→ fixation
+
+HttpOnly + XSS zaštita
+→ krađa cookie-ja kroz JS/XSS
+
+Secure + HTTPS
+→ krađa u transportu
+
+SameSite
+→ CSRF defense-in-depth
+
+use_only_cookies
+→ ne dozvoli session ID kroz URL
+
+strict_mode
+→ otežava prihvatanje napadačevog proizvoljnog ID-a

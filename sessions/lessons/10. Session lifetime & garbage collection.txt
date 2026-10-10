@@ -1,0 +1,79 @@
+Lekcija 10 — Session lifetime i garbage collection
+
+Sad dolazimo do vrlo bitne stvari:
+
+session cookie lifetime
+≠
+server-side session lifetime
+
+Browser može imati session cookie:
+PHPSESSID=abc123
+
+ali server-side session podaci mogu već biti uklonjeni.
+I obrnuto: server možda još ima podatke, ali browser više nema cookie pa više nema vezu do njih.
+Kod PHP-a postoji konfiguracija poput:
+session.gc_maxlifetime = 1440
+
+To znači da session data starija od tog praga može postati kandidat za garbage collection.
+Važna reč je kandidat. To nije precizan „logout exactly after 24 minutes“ timer.
+Garbage collection nije isto što i application-level idle timeout.
+Ako želiš pouzdan idle timeout, radiš ga sam:
+session_start();
+
+$now = time();
+$maxIdle = 1800;
+
+if (
+    isset($_SESSION['last_activity']) &&
+    $now - $_SESSION['last_activity'] > $maxIdle
+) {
+    $_SESSION = [];
+    session_destroy();
+
+    header('Location: /login.php');
+    exit;
+}
+
+$_SESSION['last_activity'] = $now;
+
+Mentalno:
+server GC
+→ storage cleanup concern
+
+application idle timeout
+→ auth/security policy
+
+To su dve različite stvari.
+Pitanje 10
+Objasni mi razliku između:
+session cookie lifetime
+session.gc_maxlifetime
+application idle timeout
+
+i zašto se ne bismo oslonili samo na session.gc_maxlifetime ako želimo da korisnika pouzdano izlogujemo posle 30 minuta neaktivnosti.
+
+---
+
+session cookie lifetime -> trajanje session cookie u browseru, koji nije isti kao server sode session trajanje.
+
+session.gc_maxlifetime -> trajanje sesije na serveru, postavljeno nesto pout 24 min koji kada prodju, 
+session podaci postaju kandidat za garbage collection.
+
+application idle timeout -> ono sto mi sami postavljamo kroz aplikaciju.
+
+Ovo poslednje bih i koristio ako bih zeleo da pouzdano izlogujem usera nakon 30 min. Jer se na
+session.gc_maxlifetime
+Ne mozemo osloniti. Zato sam gore stavio "kandidat" za garbage...
+
+---
+
+Tačno — 9.8/10. Posebno dobro što si rekao „postaju kandidat za garbage collection“, a ne „session se tačno tada briše“. To je najvažnija nijansa.
+Jedino bih precizirao ovu formulaciju:
+session.gc_maxlifetime
+≠
+garantovano trajanje sesije
+
+To je prag nakon kog se server-side session podaci mogu smatrati zastarelim za potrebe GC-a. Zato za security pravilo poput „izloguj nakon 30 minuta neaktivnosti“ treba naš sopstveni timestamp:
+$_SESSION['last_activity']
+
+i eksplicitna provera.

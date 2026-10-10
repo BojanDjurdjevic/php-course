@@ -1,0 +1,187 @@
+Lekcija 11 — Session locking i session_write_close()
+
+Ovo je jedna od onih stvari koje mnogi PHP developeri 
+ne znaju dok ne nalete na čudan problem sa paralelnim request-ovima.
+
+Pretpostavimo da browser istovremeno pošalje:
+GET /slow-report.php
+GET /notifications.php
+
+Oba koriste isti:
+PHPSESSID=ABC
+
+Kod prvog:
+session_start();
+
+sleep(5);
+
+$_SESSION['report'] = 'done';
+
+A drugi:
+session_start();
+
+echo 'notifications';
+
+Može se desiti da drugi request čeka da prvi završi sa session-om.
+Zašto?
+Kod standardnog file-based PHP session handlera, session_start() obično:
+otvori session
+↓
+zaključa session
+↓
+učita podatke
+↓
+request radi
+↓
+session se upiše
+↓
+lock se oslobađa
+
+To sprečava dva request-a da istovremeno menjaju isti session state i gaze jedan drugog.
+Problem
+Zamisli:
+session_start();
+
+$userId = $_SESSION['user_id'];
+
+doVerySlowApiCall(); // 10 sekundi
+
+echo 'done';
+
+Ti nakon prvih nekoliko linija više uopšte ne koristiš session.
+Ali lock može ostati otvoren dok request traje.
+U međuvremenu user klikne nešto drugo što takođe radi:
+session_start();
+
+i taj drugi request može čekati.
+session_write_close()
+Ako smo završili sa session podacima, možemo eksplicitno reći:
+session_start();
+
+$userId = $_SESSION['user_id'];
+
+session_write_close();
+
+doVerySlowApiCall();
+
+session_write_close():
+1. upiše trenutne session promene,
+2. zatvori session,
+3. oslobodi session lock.
+Posle toga ostatak request-a može da nastavi bez držanja session-a zaključanim.
+Mentalno:
+session_start()
+↓
+read / modify session
+↓
+session_write_close()
+↓
+LOCK RELEASED
+↓
+spor ostatak request-a
+
+Važna posledica
+Posle:
+session_write_close();
+
+nemoj očekivati da dalje promene:
+$_SESSION['foo'] = 'bar';
+
+budu normalno persistovane u tu zatvorenu session.
+Ako ti opet treba write session access, morao bi ponovo da je otvoriš, 
+što uglavnom nije dizajn koji želimo usred istog request-a.
+Bolje:
+session_start();
+
+$_SESSION['last_activity'] = time();
+$userId = $_SESSION['user_id'];
+
+session_write_close();
+
+// odavde više ne diramo session
+
+Zašto PHP uopšte zaključava session?
+Bez lock-a bi mogao imati:
+Request A:
+counter = 5
+
+Request B:
+counter = 5
+
+A:
+counter = 6
+
+B:
+counter = 6
+
+a očekivao si:
+7
+
+To je klasičan lost update problem, samo sada nad session storage-om.
+Dakle locking nije smetnja bez razloga — štiti konzistentnost.
+Ali zato dugački request-i treba da oslobode lock čim završe sa session state-om.
+Laravel paralela
+Framework dosta toga sakrije, ali isti problem može postojati kada više request-ova paralelno rade sa istom session.
+Zato je korisno da kao PHP developer znaš da session nije samo:
+$_SESSION['x'] = ...
+
+nego da ispod može postojati:
+read
++
+lock
++
+write
++
+unlock
+
+Mentalna mapa
+session_start()
+→ load session
+→ acquire lock
+
+session operations
+→ read/write
+
+session_write_close()
+→ persist changes
+→ close session
+→ release lock
+
+Pitanje 11
+Zašto bi u ovom kodu bilo korisno dodati session_write_close() pre generateHugePdf()?
+session_start();
+
+$userId = $_SESSION['user_id'];
+
+generateHugePdf(); // traje 15 sekundi
+
+echo 'done';
+
+I koji problem može nastati ako user za tih 15 sekundi pošalje još jedan request koji takođe poziva session_start()?
+
+---
+
+Problem koji nastaje ako user ponovo nesto posalje u tih 15 sec jeste stoce taj drugicrequest cekati da se prvi do kraja izvrsi.
+
+Zato bi u ovom kodu bilo korisno dodati session_write_close() da bismo "oslobodili" sesiju i samim tim ubrzali drugi request.
+
+---
+
+Tačno — 10/10.
+Suština je baš to: prvi request drži session lock, 
+pa drugi request koji pozove session_start() može da čeka dok se prvi ne završi ili ne oslobodi session.
+Zato je bolje:
+session_start();
+
+$userId = $_SESSION['user_id'];
+
+session_write_close();
+
+generateHugePdf();
+
+echo 'done';
+
+Od tog trenutka session više nije zaključana i drugi request može normalno da nastavi. 
+Bitna nijansa je samo da posle session_write_close() više ne računaš da će eventualne 
+nove izmene $_SESSION biti sačuvane bez ponovnog otvaranja session-a.
+Time smo praktično prošli i poslednju važnu tehničku temu iz teorije session-a.

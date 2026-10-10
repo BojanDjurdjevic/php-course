@@ -1,0 +1,78 @@
+Lekcija 4 — Logout i potpuno gašenje session-a
+Mnogo ljudi za logout uradi samo:
+unset($_SESSION['user_id']);
+
+To može biti dovoljno da više ne smatraš user-a loginovanim, ali to nije isto što i potpuno gašenje session-a.
+Ako želiš pravi logout flow, tipično ideš ovako:
+session_start();
+
+$_SESSION = [];
+
+Time brišeš session podatke iz memorije za trenutni request.
+Zatim, ako koristiš cookie-based sessions, obrišeš i session cookie:
+if (ini_get('session.use_cookies')) {
+    $params = session_get_cookie_params();
+
+    setcookie(
+        session_name(),
+        '',
+        time() - 42000,
+        $params['path'],
+        $params['domain'],
+        $params['secure'],
+        $params['httponly']
+    );
+}
+
+I na kraju:
+session_destroy();
+
+session_destroy() briše server-side session data povezanu sa trenutnim session ID-em.
+Mentalno:
+logout
+↓
+clear $_SESSION
+↓
+delete session cookie
+↓
+destroy server-side session
+↓
+redirect
+
+Pa:
+header('Location: /login.php');
+exit;
+
+Važno je razlikovati:
+unset($_SESSION['user_id']);
+
+od:
+session_destroy();
+
+Prvo briše jedan element iz session data.
+Drugo gasi server-side session state vezan za trenutni ID.
+Pitanje 4
+Zašto ovaj logout nije kompletan:
+session_start();
+
+unset($_SESSION['user_id']);
+
+header('Location: /login.php');
+exit;
+
+i koja je razlika između:
+unset($_SESSION['user_id']);
+$_SESSION = [];
+session_destroy();
+
+?
+
+---
+
+Kod nije kompletan jer nismo ugasili sesiju.
+
+trebalo bi upisati i session destroy kao u drugom kodu, a razlika je ta što unset() samo briše jedan element 
+iz session data dok $_SESSION = [] obriše sve, a session_destroy isključuje server-side session state vezan za trenutni ID.
+
+---
+

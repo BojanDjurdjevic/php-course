@@ -1,0 +1,209 @@
+Lekcija 7 — Login persistence: koliko dugo je korisnik zapravo ulogovan?
+
+Ovo je zanimljivije nego što na prvi pogled izgleda.
+
+Kada uradimo:
+session_start();
+
+$_SESSION['user_id'] = 15;
+
+korisnik ostaje „ulogovan“ kroz naredne request-ove zato što browser nastavlja da šalje isti session ID:
+PHPSESSID=abc123...
+
+Server onda svaki put pronalazi:
+$_SESSION['user_id'] = 15;
+
+Dakle login persistence nije magija authentication sistema.
+To je:
+session cookie postoji
++
+server-side session postoji
++
+u session-u postoji authenticated identity
+
+Ali šta kada browser zatvorimo?
+Ako je session cookie konfigurisan:
+'lifetime' => 0
+
+onda je to browser-session cookie.
+Grubo:
+browser session završi
+→ browser može ukloniti PHPSESSID
+→ sledeći dolazak nema stari session ID
+→ user više nije authenticated
+
+Ali već smo pomenuli važnu nijansu:
+cookie lifetime
+≠
+server-side session lifetime
+
+Server možda još neko vreme ima session podatke.
+Ali ako browser više nema ID:
+server ima session abc123
+ali browser više ne zna abc123
+
+za tog korisnika je praktično veza izgubljena.
+A šta ako želimo „Remember me“?
+Tu nastaje veoma važna razlika.
+Loš dizajn bi bio:
+setcookie(
+    'user_id',
+    '15',
+    [
+        'expires' => time() + 30 * 86400,
+    ]
+);
+
+pa:
+$_SESSION['user_id'] = $_COOKIE['user_id'];
+
+Katastrofa. 😄
+User promeni:
+user_id=15
+
+u:
+user_id=1
+
+i eto problema.
+Isto tako ne želimo samo da session cookie traje šest meseci bez razmišljanja.
+Bezbedniji Remember Me mentalni model
+Tipično imaš nasumični token:
+remember_token = RANDOM_SECRET
+
+Browser čuva taj token u persistent cookie-ju.
+Server/DB čuva odgovarajući zapis, idealno ne plaintext secret nego njegov hash.
+Konceptualno:
+Browser:
+
+remember_me=LONG_RANDOM_SECRET
+        |
+        v
+Server receives it
+        |
+        v
+hash(token)
+        |
+        v
+DB lookup / verification
+        |
+        v
+valid?
+        |
+        +── no → guest
+        |
+        └── yes
+             ↓
+        create fresh authenticated session
+             ↓
+        new PHPSESSID
+
+Dakle remember-me cookie nije:
+"Ja sam user 15, veruj mi."
+
+nego više:
+"Evo jakog nasumičnog credential-a koji server može da proveri."
+
+Session authentication vs persistent authentication
+Ovo razdvoji:
+normal session login
+--------------------
+PHPSESSID
+↓
+server-side session
+↓
+user_id
+
+
+remember me
+-----------
+persistent random token cookie
+↓
+server validates token
+↓
+kreira novu authenticated session
+↓
+PHPSESSID
+
+Remember-me mehanizam ti služi da ponovo uspostaviš session, a ne da aplikacija zauvek koristi običan user_id iz cookie-ja.
+Laravel ti ovo lepo sakrije iza:
+Auth::attempt($credentials, true);
+
+gde true znači „remember“.
+Ispod toga je koncept mnogo bliži ovome što sada učimo nego običnom:
+cookie user_id=15
+
+Šta ako session istekne, ali remember token postoji?
+Recimo:
+PHPSESSID → više nije validan
+
+remember_me → još važi
+
+Aplikacija može:
+
+1. proveriti remember token
+2. identifikovati user-a
+3. napraviti novu session
+4. regenerisati/izdati novi session ID
+5. user nastavlja kao authenticated
+
+Zato korisniku izgleda kao:
+„Ostao sam ulogovan.“
+
+Iako je stara session možda odavno mrtva.
+Pitanje 7
+Zašto je ovo potpuno nesiguran „Remember me“:
+setcookie(
+    'user_id',
+    (string) $user['id'],
+    [
+        'expires' => time() + 30 * 86400,
+        'path' => '/',
+    ]
+);
+
+pa na sledećem request-u:
+if (isset($_COOKIE['user_id'])) {
+    $_SESSION['user_id'] = (int) $_COOKIE['user_id'];
+}
+
+I objasni mi svojim rečima kako bi bezbedniji remember-me token trebalo konceptualno da radi.
+
+---
+
+Pa ovaj kod je los iz razloga sto se ne salje userID putem cookie, jer su cookies user controlled.
+
+Zato je najbolje ici preko nasumicnog tokena.
+
+Dakle ne idemo sa "ovo je moj id i ja sam taj user, veruj mi..."
+
+Nego browser cuva persistent token u cookie, a server/DB cuva odgovarajuci zapis, idealno kao hash a ne kao plain text.
+
+Sta se onda desi? Server primi token, proveri se u DB, pa ako je validan, programski regenerisemo sesiju, 
+fakticki pravi se novi login i otvara nova sesija, samo za klijenta to liči "ostao sam ulogovan."
+
+---
+
+Tačno — 9.8/10.
+Suštinu si uhvatio potpuno pravilno:
+user_id u cookie-ju
+→ user-controlled
+→ ne sme biti dokaz identiteta
+
+random persistent token
+→ credential
+→ server ga proverava
+→ ako je validan, uspostavlja novu authenticated session
+
+Samo jedna preciznost: ne bih rekao baš „regenerišemo sesiju“ kao glavni opis, nego kreiramo/uspostavimo novu authenticated session, a zatim naravno koristimo sve session security mere, uključujući novi session ID.
+Drugim rečima:
+remember token validan
+↓
+server identifikuje user-a
+↓
+kreira novu authenticated session
+↓
+novi session ID
+↓
+$_SESSION['user_id'] = ...
+
+A korisnik samo vidi: „nisam morao ponovo da se loginujem“.

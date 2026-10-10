@@ -1,0 +1,222 @@
+Lekcija 5 — Cookies: setcookie(), expiration i scope
+Sad prelazimo na cookie-je kao zaseban koncept, ne samo session cookie.
+Najprostiji primer:
+setcookie('theme', 'dark');
+
+Browser zatim može dobiti:
+Set-Cookie: theme=dark
+
+Na sledećem request-u:
+$_COOKIE['theme'] ?? null;
+
+može dati:
+dark
+
+Važno: setcookie() ne menja magično trenutni $_COOKIE.
+Ako uradiš:
+setcookie('theme', 'dark');
+
+var_dump($_COOKIE['theme'] ?? null);
+
+u istom request-u možda još nećeš videti novu vrednost.
+Zašto?
+Jer:
+setcookie()
+→ šalje Set-Cookie header browseru
+
+browser
+→ čuva cookie
+
+sledeći request
+→ browser ga šalje nazad
+
+PHP
+→ tada puni $_COOKIE
+
+Dakle cookie round-trip je:
+SERVER RESPONSE
+Set-Cookie
+↓
+BROWSER STORAGE
+↓
+NEXT REQUEST
+Cookie: ...
+↓
+$_COOKIE
+
+Expiration
+Ako uradiš:
+setcookie(
+    'theme',
+    'dark',
+    time() + 3600
+);
+
+cookie važi približno još jedan sat.
+Ako nemaš expiration ili koristiš session-cookie ponašanje, browser ga tipično tretira kao privremen cookie vezan za browser session.
+Za duže trajanje:
+setcookie(
+    'language',
+    'sr',
+    time() + 60 * 60 * 24 * 30
+);
+
+otprilike 30 dana.
+Brisanje cookie-ja
+Cookie ne brišemo tako što napišemo:
+unset($_COOKIE['theme']);
+
+To samo menja PHP array u trenutnom request-u.
+Browser i dalje ima cookie.
+Da ga stvarno ukloniš iz browsera, tipično pošalješ isti cookie sa expiration-om u prošlosti:
+setcookie(
+    'theme',
+    '',
+    time() - 3600
+);
+
+Vrlo važna stvar:
+Cookie moraš brisati sa istim relevantnim scope parametrima sa kojima je napravljen.
+
+Na primer path.
+Ako je napravljen kao:
+setcookie(
+    'theme',
+    'dark',
+    [
+        'expires' => time() + 3600,
+        'path' => '/',
+    ]
+);
+
+onda ga brišeš sa:
+setcookie(
+    'theme',
+    '',
+    [
+        'expires' => time() - 3600,
+        'path' => '/',
+    ]
+);
+
+Moderniji setcookie() syntax
+Umesto stare pozicione forme:
+setcookie(
+    $name,
+    $value,
+    $expires,
+    $path,
+    $domain,
+    $secure,
+    $httponly
+);
+
+mnogo je čitljivije koristiti options array:
+setcookie(
+    'theme',
+    'dark',
+    [
+        'expires' => time() + 3600,
+        'path' => '/',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]
+);
+
+To ćemo koristiti dalje.
+path
+Cookie scope može zavisiti od path-a.
+Ako:
+setcookie(
+    'theme',
+    'dark',
+    [
+        'path' => '/',
+    ]
+);
+
+cookie je dostupan praktično kroz ceo sajt.
+Ako:
+'path' => '/admin'
+
+browser će ga slati request-ovima za /admin..., ali ne nužno za ostatak sajta.
+Za većinu application-wide preference/session cookie-ja:
+'path' => '/'
+
+je čest izbor.
+domain
+Možeš definisati i domain scope.
+Na primer cookie za:
+example.com
+
+ili potencijalno više subdomena, u zavisnosti od konfiguracije.
+Ali za sada želim da ovo zapamtiš:
+path
+→ gde unutar sajta cookie važi
+
+domain
+→ za koje host/domain request-ove cookie važi
+
+Cookies su client-side data
+Ovo je ogromna razlika u odnosu na session.
+Ako čuvaš:
+setcookie(
+    'role',
+    'admin',
+    ...
+);
+
+korisnik može potencijalno menjati tu vrednost u svom browseru.
+Zato:
+cookie data
+→ user-controlled / untrusted input
+
+Ne smeš raditi:
+if ($_COOKIE['role'] === 'admin') {
+    // admin access
+}
+
+To bi bilo potpuno nesigurno.
+Cookie je dobar za stvari poput:
+theme
+language
+non-sensitive preferences
+remember-me token uz bezbedan dizajn
+session ID
+
+ali authorization odluke ne zasnivamo na običnom client cookie podatku.
+Session cookie vs običan application cookie
+Na primer:
+PHPSESSID=abc123
+→ session cookie
+→ identifikuje server-side session
+
+theme=dark
+→ application cookie
+→ sama vrednost preference-a je u browseru
+
+To je fundamentalna razlika.
+Pitanje 5
+Šta nije u redu sa ovim kodom?
+setcookie(
+    'role',
+    'admin',
+    [
+        'expires' => time() + 86400,
+        'path' => '/',
+    ]
+);
+
+if (
+    ($_COOKIE['role'] ?? null) === 'admin'
+) {
+    echo 'Welcome, admin!';
+}
+
+Objasni mi dve stvari:
+1. zašto $_COOKIE['role'] možda neće odmah biti 'admin' u istom request-u nakon setcookie(),
+2. zašto je još ozbiljnije to što authorization uopšte zasnivamo na običnom cookie-ju.
+
+---
+

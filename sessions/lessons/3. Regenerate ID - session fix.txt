@@ -1,0 +1,196 @@
+Lekcija 3 — session_regenerate_id() i session fixation
+Sad dolazimo do razloga zašto regenerišemo session ID nakon login-a.
+Zamisli anonymous user-a:
+PHPSESSID=AAA
+
+Session trenutno nema authenticated identity:
+$_SESSION = [
+    'cart' => [...]
+];
+
+User zatim uspešno unese email/password.
+Najnaivnije bi bilo samo:
+$_SESSION['user_id'] = 15;
+
+i nastaviti da koristiš:
+PHPSESSID=AAA
+
+Problem je ako je napadač nekako uspeo da navede žrtvu da koristi session ID koji napadač već zna.
+To je osnova session fixation napada.
+Mentalno:
+Attacker zna session ID AAA
+↓
+victim koristi session AAA
+↓
+victim se loginuje
+↓
+server u istoj session AAA postavi:
+user_id = 15
+↓
+attacker i dalje zna AAA
+
+Odjednom ID koji je ranije predstavljao anonymous session predstavlja authenticated session.
+To ne želimo.
+Rešenje: promeni ID na authentication boundary-ju
+Nakon uspešnog login-a:
+session_regenerate_id(true);
+
+$_SESSION['user_id'] = $user['id'];
+
+ili često:
+session_regenerate_id(true);
+
+$_SESSION['user_id'] = $user['id'];
+$_SESSION['role'] = $user['role'];
+
+Ideja:
+pre login:
+PHPSESSID=AAA
+
+successful authentication
+↓
+session_regenerate_id()
+
+posle login:
+PHPSESSID=BBB
+
+Session state nastavlja da postoji, ali dobija novi ID koji napadač nije unapred znao.
+Šta znači argument true?
+session_regenerate_id(true);
+
+true znači da PHP treba da obriše staru server-side session data povezanu sa starim ID-em.
+Grubo:
+AAA → invalidiraj / ukloni staru session
+BBB → nastavi sa novom session
+
+To je tipičan izbor nakon login-a.
+Bez argumenta ili sa:
+session_regenerate_id(false);
+
+stara session data može ostati sačuvana neko vreme.
+Za naš login flow ćemo koristiti:
+session_regenerate_id(true);
+
+Kada regenerisati?
+Najvažniji trenutak:
+anonymous
+↓
+SUCCESSFUL LOGIN
+↓
+regenerate
+↓
+authenticated
+
+Takođe ima smisla pri promenama security privilegija, na primer:
+user → admin
+
+ili drugim privilege-boundary situacijama.
+Ne treba regenerisati ID na svakom request-u bez razmišljanja.
+Authentication pre session mutation-a
+Flow treba da bude:
+POST email/password
+↓
+validate input
+↓
+find user
+↓
+password_verify()
+↓
+SUCCESS?
+    NE → login error
+    DA
+↓
+session_regenerate_id(true)
+↓
+$_SESSION['user_id'] = ...
+
+Ne:
+$_SESSION['user_id'] = $userId;
+
+// pa tek onda:
+password_verify(...)
+
+
+Authenticated identity upisujemo tek kada smo dokazali identitet.
+Session fixation vs session hijacking
+Ovo ćemo još posebno raditi, ali odmah razdvoji:
+SESSION FIXATION
+→ napadač unapred zna/fiksira ID
+→ žrtva se loginuje koristeći taj isti ID
+
+SESSION HIJACKING
+→ napadač ukrade već postojeći validan authenticated session ID
+
+Kod fixation-a je ključ:
+ID nije promenjen nakon login-a
+
+Kod hijacking-a je ključ:
+credential/session ID je procureo ili ukraden
+
+session_regenerate_id() je posebno važna odbrana od fixation-a.
+Pitanje 3
+Imamo ovaj login kod:
+session_start();
+
+if (password_verify($password, $user['password_hash'])) {
+    $_SESSION['user_id'] = $user['id'];
+    header('Location: /dashboard.php');
+    exit;
+}
+
+Šta mu nedostaje sa security stanovišta?
+Objasni:
+1. gde bi ubacio session_regenerate_id(true),
+2. zašto,
+3. i koja je razlika između session fixation i session hijacking.
+
+---
+
+nedostje naravno session_regenerate_id(true) i ja bih ga ovde ubacio kao prvu liniju 
+if uslov bloka čim proverimo identitet, pa onda upis user_id u sesiju, jer regenerisanjem se gube podaci stare sesije.
+
+A sve ovo bih uradio kao zaštitu tj session fixation, u slučaju da je napadač zna session ID usera, 
+nakon logina bi mogao da ga koristi i da se predstavi kao auth user, međutim kada promenimo session id on više nema pristup.
+
+ovo je bilo session fixation, a hijacking je druga stvar i odnosi se na scenario kada napadač presretne cookie i ukrade podatke.
+
+---
+
+Tačno — 9.4/10. Glavna ideja ti je dobra, ali imam jednu važnu korekciju.
+session_regenerate_id(true) ne briše trenutne session podatke koje želiš da zadržiš. 
+Ono generiše novi session ID i, sa true, uklanja staru server-side session instancu povezanu 
+sa prethodnim ID-em. Zato možeš sasvim normalno imati:
+$_SESSION['cart'] = [...];
+
+session_regenerate_id(true);
+
+$_SESSION['user_id'] = $user['id'];
+
+cart ne mora da nestane samo zato što si regenerisao ID.
+I da, mesto si izabrao dobro:
+if (password_verify($password, $user['password_hash'])) {
+    session_regenerate_id(true);
+
+    $_SESSION['user_id'] = $user['id'];
+
+    header('Location: /dashboard.php');
+    exit;
+}
+
+Kod session fixation scenarija preciznije je reći: napadač unapred zna 
+ili uspe da nametne/fiksira session ID koji žrtva koristi pre login-a. 
+Ako aplikacija posle uspešnog login-a zadrži isti ID, napadač može pokušati 
+da koristi taj isti ID kao authenticated session.
+Kod session hijacking-a napadač ne mora ništa unapred da fiksira. 
+On ukrade već postojeći validan authenticated session ID, 
+recimo preko XSS-a, nesigurnog transporta ili drugog curenja.
+
+Dakle:
+fixation
+→ attacker zna/fiksira ID PRE login-a
+→ victim se loginuje sa istim ID-em
+
+hijacking
+→ attacker ukrade već VALIDAN authenticated session ID
+
+---
