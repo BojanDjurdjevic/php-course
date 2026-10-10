@@ -1,0 +1,87 @@
+| PHP                       | Šta radi                                          | Tipičan return        | Laravel / ekvivalent |
+|--------------------------------------------------------------------------------------------------------------------------
+| `__DIR__`                         | Direktorijum trenutnog PHP fajla          | string                        | `base_path()`, `storage_path()`, `public_path()` |
+| `DIRECTORY_SEPARATOR`             | OS separator `/` ili `\`                  | string                        | uglavnom nije potreban ručno |
+| `file_exists($path)`              | Da li nešto postoji na putanji            | `bool`                        | `Storage::exists($path)` |
+| `is_file($path)`                  | Da li je regularan fajl                   | `bool`                        | nema direktan 1:1; Storage abstraction |
+| `is_dir($path)`                   | Da li je direktorijum                     | `bool`                        | `Storage::directoryExists()` |
+| `is_readable($path)`              | Može li PHP proces da čita                | `bool`                        | disk/OS permission concern |
+| `is_writable($path)`              | Može li PHP proces da piše                | `bool`                        | disk/OS permission concern |
+| `filesize($path)`                 | Veličina fajla u bytes                    | `int\|false`                  | `Storage::size($path)` |
+| `filemtime($path)`                | Poslednja izmena kao Unix timestamp       | `int\|false`                  | `Storage::lastModified($path)` |
+| `disk_free_space($path)`          | Slobodan prostor filesystem-a             | `float\|false`                | nema tipičan Storage ekvivalent |
+| `disk_total_space($path)`         | Ukupan prostor filesystem-a               | `float\|false`                | nema tipičan ekvivalent |
+| `file_get_contents($path)`        | Učita ceo fajl u string                   | `string\|false`               | `Storage::get($path)` |
+| `file_put_contents($path, $data)` | Upiše ceo sadržaj; default overwrite      | `int\|false`                  | `Storage::put($path, $data)` |
+| `FILE_APPEND`                     | Dodaj sadržaj na kraj                     | flag                          | `Storage::append()` |
+| `LOCK_EX`                         | Exclusive lock kod write-a                | flag                          | nema direktan Storage ekvivalent |
+| `file($path)`                     | Učita fajl kao array linija               | `array\|false`                | obično `Storage::get()` pa obrada |
+| `fopen($path, $mode)`             | Otvara stream/file handle                 | resource/object ili `false`   | `Storage::readStream()` / `writeStream()` |
+| `fclose($handle)`                 | Zatvara handle                            | `bool`                        | framework obično apstrahuje |
+| `fread($handle, $length)`         | Čita određeni broj bytes                  | `string\|false`               | stream API |
+| `fgets($handle)`                  | Čita jednu liniju                         | `string\|false`               | stream API |
+| `fwrite($handle, $data)`          | Piše u otvoreni handle                    | `int\|false`                  | stream API |
+| `feof($handle)`                   | Da li je stream na EOF                    | `bool`                        | stream API |
+| `flock($handle, LOCK_...)`        | File locking                              | `bool`                        | nema direktan 1:1 |
+| `LOCK_SH`                         | Shared/read lock                          | flag                          | — |
+| `LOCK_EX`                         | Exclusive/write lock                      | flag                          | — |
+| `LOCK_UN`                         | Otključava                                | flag                          | — |
+| `LOCK_NB`                         | Non-blocking lock                         | flag                          | — |
+| `mkdir($path, 0755, true)`        | Kreira direktorijum                       | `bool`                        | `Storage::makeDirectory()` |
+| `rmdir($path)`                    | Briše **prazan** direktorijum             | `bool`                        | `Storage::deleteDirectory()` |
+| `unlink($path)`                   | Briše fajl                                | `bool`                        | `Storage::delete($path)` |
+| `copy($from, $to)`                | Kopira fajl; source ostaje                | `bool`                        | `Storage::copy()` |
+| `rename($from, $to)`              | Rename ili move                           | `bool`                        | `Storage::move()` |
+| `scandir($dir)`                   | Lista sadržaj direktorijuma               | `array\|false`                | `Storage::files()`, `allFiles()` |
+| `glob($pattern)`                  | Traži paths po pattern-u                  | `array\|false`                | nema pravi 1:1; `Storage::files()` + filter |
+| `opendir($dir)`                   | Otvara directory handle                   | resource/object ili `false`   | obično nepotrebno |
+| `readdir($handle)`                | Čita sledeći directory entry              | `string\|false`               | — |
+| `closedir($handle)`               | Zatvara directory handle                  | `void`                        | — |
+| `basename($path)`                 | Poslednji deo path-a                      | string                        | `basename()` se normalno koristi i u Laravelu |
+| `dirname($path)`                  | Parent path                               | string                        | `dirname()` |
+| `pathinfo($path)`                 | Delovi path-a                             | array/string                  | `pathinfo()` |
+| `PATHINFO_EXTENSION`              | Ekstenzija                                | string                        | isto |
+| `PATHINFO_FILENAME`               | Ime bez poslednje ekstenzije              | string                        | isto |
+| `realpath($path)`                 | Canonical absolute postojeći path         | `string\|false`               | nema poseban Laravel helper |
+| `tempnam($dir, $prefix)`          | Kreira unique temp fajl/path              | `string\|false`               | možeš koristiti PHP direktno |
+| `tmpfile()`                       | Privremeni file handle, auto-cleanup      | resource/object\|false        | PHP direktno |
+| `sys_get_temp_dir()`              | Sistemski temp folder                     | string                        | PHP direktno |
+| `chmod($path, $mode)`             | Menja permissions                         | `bool`                        | uglavnom deployment/server concern |
+| `symlink($target, $link)`         | Kreira symbolic link                      | `bool`                        | `php artisan storage:link` |
+| `readfile($path)`                 | Šalje fajl direktno u output              | `int\|false`                  | `response()->download()`, `response()->file()` |
+| `is_uploaded_file($tmp)`          | Da li je validan PHP HTTP upload          | `bool`                        | `UploadedFile` abstraction |
+| `move_uploaded_file($tmp, $dest)` | Premešta PHP upload na destination        | `bool`                        | `$file->store()`, `storeAs()` |
+| `finfo(FILEINFO_MIME_TYPE)`       | Server-side MIME inspector                | `finfo` objekat               | Laravel file validation koristi underlying MIME tooling |
+| `$finfo->file($path)`             | Utvrđuje MIME iz sadržaja                 | `string\|false`               | `$file->getMimeType()` / validation `mimes`, `mimetypes` |
+| `getimagesize($path)`             | Image width/height/type/MIME              | `array\|false`                | Laravel `dimensions` rule / image libs |
+
+
+fopen()
+
+| Mode          | Značenje |
+|------------------------------------------------------------------------|
+| `r`           | read; fajl mora postojati |
+| `w`           | write; **truncate ako postoji**, create ako ne postoji |
+| `a`           | append; piše na kraj, create ako ne postoji |
+| `x`           | create for writing; **fail ako već postoji** |
+| `r+`          | read + write, bez truncate-a |
+| `w+`          | read + write + truncate/create |
+| `a+`          | read + append/create |
+
+
+Upload chain:
+
+$_FILES
+→ UPLOAD_ERR
+→ size
+→ finfo MIME
+→ allowlist
+→ getimagesize
+→ dimensions / pixel limit
+→ validated upload data
+→ Intervention/GD processing
+→ staging
+→ random stored name
+→ final storage
+→ relative path u DB
+→ cleanup ako DB padne

@@ -1058,4 +1058,214 @@ GD processing               8/10 zbog source/destination buga
 
 ---------------------------------------------------
 
+Coding Challenge 4 — Filesystem + DB transaction orchestration
+Sada pretpostavi da već imaš:
+$storedImages = processAndStoreImages(
+    $validatedImages,
+    $hotelId,
+    $storageRoot
+);
 
+koji vraća:
+[
+    [
+        'path' => 'hotels/42/a.webp',
+        'mime' => 'image/webp',
+        'size' => 382000,
+    ],
+    [
+        'path' => 'hotels/42/b.webp',
+        'mime' => 'image/webp',
+        'size' => 410000,
+    ],
+]
+
+Napiši orchestration funkciju:
+function saveHotelGallery(
+    PDO $pdo,
+    int $hotelId,
+    array $validatedImages,
+    string $storageRoot
+): array
+
+Ona treba da:
+1. pozove processAndStoreImages(),
+2. započne DB transaction,
+3. za svaki stored image uradi INSERT u hotel_images,
+4. commit ako svi inserti uspeju,
+5. ako DB deo padne:
+   - rollback ako je transaction aktivan,
+   - unlink() svih fajlova koje je processAndStoreImages() već napravio,
+   - rethrow originalni exception,
+6. ako processAndStoreImages() padne, DB transaction još nije ni potreban — njegov sopstveni cleanup već rešava filesystem.
+Pretpostavi tabelu:
+hotel_images
+------------
+id
+hotel_id
+path
+mime
+size
+
+Najvažnije mi je da pokažeš tačan redosled i ownership cleanup-a.
+Ovo je završni spoj:
+validated input
+→ processing
+→ filesystem
+→ DB transaction
+→ cross-resource rollback
+---
+
+Ovo je veoma dobro — 9.7/10. Redosled i ownership cleanup-a su ti potpuno ispravni, a komentari pokazuju da tačno znaš ko je odgovoran za cleanup u kom trenutku.
+Najjači deo je upravo ovo:
+// Ako ovo padne, processAndStoreImages() je već sam očistio fajlove.
+$storedImages = processAndStoreImages(...);
+
+// Od ovog trenutka fajlovi su naša odgovornost.
+
+To je odličan application-service mentalni model. Nema duplog cleanup-a niti nejasne odgovornosti.
+DB deo je takođe čist:
+$pdo->beginTransaction();
+
+$stmt = $pdo->prepare(...);
+
+foreach ($storedImages as $index => $image) {
+    $stmt->execute([...]);
+
+    $storedImages[$index]['id'] =
+        (int) $pdo->lastInsertId();
+}
+
+$pdo->commit();
+
+Ako treći INSERT padne:
+INSERT 1 ✅
+INSERT 2 ✅
+INSERT 3 ❌
+↓
+rollBack()
+↓
+DB vraćen
+↓
+unlink svih filesystem fajlova
+↓
+rethrow
+
+To je upravo ono što smo želeli.
+Posebno dobro je i ovo:
+if ($pdo->inTransaction()) {
+    try {
+        $pdo->rollBack();
+    } catch (Throwable $rollbackError) {
+        // ne smemo da izgubimo originalni izuzetak
+    }
+}
+
+Razumeš veoma važnu stvar: cleanup failure ne treba da sakrije originalni failure.
+I ovo:
+throw $e;
+
+je pravilno — ne praviš novi generički exception i time ne gubiš originalni stack/context.
+Imam samo nekoliko production dorada.
+Najvažnija je PDO error mode.
+Tvoj kod implicitno računa da će:
+$stmt->execute(...)
+
+baciti exception ako SQL ne uspe.
+To je tačno ako je PDO konfigurisan:
+$pdo->setAttribute(
+    PDO::ATTR_ERRMODE,
+    PDO::ERRMODE_EXCEPTION
+);
+
+što je danas svakako preporučen način rada.
+Ali ako nije, execute() može vratiti:
+false
+
+i tvoj kod bi mogao nastaviti dalje.
+Zato je contract najbolje postaviti još prilikom kreiranja konekcije:
+$pdo = new PDO(
+    $dsn,
+    $user,
+    $password,
+    [
+        PDO::ATTR_ERRMODE =>
+            PDO::ERRMODE_EXCEPTION,
+
+        PDO::ATTR_DEFAULT_FETCH_MODE =>
+            PDO::FETCH_ASSOC,
+    ]
+);
+
+Tada je tvoj trenutni try/catch potpuno prirodan.
+Druga stvar je cleanup:
+@unlink($file);
+
+Razumem zašto si stavio @: ne želiš da cleanup warning sakrije glavni problem.
+Ali @ bih generalno izbegavao kao production strategiju.
+Radije:
+if (
+    is_file($file) &&
+    !unlink($file)
+) {
+    error_log(
+        "Could not cleanup stored image: $file"
+    );
+}
+
+Tako:
+original exception
+→ ostaje glavni problem
+
+cleanup failure
+→ ipak nije potpuno nevidljiv
+
+Isto važi za $rollbackError: ne menjamo originalni exception, ali možemo ga logovati.
+Treća sitnica:
+$file =
+    $root
+    . DIRECTORY_SEPARATOR
+    . $image['path'];
+
+je sasvim funkcionalno jer ti path dolazi iz tvoje sopstvene trusted storage funkcije.
+Još čistiji storage layer bi mogao imati helper:
+$storage->absolutePath(
+    $image['path']
+);
+
+da application service uopšte ne mora da zna kako se relative path pretvara u absolute path. Ali za Vanilla PHP zadatak ovo što si napisao je sasvim dobro.
+Coding Challenge 4: 9.7/10 ✅
+Tvoj kompletan flow sada izgleda veoma zdravo:
+RAW $_FILES
+    ↓
+normalizeUploadedFiles()
+    ↓
+validateUploadedImages()
+    ↓
+VALIDATED IMAGES
+    ↓
+processAndStoreImages()
+    ↓
+PROCESS + STAGING + FILESYSTEM
+    ↓
+saveHotelGallery()
+    ↓
+DB TRANSACTION
+    ↓
+COMMIT
+
+A failure ownership:
+validation failure
+→ ništa još nije sačuvano
+
+processing/filesystem failure
+→ processAndStoreImages()
+  cleanupuje svoje fajlove
+
+DB failure
+→ saveHotelGallery()
+  rollbackuje DB
+  cleanupuje filesystem
+
+success
+→ DB + filesystem konzistentni
