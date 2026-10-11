@@ -1,0 +1,368 @@
+Coding Challenge 1 — Session bootstrap + idle timeout
+Napiši dve funkcije:
+function startSecureSession(): void
+
+i:
+function enforceIdleTimeout(
+    int $maxIdle = 1800
+): bool
+
+startSecureSession()
+Treba da:
+- uključi session.use_only_cookies
+- uključi session.use_strict_mode
+- postavi cookie params:
+  - lifetime => 0
+  - path => '/'
+  - secure => true
+  - httponly => true
+  - samesite => 'Lax'
+- pozove session_start()
+- ali samo ako session već nije aktivna
+enforceIdleTimeout()
+Treba da:
+- ako nema $_SESSION['user_id'], vrati false
+- proveri last_activity
+- ako je idle duži od $maxIdle:
+  - očisti session data
+  - uništi session
+  - vrati false
+- ako nije istekao:
+  - osveži last_activity
+  - vrati true
+Za sada bez redirect-a. Hoću čistu reusable funkciju.
+Pošalji samo te dve funkcije, pa ih pregledamo detaljno.
+
+---
+
+Pogledati sessions/challenge/session_boot.php
+
+---
+
+Coding Challenge 2
+
+Sada napravi reusable funkciju:
+
+function loginUser(array $user): void
+
+Pretpostavi da je $user već uspešno autentifikovan preko password_verify() i izgleda:
+[
+    'id' => 15,
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+    'password_hash' => '...',
+]
+
+Funkcija treba samo da:
+- regeneriše session ID bezbedno,
+- u session upiše minimalni auth state,
+- inicijalizuje last_activity,
+- postavi flash success poruku,
+- ne sme da stavlja ceo $user u session.
+Za sada bez redirect-a i bez password provere — samo session deo login-a.
+
+---
+
+Coding Challenge 3
+
+Napiši:
+
+function logoutUser(): void
+
+Funkcija treba da napravi potpun session logout, ali bez redirect-a.
+
+Treba da:
+- isprazni $_SESSION,
+- ako se koriste session cookies, obriše session cookie koristeći iste cookie parametre,
+- pozove session_destroy(),
+- ne briše nevezane application cookie-je poput theme,
+- ništa ne vraća.
+Pošalji samo funkciju, pa je pregledamo.
+
+---
+
+Pogledati sessions/challenge/session_boot.php
+
+-------------------------------------------------
+
+Vrlo dobro — 9.5/10. Logika ti je ispravna, imaš samo jednu sitnu ali funkcionalno bitnu grešku u nazivu ini opcije.
+Ovo:
+ini_get('session.use-cookie')
+
+treba:
+ini_get('session.use_cookies')
+
+Sa ispravkom, funkcija radi tačno ono što treba:
+function logoutUser(): void
+{
+    $_SESSION = [];
+
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+
+        setcookie(
+            session_name(),
+            '',
+            [
+                'expires' => time() - 3600,
+                'path' => $params['path'],
+                'domain' => $params['domain'],
+                'httponly' => $params['httponly'],
+                'secure' => $params['secure'],
+                'samesite' => $params['samesite'] ?? 'Lax',
+            ]
+        );
+    }
+
+    session_destroy();
+}
+
+Dobra stvar je što nisi dirao druge cookie-je poput:
+theme
+language
+
+jer logout treba da ugasi auth/session state, ne nužno svaku korisničku preferencu.
+Jedina production nijansa: ova funkcija podrazumeva da je session već aktivna. U našem flow-u je to u redu jer se session_start() radi u bootstrap-u.
+
+---------------------------------------------------
+
+Coding Challenge 4
+
+Napiši dve reusable funkcije:
+
+function flashSet(string $key, mixed $value): void
+
+i:
+function flashGet(string $key, mixed $default = null): mixed
+
+Pravila:
+- flashSet() upisuje vrednost pod $_SESSION['_flash'][$key]
+- flashGet() vraća vrednost ako postoji
+- nakon čitanja obavezno briše taj flash key
+- ako _flash ostane prazan, možeš obrisati i ceo _flash
+- ako key ne postoji, vraća $default
+Pošalji samo te dve funkcije.
+
+---
+
+Vrlo dobro — 9.7/10. Osnovni flash lifecycle ti je potpuno ispravan:
+flashSet()
+→ upis u session
+
+flashGet()
+→ pročitaj
+→ obriši key
+→ eventualno ukloni prazan _flash
+→ vrati vrednost
+
+Ovo je lepo:
+if (
+    isset($_SESSION['_flash'])
+    && $_SESSION['_flash'] === []
+) {
+    unset($_SESSION['_flash']);
+}
+
+Nije obavezno, ali održava session čistim.
+Imam samo jednu zanimljivu PHP nijansu. Pošto ti funkcija prihvata:
+mixed $value
+
+tehnički možeš namerno sačuvati:
+flashSet('something', null);
+
+A onda:
+$flash = $_SESSION['_flash'][$key] ?? $default;
+
+ne razlikuje:
+key ne postoji
+
+od:
+key postoji, ali mu je vrednost null
+
+Ako je:
+$default = 'default';
+
+a flash stvarno sadrži null, tvoj kod bi vratio 'default'.
+Preciznija varijanta zato koristi array_key_exists():
+function flashGet(
+    string $key,
+    mixed $default = null
+): mixed {
+
+    if (
+        !isset($_SESSION['_flash'])
+        || !is_array($_SESSION['_flash'])
+        || !array_key_exists($key, $_SESSION['_flash'])
+    ) {
+        return $default;
+    }
+
+    $flash = $_SESSION['_flash'][$key];
+
+    unset($_SESSION['_flash'][$key]);
+
+    if ($_SESSION['_flash'] === []) {
+        unset($_SESSION['_flash']);
+    }
+
+    return $flash;
+}
+
+Tvoj:
+if ($key === '') return $default;
+
+nije pogrešan, ali ako već želiš da zabraniš prazan key, još čistije bi bilo da ga zabrani i flashSet(). Inače jedna funkcija dozvoljava:
+flashSet('', 'hello');
+
+a druga odbija da ga pročita. 🙂
+Za naš projekat bih verovatno samo izbacio taj check i računao da je $key application-controlled.
+
+----------------------------------------------
+
+Coding Challenge 5 — protected auth helper
+
+Sada spoji prethodne stvari.
+
+Napiši:
+function requireAuthenticatedUser(
+    int $maxIdle = 1800
+): int
+
+Pretpostavi da već postoje:
+enforceIdleTimeout();
+flashSet();
+
+Funkcija treba da:
+- proveri idle timeout,
+- ako korisnik nije authenticated:
+  - postavi flash poruku "Please login first."
+  - uradi redirect na signin_view.php sa 303
+  - exit
+- ako jeste authenticated:
+  - vrati njegov user_id kao int
+Dakle protected page kasnije treba da može da bude samo:
+$userId = requireAuthenticatedUser();
+
+echo "User: $userId";
+
+Pošalji samo funkciju.
+
+---
+
+Vrlo dobro — 9.3/10. Sama auth logika ti je tačna:
+$idle = enforceIdleTimeout($maxIdle);
+
+if ($idle === false) {
+    // deny access
+}
+
+return (int) $_SESSION['user_id'];
+
+Ali ovde imamo jednu baš lepu session lifecycle zamku koja proizlazi iz naše prethodne implementacije enforceIdleTimeout().
+Tamo smo kod isteka radili:
+$_SESSION = [];
+session_destroy();
+
+return false;
+
+A onda ti ovde radiš:
+flashSet('error', 'Please login first.');
+
+Problem je: ako je session upravo uništena, taj flash više nema aktivnu session u koju će biti trajno sačuvan za sledeći request.
+Znači flow bi bio:
+idle timeout
+↓
+session_destroy()
+↓
+return false
+↓
+flashSet(...)
+↓
+redirect
+
+ali flash može da se izgubi.
+Rešenje
+Ako je session ugašena, otvori novu anonymous session pre flash-a:
+function requireAuthenticatedUser(
+    int $maxIdle = 1800
+): int {
+
+    $authenticated = enforceIdleTimeout($maxIdle);
+
+    if ($authenticated === false) {
+
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            startSecureSession();
+        }
+
+        flashSet(
+            'error',
+            'Please login first.'
+        );
+
+        header(
+            'Location: /signin_view.php',
+            true,
+            303
+        );
+
+        exit;
+    }
+
+    return (int) $_SESSION['user_id'];
+}
+
+I dobijaš lep flow:
+authenticated + active
+→ refresh last_activity
+→ return user_id
+
+
+not authenticated
+→ flash
+→ redirect
+
+
+idle expired
+→ destroy old authenticated session
+→ create fresh anonymous session
+→ flash
+→ redirect
+
+Ovo je zapravo ista stvar koju smo imali u gotovom logout primeru: 
+ako želiš flash poruku nakon što si uništio staru session, 
+treba ti nova anonymous session koja će tu poruku preneti kroz redirect.
+
+Inače, tvoje:
+$userId = (int) $_SESSION['user_id'];
+
+return $userId;
+
+je skroz dobro, mada može i kraće:
+return (int) $_SESSION['user_id'];
+
+To je samo stil.
+Coding deo Modula 5 — završen ✅
+Imali smo svih 5 zadataka:
+1. Secure session bootstrap + idle timeout
+2. loginUser()
+3. logoutUser()
+4. flashSet() / flashGet()
+5. requireAuthenticatedUser()
+
+I rekao bih da si na coding delu oko 9.5/10.
+Najvrednije greške koje smo uhvatili bile su baš one koje se lako dešavaju u pravom kodu:
+$lastActivity - $now ❌
+$now - $lastActivity ✅
+
+session.use-cookie ❌
+session.use_cookies ✅
+
+destroy session
+→ pa flash u istu session ❌
+
+destroy session
+→ nova anonymous session
+→ flash ✅
+
+Dakle Modul 5 — Sessions + Cookies je završen. ✅
