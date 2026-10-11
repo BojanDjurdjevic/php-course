@@ -1,4 +1,5 @@
 Lekcija 3 — session_regenerate_id() i session fixation
+
 Sad dolazimo do razloga zašto regenerišemo session ID nakon login-a.
 Zamisli anonymous user-a:
 PHPSESSID=AAA

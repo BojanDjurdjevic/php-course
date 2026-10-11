@@ -54,7 +54,7 @@ i zašto se ne bismo oslonili samo na session.gc_maxlifetime ako želimo da kori
 
 ---
 
-session cookie lifetime -> trajanje session cookie u browseru, koji nije isti kao server sode session trajanje.
+session cookie lifetime -> trajanje session cookie u browseru, koji nije isti kao server side session trajanje.
 
 session.gc_maxlifetime -> trajanje sesije na serveru, postavljeno nesto pout 24 min koji kada prodju, 
 session podaci postaju kandidat za garbage collection.
