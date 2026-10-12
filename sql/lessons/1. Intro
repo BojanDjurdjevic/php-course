@@ -1,0 +1,337 @@
+Modul 6 — Lekcija 1: SQL, MySQL, baza, tabela, red i kolona
+
+Prvo jedna stvar koju ljudi često mešaju:
+SQL ≠ MySQL
+
+SQL je jezik.
+MySQL je relational database management system koji razume SQL.
+Mentalno:
+PHP
+→ programski jezik
+
+Laravel
+→ framework
+
+nije potpuno ista analogija, ali konceptualno slično:
+SQL
+→ jezik kojim razgovaramo sa bazom
+
+MySQL
+→ sistem koji čuva podatke i izvršava SQL
+
+Postoje i drugi sistemi koji koriste SQL:
+PostgreSQL
+MariaDB
+SQLite
+SQL Server
+Oracle
+
+SQL sintaksa je velikim delom slična, ali svaki sistem ima svoje specifičnosti.
+Mi sada učimo prvenstveno:
+SQL mental model
++
+MySQL ponašanje
+
+Šta je database?
+Database je logički kontejner za tabele i druge DB objekte.
+Recimo za BookYourHotel:
+book_your_hotel
+
+unutra možeš imati:
+users
+hotels
+rooms
+bookings
+room_inventory
+hotel_images
+
+Dakle:
+database
+└── tables
+    ├── users
+    ├── hotels
+    ├── rooms
+    └── bookings
+
+Šta je tabela?
+Tabela predstavlja jedan tip entiteta ili koncepta.
+Na primer:
+users
+
+može imati kolone:
+id
+name
+email
+password_hash
+created_at
+
+A red:
+15 | Bojan | bojan@test.com | $2y$... | ...
+
+predstavlja jednu konkretnu instancu user-a.
+Mentalno:
+TABLE
+→ struktura
+
+ROW
+→ jedan zapis
+
+COLUMN
+→ jedna osobina / atribut tog zapisa
+
+Primer
+Tabela:
+users
+
+id	name	email
+1	Ana	ana@test.com
+2	Bojan	bojan@test.com
+3	Marko	marko@test.com
+
+
+Ovde:
+users
+→ tabela
+
+id / name / email
+→ kolone
+
+red sa id=2
+→ jedan user
+
+Relational database
+MySQL je relational database.
+To znači da tabele nisu zamišljene kao potpuno izolovane.
+Recimo:
+users
+hotels
+
+Ako hotel ima owner-a:
+hotels.user_id
+
+može da pokazuje na:
+users.id
+
+Dakle:
+users
+id = 15
+    ↑
+    |
+hotels.user_id = 15
+
+To je relacija.
+Kasnije ćemo ovo formalizovati sa:
+PRIMARY KEY
+FOREIGN KEY
+
+Zašto ne držimo sve u jednoj ogromnoj tabeli?
+Na primer, mogao bi napraviti nešto ovako:
+hotel_name
+hotel_city
+owner_name
+owner_email
+room_name
+room_price
+booking_guest
+booking_date
+...
+
+u jednoj tabeli.
+Ali onda veoma brzo dobiješ:
+duplikate
+teško održavanje
+update probleme
+brisanje problema
+nedosledne podatke
+
+Zato relational model pokušava da razdvoji odgovornosti:
+users
+hotels
+rooms
+bookings
+
+pa ih povezuje preko ključeva.
+To će nas kasnije dovesti do:
+normalization
+1NF
+2NF
+3NF
+
+ali nećemo još tamo.
+Schema
+Kada kažemo schema, mislimo na strukturu baze:
+koje tabele postoje
+koje kolone postoje
+koji su tipovi
+koji su ključevi
+koje relacije postoje
+koji constraints postoje
+
+Na primer:
+users
+-----
+id INT
+email VARCHAR(...)
+
+je deo schema dizajna.
+Data je:
+15
+bojan@test.com
+
+Dakle:
+schema
+→ struktura
+
+data
+→ konkretni podaci
+
+DDL vs DML
+Ovo ćeš često čuti na intervjuima.
+SQL naredbe se konceptualno dele.
+DDL — Data Definition Language
+Menja strukturu baze:
+CREATE
+ALTER
+DROP
+
+Na primer:
+CREATE TABLE users (...);
+
+DML — Data Manipulation Language
+Radi sa podacima:
+INSERT
+UPDATE
+DELETE
+
+A SELECT se često posebno klasifikuje kao DQL — Data Query Language, iako se u praksi klasifikacije razlikuju.
+Za tebe je dovoljno mentalno:
+CREATE / ALTER / DROP
+→ struktura
+
+INSERT / UPDATE / DELETE
+→ menjanje podataka
+
+SELECT
+→ čitanje podataka
+
+Kako SQL razmišlja
+Ovo će biti veoma važno kroz ceo modul.
+PHP često razmišlja proceduralno:
+uradi A
+onda B
+onda C
+
+SQL je uglavnom deklarativan:
+„Reci mi KOJE podatke želiš.“
+
+Na primer:
+SELECT *
+FROM users
+WHERE active = 1;
+
+Ti ne govoriš MySQL-u:
+idi na prvi red
+proveri active
+idi na drugi red
+...
+
+nego kažeš:
+„Daj mi users koji zadovoljavaju ovaj uslov.“
+
+MySQL optimizer onda odlučuje kako će do njih doći.
+To je ogromna mentalna razlika.
+Zašto je ovo bitno za tebe
+Pošto već znaš PHP/Laravel, postoji opasnost da SQL posmatraš samo kao nešto što Eloquent generiše.
+Ali cilj ovog modula je da kada vidiš problem:
+„Nađi sve hotele koji nemaju aktivnu rezervaciju u datom periodu“
+
+ne misliš prvo:
+Hotel::where(...)
+
+nego:
+koje tabele učestvuju?
+koja relacija?
+WHERE ili HAVING?
+JOIN ili EXISTS?
+koji indeks bi pomogao?
+
+To je nivo koji želimo da izgradimo.
+Mentalni model Lekcije 1
+SQL
+→ jezik
+
+MySQL
+→ DBMS
+
+database
+→ kontejner
+
+table
+→ tip entiteta / skup redova
+
+row
+→ jedan zapis
+
+column
+→ osobina
+
+schema
+→ struktura baze
+
+data
+→ konkretne vrednosti
+
+relational model
+→ tabele povezane ključevima
+
+SQL
+→ deklarativan
+
+Pitanje 1
+Objasni svojim rečima razliku između:
+SQL
+MySQL
+database
+table
+row
+column
+schema
+
+i reci zašto relational database ne želi da sve podatke držimo u jednoj ogromnoj tabeli.
+
+---
+
+Sql voli da podeli odgovornosti a takodje ako bismo sve strpali u jednu tabelu imali bismo lako duplikate i tesko odrzavanje
+
+SQL - jezik
+
+MySql - baza, softwer koji "slusa" sql
+
+database baza u kojoj se nalaze tabele
+
+table - jedna tabela baze, entitet npr users
+
+row - jedan red tabele, konkretni instance, npr id: 1 / ime: Bojan...
+
+column - kolona reda, npr hocu samo name (Bojan)
+
+schema - struktura baze - tabele, kolone, tipovi i ostalo...
+Vrlo dobro — 9.6/10.
+
+Sve si suštinski pogodio. Jedina terminološka korekcija:
+
+MySQL
+nije sama „baza“, nego DBMS / database management system — softver koji upravlja bazama i izvršava SQL.
+
+Dakle preciznije:
+
+SQL      → jezik
+MySQL    → DBMS
+database → konkretna baza kojom MySQL upravlja
+Ostalo ti je dobro:
+
+table  → struktura za jedan tip entiteta
+row    → jedan konkretan zapis
+column → atribut/polje tog zapisa
+schema → struktura cele baze
+I zašto ne jedna ogromna tabela: tačno si rekao — dobijaš duplikate, teže održavanje i lako nedosledne podatke.

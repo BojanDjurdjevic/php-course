@@ -1,0 +1,174 @@
+Lekcija 4 — INSERT
+Sada prelazimo sa strukture na podatke.
+Osnovni INSERT:
+INSERT INTO users (name, email)
+VALUES ('Bojan', 'bojan@test.com');
+
+Mentalno:
+INSERT INTO
+→ u koju tabelu
+
+(name, email)
+→ koje kolone
+
+VALUES (...)
+→ koje vrednosti
+
+Važno je da redosled odgovara:
+INSERT INTO users (name, email)
+VALUES ('Bojan', 'bojan@test.com');
+
+znači:
+name  = Bojan
+email = bojan@test.com
+
+Ne treba se oslanjati na fizički redosled kolona u tabeli.
+Dakle bolje:
+INSERT INTO users (name, email)
+VALUES (...);
+
+nego:
+INSERT INTO users
+VALUES (...);
+
+jer je eksplicitnije i otpornije na schema promene.
+AUTO_INCREMENT ne šalješ ručno
+Ako imamo:
+id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+
+onda:
+INSERT INTO users (name, email)
+VALUES ('Bojan', 'bojan@test.com');
+
+MySQL sam dodeli ID.
+Ne treba:
+INSERT INTO users (id, name, email)
+VALUES (15, 'Bojan', 'bojan@test.com');
+
+osim ako baš imaš specifičan razlog.
+INSERT sa DEFAULT vrednostima
+Ako tabela ima:
+is_active BOOLEAN NOT NULL DEFAULT TRUE
+
+onda možeš:
+INSERT INTO hotels (owner_id, name)
+VALUES (15, 'Danube Hotel');
+
+i is_active dobije default.
+Isto za:
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+ne moraš ručno slati created_at.
+INSERT više redova odjednom
+Možeš:
+INSERT INTO users (name, email)
+VALUES
+    ('Ana', 'ana@test.com'),
+    ('Bojan', 'bojan@test.com'),
+    ('Marko', 'marko@test.com');
+
+To je često efikasnije nego tri odvojena INSERT-a.
+NULL kod INSERT-a
+Ako je kolona nullable:
+phone VARCHAR(30) NULL
+
+možeš:
+INSERT INTO users (name, email, phone)
+VALUES ('Bojan', 'bojan@test.com', NULL);
+
+Važno:
+NULL
+
+nije string 'NULL'.
+Dakle:
+NULL
+
+i:
+'NULL'
+
+nisu isto.
+INSERT i constraints
+Ako imaš:
+email VARCHAR(255) NOT NULL UNIQUE
+
+i pokušaš dva puta:
+INSERT INTO users (name, email)
+VALUES ('Bojan', 'bojan@test.com');
+
+drugi može pasti zbog UNIQUE.
+Ako imaš FK:
+owner_id → users.id
+
+onda:
+INSERT INTO hotels (owner_id, name)
+VALUES (999999, 'Test Hotel');
+
+pada ako owner ne postoji.
+Dakle baza ne prima slepo podatke. Constraints aktivno čuvaju integritet.
+INSERT kao deo transakcije
+Kasnije ćemo raditi:
+BEGIN
+INSERT
+INSERT
+UPDATE
+COMMIT
+
+ili:
+BEGIN
+...
+ROLLBACK
+
+Za sada samo zapamti da INSERT može biti deo većeg atomskog flow-a.
+Mentalna mapa Lekcije 4
+INSERT INTO table (...)
+VALUES (...)
+
+AUTO_INCREMENT
+→ ID ne šalješ ručno
+
+DEFAULT
+→ kolonu možeš izostaviti
+
+NULL
+→ prava SQL null vrednost
+
+multi-row INSERT
+→ više redova odjednom
+
+constraints
+→ mogu odbiti insert
+
+Pitanje 4
+Imamo tabelu:
+CREATE TABLE hotels (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_id BIGINT UNSIGNED NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    description TEXT NULL,
+    base_price DECIMAL(10,2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+Napiši jedan INSERT za hotel sa:
+owner_id = 15
+name = Danube Hotel
+description = null
+base_price = 125.50
+
+ali nemoj ručno slati id, is_active ni created_at.
+
+---
+
+INSERT INTO hotels (owner_id, name, description, base_price) VALUES (15, 'Danube Hotel', NULL, 125.50);
+
+---
+
+
+Tačno — 10/10.
+INSERT INTO hotels (owner_id, name, description, base_price)
+VALUES (15, 'Danube Hotel', NULL, 125.50);
+
+Sve je kako treba: ne šalješ id jer je AUTO_INCREMENT, ne šalješ is_active jer ima DEFAULT TRUE, 
+ne šalješ created_at jer ima DEFAULT CURRENT_TIMESTAMP, 
+a NULL je prava SQL null vrednost, ne string.

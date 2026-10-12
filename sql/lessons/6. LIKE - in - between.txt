@@ -1,0 +1,224 @@
+Lekcija 6 — LIKE, IN, BETWEEN, IS NULL
+Ovo su operatori koje ćeš stalno koristiti uz WHERE.
+1. LIKE — pretraga po obrascu
+Recimo da želiš sve hotele čije ime počinje sa Danube.
+SELECT id, name
+FROM hotels
+WHERE name LIKE 'Danube%';
+
+% znači:
+bilo koji broj karaktera, uključujući nula.
+
+Dakle:
+'Danube%'
+
+hvata:
+Danube
+Danube Hotel
+Danube Residence
+
+Ako želiš da se reč nalazi bilo gde:
+WHERE name LIKE '%Danube%';
+
+To hvata i:
+Grand Danube Hotel
+Danube Residence
+Hotel Danube
+
+Ako želiš da se završava:
+WHERE name LIKE '%Hotel';
+
+_ wildcard
+Pored %, postoji i:
+_
+
+koji znači tačno jedan karakter.
+Na primer:
+WHERE code LIKE 'A_1';
+
+može da pogodi:
+AB1
+AC1
+AX1
+
+ali ne:
+ABC1
+
+jer _ predstavlja tačno jedan karakter.
+Mentalno:
+% → 0 ili više karaktera
+_ → tačno 1 karakter
+
+2. IN — više mogućih vrednosti
+Umesto:
+WHERE city = 'Novi Sad'
+   OR city = 'Belgrade'
+   OR city = 'Niš';
+
+možeš:
+WHERE city IN ('Novi Sad', 'Belgrade', 'Niš');
+
+Mnogo čitljivije.
+I obrnuto:
+WHERE city NOT IN ('Novi Sad', 'Belgrade');
+
+3. BETWEEN
+Ako želiš raspon:
+WHERE base_price BETWEEN 100 AND 200;
+
+što konceptualno znači:
+base_price >= 100
+AND base_price <= 200
+
+Važno:
+BETWEEN je inkluzivan sa obe strane.
+
+Dakle 100 i 200 ulaze.
+Možeš i za datum:
+WHERE check_in BETWEEN '2026-10-01' AND '2026-10-31';
+
+Ali kod DATETIME kolona treba biti pažljiviji sa vremenom, što ćemo kasnije posebno pomenuti.
+4. NULL
+Ovo je veoma važno:
+Ne radi:
+WHERE phone = NULL;
+
+niti:
+WHERE phone != NULL;
+
+Za NULL koristiš:
+WHERE phone IS NULL;
+
+ili:
+WHERE phone IS NOT NULL;
+
+Zašto?
+Jer NULL nije obična vrednost. On znači:
+unknown / missing / not set
+
+SQL koristi takozvanu trovalentnu logiku:
+TRUE
+FALSE
+UNKNOWN
+
+Zato:
+phone = NULL
+
+nije isto kao poređenje sa običnom vrednošću.
+5. Kombinovanje
+Recimo:
+Daj aktivne hotele u Novom Sadu ili Beogradu, sa cenom između 80 i 150, i da imaju description.
+
+SELECT id, name, base_price
+FROM hotels
+WHERE is_active = TRUE
+  AND city IN ('Novi Sad', 'Belgrade')
+  AND base_price BETWEEN 80 AND 150
+  AND description IS NOT NULL
+ORDER BY base_price ASC;
+
+Ovo je već realan query.
+
+6. NOT LIKE, NOT IN, NOT BETWEEN
+Sve možeš negirati:
+WHERE name NOT LIKE '%Hostel%';
+
+WHERE city NOT IN ('Belgrade', 'Niš');
+
+WHERE base_price NOT BETWEEN 100 AND 200;
+
+Laravel paralela
+SQL:
+WHERE city IN ('Novi Sad', 'Belgrade')
+
+Laravel:
+->whereIn('city', ['Novi Sad', 'Belgrade'])
+
+SQL:
+WHERE phone IS NULL
+
+Laravel:
+->whereNull('phone')
+
+SQL:
+WHERE base_price BETWEEN 100 AND 200
+
+Laravel:
+->whereBetween('base_price', [100, 200])
+
+Kad znaš SQL, Eloquent metode postaju samo čitljiv wrapper.
+Mentalna mapa
+LIKE
+→ pattern matching
+
+%
+→ 0 ili više karaktera
+
+_
+→ tačno 1 karakter
+
+IN
+→ jedna od više vrednosti
+
+BETWEEN
+→ inkluzivni raspon
+
+IS NULL
+→ nema vrednosti
+
+IS NOT NULL
+→ vrednost postoji
+
+Pitanje 6
+Napiši query koji vraća:
+id
+name
+city
+base_price
+
+iz hotels, ali samo ako:
+- city je Novi Sad, Belgrade ili Niš
+- base_price je između 90 i 180
+- description nije NULL
+- ime hotela sadrži reč Hotel
+- rezultat sortiraj po base_price opadajuće.
+
+---
+
+SELECT id, name, city, base_price FROM hotels
+WHERE name IN ('Novi Sad', 'Belgrade', 'Nis') AND base_price BETWEEN 90 AND 150
+AND description IS NOT NULL
+AND name LIKE %Hotel%
+ORDER BY base_price DESC;
+
+---
+
+Dobar pokušaj, ali ovde imaš tri konkretne greške, pa bih dao 7.8/10.
+Prvo:
+WHERE name IN ('Novi Sad', 'Belgrade', 'Nis')
+
+treba da bude:
+WHERE city IN ('Novi Sad', 'Belgrade', 'Niš')
+
+jer filtriramo po gradu, ne po imenu hotela.
+Drugo, tražio sam cenu između 90 i 180, a ti si stavio:
+BETWEEN 90 AND 150
+
+Treće, LIKE pattern mora biti string literal, dakle pod navodnicima:
+AND name LIKE '%Hotel%'
+
+ne:
+AND name LIKE %Hotel%
+
+Ispravno:
+SELECT id, name, city, base_price
+FROM hotels
+WHERE city IN ('Novi Sad', 'Belgrade', 'Niš')
+  AND base_price BETWEEN 90 AND 180
+  AND description IS NOT NULL
+  AND name LIKE '%Hotel%'
+ORDER BY base_price DESC;
+
+Sama struktura query-ja ti je dobra: pravilno si spojio IN, BETWEEN, IS NOT NULL, 
+LIKE i ORDER BY. Greške su bile više 
+pažnja prema konkretnim kolonama/vrednostima nego nerazumevanje operatora.

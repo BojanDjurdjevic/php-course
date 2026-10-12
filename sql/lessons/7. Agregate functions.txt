@@ -1,0 +1,69 @@
+Lekcija 7 — Aggregate funkcije: COUNT, SUM, AVG, MIN, MAX
+Sad prelazimo na query-je koji ne vraćaju samo pojedinačne redove, nego računaju nešto nad skupom redova.
+Najvažnije aggregate funkcije su:
+COUNT → koliko
+SUM   → zbir
+AVG   → prosek
+MIN   → najmanja vrednost
+MAX   → najveća vrednost
+
+Recimo:
+SELECT COUNT(*)
+FROM hotels;
+
+vraća broj hotela.
+SELECT AVG(base_price)
+FROM hotels;
+
+vraća prosečnu cenu.
+SELECT MIN(base_price), MAX(base_price)
+FROM hotels;
+
+vraća najnižu i najvišu cenu.
+SELECT SUM(base_price)
+FROM hotels;
+
+sabira sve vrednosti base_price.
+Možemo i filtrirati pre agregacije:
+SELECT AVG(base_price)
+FROM hotels
+WHERE is_active = TRUE;
+
+Znači:
+prvo WHERE odabere redove
+onda AVG računa prosek nad tim redovima
+
+To je važan mentalni model.
+Još jedna nijansa:
+COUNT(*)
+
+broji redove.
+Dok:
+COUNT(phone)
+
+broji samo redove gde phone nije NULL.
+Dakle:
+COUNT(*)      → svi redovi
+COUNT(column) → samo non-NULL vrednosti te kolone
+
+Možeš i dati alias:
+SELECT COUNT(*) AS total_hotels
+FROM hotels;
+
+pa rezultat bude čitljiviji:
+total_hotels
+------------
+47
+
+Pitanje 7
+Napiši jedan query koji za aktivne hotele vrati:
+ukupan broj hotela
+prosečnu cenu
+najnižu cenu
+najvišu cenu
+
+i koristi alias-e:
+total_hotels
+average_price
+min_price
+max_price
