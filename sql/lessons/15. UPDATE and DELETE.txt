@@ -1,0 +1,232 @@
+Lekcija 15 — UPDATE i DELETE
+
+Ovo smo namerno ostavili iza ozbiljnijeg SELECT dela, ali sada moramo zatvoriti CRUD.
+
+UPDATE
+Najprostije:
+UPDATE hotels
+SET base_price = 150.00
+WHERE id = 42;
+
+Mentalno:
+UPDATE hotels
+→ koju tabelu menjam
+
+SET
+→ šta menjam
+
+WHERE
+→ koje redove menjam
+
+Možeš menjati više kolona:
+UPDATE hotels
+SET
+    name = 'Danube Grand Hotel',
+    base_price = 175.00,
+    is_active = TRUE
+WHERE id = 42;
+
+Najveća opasnost: zaboravljen WHERE
+Ovo:
+UPDATE hotels
+SET is_active = FALSE;
+
+znači:
+postavi svim hotelima is_active = false.
+
+Ne samo jednom.
+Zato kod UPDATE i DELETE želim da ti se automatski upali alarm:
+GDE MI JE WHERE?
+
+Update više redova namerno
+Naravno, nekada hoćemo više redova:
+UPDATE hotels
+SET is_active = FALSE
+WHERE city = 'Novi Sad';
+
+To je sasvim validno ako je business intent upravo takav.
+Dakle problem nije:
+UPDATE više redova
+
+nego:
+UPDATE više redova slučajno.
+
+UPDATE postojeće vrednosti
+Možeš koristiti staru vrednost:
+UPDATE rooms
+SET price = price * 1.10
+WHERE hotel_id = 42;
+
+To povećava cenu za 10%.
+Ili:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-10-20';
+
+Ovo će nam kasnije biti vrlo zanimljivo kod concurrency/transakcija.
+DELETE
+Najprostije:
+DELETE FROM hotels
+WHERE id = 42;
+
+Opet:
+DELETE FROM
+→ tabela
+
+WHERE
+→ koji red
+
+A ovo:
+DELETE FROM hotels;
+
+znači:
+obriši sve redove iz hotels.
+
+Tabela ostaje, schema ostaje — ali data nestaje.
+DELETE nije DROP
+Vrlo važno:
+DELETE FROM hotels;
+
+→ briše podatke.
+DROP TABLE hotels;
+
+→ briše samu tabelu, njenu strukturu i podatke.
+Mentalno:
+DELETE
+→ rows
+
+DROP TABLE
+→ table/schema object
+
+A TRUNCATE?
+Postoji i:
+TRUNCATE TABLE hotels;
+
+On služi za brzo pražnjenje cele tabele.
+Mentalno za sada:
+DELETE FROM hotels
+→ DML delete redova
+
+TRUNCATE TABLE hotels
+→ isprazni celu tabelu kao operaciju nad tabelom
+
+TRUNCATE ima drugačiju semantiku od običnog DELETE u vezi sa transakcijama, 
+auto-incrementom i foreign key ograničenjima, pa ćemo ga detaljnije povezati kada dođemo do transakcija.
+
+Foreign keys mogu sprečiti DELETE
+Sećaš se:
+users
+↓
+hotels.owner_id
+ON DELETE RESTRICT
+
+Ako user 15 još ima hotel:
+DELETE FROM users
+WHERE id = 15;
+
+može pasti zbog FK constraint-a.
+A kod:
+hotels
+↓
+hotel_images
+ON DELETE CASCADE
+
+brisanje hotela može automatski obrisati njegove hotel_images redove.
+Dakle DELETE ne posmatramo izolovano — schema constraints utiču na rezultat.
+Soft delete
+Pošto znaš Laravel, ovo će ti odmah biti poznato.
+Umesto:
+DELETE FROM hotels
+WHERE id = 42;
+
+možemo imati:
+deleted_at
+
+pa:
+UPDATE hotels
+SET deleted_at = CURRENT_TIMESTAMP
+WHERE id = 42;
+
+A normalni query:
+SELECT *
+FROM hotels
+WHERE deleted_at IS NULL;
+
+To je suština soft delete-a.
+Laravel SoftDeletes ti upravo apstrahuje ovaj pattern.
+Za „2 ujutru“
+UPDATE
+→ menjaj postojeće redove
+
+SET
+→ nove vrednosti
+
+DELETE
+→ obriši redove
+
+WHERE
+→ kritično kod UPDATE/DELETE
+
+bez WHERE
+→ svi redovi
+
+DELETE
+→ data
+
+DROP TABLE
+→ struktura + data
+
+soft delete
+→ UPDATE deleted_at, ne fizički DELETE
+
+Pitanje 15
+Imamo:
+hotels
+------
+id
+name
+base_price
+is_active
+deleted_at
+
+Napiši tri query-ja:
+
+1. hotelu sa id = 42 promeni base_price na 199.99
+2. uradi soft delete hotela 42
+3. vrati sve hotele koji nisu soft-deleted
+Posle toga prelazimo na temu koja će ti biti posebno bitna 
+zbog BookYourHotel-a: transactions + ACID + concurrency/locking.
+
+---
+
+UPDATE hotels 
+SET base_price = 199.99
+WHERE id = 42;
+
+UPDATE hotels 
+SET deleted_at = CURRENT_TIMESTAMP
+WHERE id = 42;
+
+SELECT * 
+FROM hotels
+WHERE deleted_at IS NULL;
+
+---
+
+Tačno — 10/10. Sva tri query-ja su baš kako treba:
+UPDATE hotels
+SET base_price = 199.99
+WHERE id = 42;
+
+UPDATE hotels
+SET deleted_at = CURRENT_TIMESTAMP
+WHERE id = 42;
+
+SELECT *
+FROM hotels
+WHERE deleted_at IS NULL;
+
+Posebno je važno što soft delete sada vidiš onako kako stvarno izgleda ispod Laravel SoftDeletes: 
+nije nikakav poseban tip brisanja u MySQL-u, nego običan UPDATE 
++ filter deleted_at IS NULL.

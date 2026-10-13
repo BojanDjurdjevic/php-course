@@ -67,3 +67,24 @@ total_hotels
 average_price
 min_price
 max_price
+
+---
+
+SELECT COUNT(*) as total_hotels, AVG(base_price) as average_price,
+MIN(base_price) as min_price, MAX(base_price) as max_price
+FROM hotels 
+WHERE is_active = TRUE;
+
+---
+
+Tačno — 10/10. Query je čist i potpuno ispravan:
+SELECT
+    COUNT(*) AS total_hotels,
+    AVG(base_price) AS average_price,
+    MIN(base_price) AS min_price,
+    MAX(base_price) AS max_price
+FROM hotels
+WHERE is_active = TRUE;
+
+Posebno je važno što WHERE ide pre agregacije u logičkom smislu: 
+prvo ograničimo skup na aktivne hotele, pa onda nad tim skupom računamo COUNT, AVG, MIN i MAX.

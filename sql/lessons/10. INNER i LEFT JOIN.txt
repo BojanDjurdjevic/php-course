@@ -1,0 +1,391 @@
+Lekcija 10 — INNER JOIN i LEFT JOIN
+
+Sad dolazimo do jednog od najvažnijih SQL koncepata: spajanje tabela.
+
+Recimo da imamo:
+users
+-----
+id
+name
+email
+
+i:
+hotels
+------
+id
+owner_id
+name
+city
+
+hotels.owner_id pokazuje na:
+users.id
+
+Ako želiš da za svaki hotel vidiš i ime owner-a, podaci su u dve različite tabele.
+Tu koristiš JOIN.
+INNER JOIN
+Primer:
+SELECT
+    hotels.id,
+    hotels.name AS hotel_name,
+    users.name AS owner_name
+FROM hotels
+INNER JOIN users
+    ON hotels.owner_id = users.id;
+
+Mentalno:
+hotels.owner_id
+=
+users.id
+
+i onda SQL spaja redove koji imaju poklapanje.
+Ako imamo:
+users
+1 Ana
+2 Bojan
+3 Marko
+
+i:
+hotels
+10 | owner_id 1 | Hotel A
+11 | owner_id 2 | Hotel B
+12 | owner_id 2 | Hotel C
+
+rezultat:
+Hotel A | Ana
+Hotel B | Bojan
+Hotel C | Bojan
+
+Dakle:
+INNER JOIN vraća samo redove koji imaju odgovarajući par na obe strane.
+
+Alias za tabele
+Umesto:
+SELECT
+    hotels.id,
+    hotels.name,
+    users.name
+FROM hotels
+INNER JOIN users
+    ON hotels.owner_id = users.id;
+
+češće pišemo:
+SELECT
+    h.id,
+    h.name AS hotel_name,
+    u.name AS owner_name
+FROM hotels AS h
+INNER JOIN users AS u
+    ON h.owner_id = u.id;
+
+Ili još kraće:
+FROM hotels h
+INNER JOIN users u
+
+AS za table alias je opcioni deo.
+To će nam mnogo pomoći kod dužih query-ja.
+Zašto ON, a ne WHERE?
+Kod JOIN-a:
+ON h.owner_id = u.id
+
+opisuje:
+kako su tabele povezane.
+
+Dok:
+WHERE h.is_active = TRUE
+
+opisuje:
+koje rezultate želim nakon spajanja.
+
+Mentalno:
+ON
+→ relation condition
+
+WHERE
+→ filtering condition
+
+To nije samo stil — kod LEFT JOIN razlika postaje funkcionalno veoma važna.
+LEFT JOIN
+Sad zamisli:
+users
+1 Ana
+2 Bojan
+3 Marko
+
+a hotele imaju samo Ana i Bojan.
+Ako uradiš:
+SELECT
+    u.id,
+    u.name,
+    h.name AS hotel_name
+FROM users u
+INNER JOIN hotels h
+    ON h.owner_id = u.id;
+
+Marko neće biti u rezultatu, jer nema hotel.
+Ali ako želiš:
+Daj mi sve users, čak i ako nemaju hotel.
+
+onda:
+SELECT
+    u.id,
+    u.name,
+    h.name AS hotel_name
+FROM users u
+LEFT JOIN hotels h
+    ON h.owner_id = u.id;
+
+Rezultat:
+Ana  | Hotel A
+Bojan| Hotel B
+Marko| NULL
+
+Za Marka nema odgovarajućeg hotels reda, pa kolone desne tabele postaju NULL.
+Najvažniji mentalni model
+INNER JOIN
+→ samo matched rows
+
+LEFT JOIN
+→ svi redovi sa LEVE strane
+  + matched sa desne
+  + NULL ako nema match-a
+
+Ključna reč je:
+LEVA strana.
+
+U:
+FROM users u
+LEFT JOIN hotels h
+
+users je leva tabela.
+Zato svi users ostaju.
+Ako obrneš:
+FROM hotels h
+LEFT JOIN users u
+
+onda svi hotels ostaju.
+Kako naći users bez hotela?
+Ovo je klasičan pattern:
+SELECT
+    u.id,
+    u.name
+FROM users u
+LEFT JOIN hotels h
+    ON h.owner_id = u.id
+WHERE h.id IS NULL;
+
+Mentalno:
+LEFT JOIN
+→ zadrži sve users
+
+user bez hotela
+→ h.* = NULL
+
+WHERE h.id IS NULL
+→ ostaju samo users bez match-a
+
+Ovo je vrlo čest SQL obrazac.
+Kasnije ćemo isti problem rešavati i sa:
+NOT EXISTS
+
+i uporediti pristupe.
+Više JOIN-ova
+Možeš spajati više tabela.
+Recimo:
+users
+↓
+hotels
+↓
+rooms
+
+Query:
+SELECT
+    u.name AS owner_name,
+    h.name AS hotel_name,
+    r.name AS room_name
+FROM users u
+INNER JOIN hotels h
+    ON h.owner_id = u.id
+INNER JOIN rooms r
+    ON r.hotel_id = h.id;
+
+Mentalno:
+users.id
+→ hotels.owner_id
+
+hotels.id
+→ rooms.hotel_id
+
+SQL praktično gradi jedan rezultat iz više povezanih tabela.
+JOIN i jedan-prema-više relacija
+Važna stvar.
+Ako jedan hotel ima 5 soba:
+hotel 10
+↓
+room 1
+room 2
+room 3
+room 4
+room 5
+
+onda:
+SELECT h.name, r.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+vratiće 5 redova za taj hotel.
+To nije duplikat u smislu greške.
+To je prirodna posledica relacije:
+1 hotel
+:
+many rooms
+
+Zato JOIN može „umnožiti“ parent redove.
+Ovo će biti veoma važno kad budemo radili:
+JOIN + COUNT
+JOIN + GROUP BY
+N+1
+
+JOIN bez INNER
+U MySQL-u:
+JOIN
+
+bez dodatka znači praktično:
+INNER JOIN
+
+Dakle:
+FROM hotels h
+JOIN users u
+    ON h.owner_id = u.id
+
+je isto što i:
+FROM hotels h
+INNER JOIN users u
+    ON h.owner_id = u.id
+
+Ja ću često pisati samo JOIN, ali dok učimo volim da eksplicitno vidiš INNER JOIN.
+Laravel paralela
+SQL:
+SELECT
+    h.name,
+    u.name AS owner_name
+FROM hotels h
+INNER JOIN users u
+    ON h.owner_id = u.id;
+
+Query Builder:
+DB::table('hotels as h')
+    ->join('users as u', 'h.owner_id', '=', 'u.id')
+    ->select(
+        'h.name',
+        'u.name as owner_name'
+    )
+    ->get();
+
+Eloquent relacije ti još više apstrahuju ovo:
+$hotel->owner
+
+ali na nivou baze i dalje postoji relacija:
+hotels.owner_id
+→ users.id
+
+Za „2 ujutru“
+INNER JOIN
+→ samo oni koji imaju par
+
+LEFT JOIN
+→ svi sa leve strane
+
+ON
+→ kako su tabele povezane
+
+WHERE
+→ dodatno filtriranje rezultata
+
+LEFT JOIN + WHERE right.id IS NULL
+→ pronađi one koji NEMAJU povezani red
+
+Pitanje 10
+Imamo:
+users
+-----
+id
+name
+
+hotels
+------
+id
+owner_id
+name
+is_active
+
+Napiši dva query-ja:
+1. vrati sve aktivne hotele sa:
+   - hotel_id
+   - hotel_name
+   - owner_name
+2. vrati sve users koji nemaju nijedan hotel
+Koristi table alias-e u i h.
+
+---
+
+SELECT h.id AS hotel_id, h.name AS hotel_name, u.name AS owner_name
+FROM hotels h
+INNER JOIN users u
+ON h.owner_id = u.id
+WHERE h.is_active = TRUE;
+
+SELECT u.name AS owner_name, h.id AS hotel_id, h.name AS hotel_name
+FROM users u
+LEFT JOIN hotels h
+ON u.id = h.owner_id
+WHERE h.owner_id IS NULL;
+
+---
+
+Vrlo dobro — 9.7/10.
+Prvi query je potpuno ispravan:
+SELECT
+    h.id AS hotel_id,
+    h.name AS hotel_name,
+    u.name AS owner_name
+FROM hotels h
+INNER JOIN users u
+    ON h.owner_id = u.id
+WHERE h.is_active = TRUE;
+
+Tu si lepo razdvojio:
+ON    → relacija između tabela
+WHERE → filter nad rezultatom
+
+Drugi query je takođe logički dobar:
+SELECT
+    u.name AS owner_name,
+    h.id AS hotel_id,
+    h.name AS hotel_name
+FROM users u
+LEFT JOIN hotels h
+    ON u.id = h.owner_id
+WHERE h.owner_id IS NULL;
+
+Pošto je hotels.owner_id kod našeg modela NOT NULL, ovo će raditi.
+Ipak, idiomatskije i robusnije bih pisao:
+WHERE h.id IS NULL;
+
+Zašto baš h.id? Zato što je primary key garantovano NOT NULL, pa vrlo jasno kažemo:
+nije pronađen nijedan odgovarajući hotels red.
+
+Dakle:
+SELECT
+    u.id,
+    u.name
+FROM users u
+LEFT JOIN hotels h
+    ON h.owner_id = u.id
+WHERE h.id IS NULL;
+
+Takođe nam u ovom konkretnom query-ju ne trebaju:
+h.id,
+h.name
+
+jer upravo tražimo slučajeve gde hotel ne postoji, pa bi ionako bili NULL.

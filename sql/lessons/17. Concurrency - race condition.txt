@@ -1,0 +1,333 @@
+Lekcija 17 — Concurrency, race condition i SELECT ... FOR UPDATE
+Sad ulazimo u deo koji je posebno važan za booking sisteme.
+Transaction sama po sebi nije dovoljna ako dva request-a rade istovremeno.
+Zamisli:
+room_inventory
+
+room_id = 15
+date = 2026-11-01
+available = 1
+
+Dva korisnika istovremeno rezervišu poslednju sobu.
+Request A:
+SELECT available
+FROM room_inventory
+WHERE room_id = 15
+  AND date = '2026-11-01';
+
+dobije:
+1
+
+Request B nekoliko milisekundi kasnije uradi isto i takođe dobije:
+1
+
+Oba request-a sada misle:
+Ima slobodna soba.
+
+Pa oba naprave booking.
+To je race condition.
+Naivna transaction nije nužno dovoljna
+Možeš imati:
+START TRANSACTION;
+
+SELECT available
+FROM room_inventory
+WHERE room_id = 15
+  AND date = '2026-11-01';
+
+-- application proveri available > 0
+
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-11-01';
+
+COMMIT;
+
+Ako dva request-a paralelno uđu u ovaj flow, moraš da razmišljaš o tome ko sme da čita/menja taj red i kada.
+Tu dolazi row-level locking.
+SELECT ... FOR UPDATE
+Ako unutar transaction-a uradiš:
+START TRANSACTION;
+
+SELECT available
+FROM room_inventory
+WHERE room_id = 15
+  AND date = '2026-11-01'
+FOR UPDATE;
+
+kažeš MySQL-u otprilike:
+Ove redove čitam zato što planiram da ih menjam — zaključaj ih za konkurentne write operacije dok moja transaction ne završi.
+
+Flow:
+Request A
+↓
+START TRANSACTION
+↓
+SELECT ... FOR UPDATE
+↓
+lock inventory row
+↓
+available = 1
+
+Request B zatim pokuša:
+SELECT ... FOR UPDATE
+
+nad istim redom.
+Ne dobija slobodno isti state i nastavlja paralelno, nego tipično mora da čeka da A završi.
+A zatim A:
+UPDATE room_inventory
+SET available = available - 1
+WHERE ...
+
+dobije:
+available = 0
+
+pa:
+COMMIT;
+
+Lock se oslobađa.
+Tek onda B može da nastavi i pročita:
+available = 0
+
+pa application kaže:
+Nema više dostupnosti.
+
+I ne napravi booking.
+Mentalni timeline
+Bez lock-a:
+available = 1
+
+A READ → 1
+B READ → 1
+
+A: ima mesta ✅
+B: ima mesta ✅
+
+A booking
+B booking
+
+💥 overbooking
+
+Sa FOR UPDATE:
+available = 1
+
+A:
+START
+SELECT ... FOR UPDATE
+→ lock
+→ reads 1
+
+B:
+START
+SELECT ... FOR UPDATE
+→ WAIT
+
+A:
+UPDATE → 0
+COMMIT
+→ unlock
+
+B:
+nastavlja
+→ reads 0
+→ booking odbijen
+
+To je suština.
+Lock traje do kraja transaction-a
+Vrlo važno:
+SELECT ... FOR UPDATE
+
+ima smisla u transaction-u.
+Lock se tipično drži do:
+COMMIT;
+
+ili:
+ROLLBACK;
+
+Zato transaction treba da bude:
+kratka
+precizna
+bez nepotrebnog sporog posla
+
+Ne želiš:
+START TRANSACTION
+↓
+lock row
+↓
+pozovi eksterni API 12 sekundi
+↓
+generiši PDF
+↓
+pošalji email
+↓
+COMMIT
+
+jer drugim request-ovima držiš resurse zaključane mnogo duže nego što je potrebno.
+Bolje:
+START TRANSACTION
+↓
+lock/check/update DB state
+↓
+COMMIT
+↓
+tek onda email/PDF/API
+
+gde god business flow dozvoljava.
+Lost update
+Još jedan concurrency problem:
+Početno:
+available = 5
+
+A pročita:
+5
+
+B pročita:
+5
+
+A izračuna u PHP-u:
+5 - 1 = 4
+
+B takođe:
+5 - 1 = 4
+
+oba urade:
+UPDATE room_inventory
+SET available = 4
+
+Finalno:
+4
+
+a trebalo je:
+3
+
+Jedan decrement je izgubljen.
+To je lost update.
+Zato je često bolje raditi atomic DB update:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-11-01';
+
+nego:
+SELECT 5
+↓
+PHP izračuna 4
+↓
+UPDATE SET available = 4
+
+Ali i dalje moraš obezbediti da ne ode ispod nule.
+Još bolji atomic pattern
+Možeš čak:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-11-01'
+  AND available > 0;
+
+Ako je:
+available = 1
+
+jedan request uspešno ga pretvori u:
+0
+
+drugi request više ne zadovoljava:
+available > 0
+
+pa update utiče na:
+0 rows
+
+Application onda proverava broj affected rows.
+Ako je:
+1 affected row
+→ uspešno rezervisano
+
+0 affected rows
+→ nema availability
+
+Ovo je veoma moćan pattern.
+U nekim flow-ovima može čak biti jednostavniji od posebnog:
+SELECT ... FOR UPDATE
+
+ali zavisi šta sve treba da proveravaš pre booking-a.
+BookYourHotel scenario sa više noći
+Za booking:
+1 Nov
+2 Nov
+3 Nov
+
+imaš više inventory redova.
+Možeš unutar transaction-a zaključati relevantne redove:
+SELECT date, available, price
+FROM room_inventory
+WHERE room_id = 15
+  AND date >= '2026-11-01'
+  AND date < '2026-11-04'
+FOR UPDATE;
+
+zatim proveriti:
+da li postoje svi datumi?
+da li available > 0 za svaki?
+koje su istorijske/nightly cene?
+
+pa tek onda:
+INSERT booking
+UPDATE inventories
+COMMIT
+
+To je veoma blizu onome što već imaš u svom booking projektu.
+Deadlock — samo uvod
+Kad više transaction-a zaključava više redova, može nastati:
+A drži row 1
+i čeka row 2
+
+B drži row 2
+i čeka row 1
+
+To je deadlock.
+MySQL može detektovati takvu situaciju i jednu transaction prekinuti.
+Zato se u ozbiljnim sistemima često vodi računa da se resursi zaključavaju doslednim redosledom.
+Na primer datume uvek:
+ORDER BY date
+FOR UPDATE;
+
+O deadlock retry logici ćemo detaljnije kad dođemo do PDO/application transaction-a.
+Za „2 ujutru“
+transaction
+→ grupiše promene
+
+FOR UPDATE
+→ zaključava redove koje planiram da menjam
+
+race condition
+→ dva request-a rade nad istim state-om istovremeno
+
+lost update
+→ jedna promena pregazi drugu
+
+atomic UPDATE
+SET x = x - 1
+→ računanje radi baza, ne PHP
+
+WHERE available > 0
+→ uslov i update rade zajedno
+
+Pitanje 17
+Imamo:
+available = 1
+
+i dva korisnika istovremeno pokušavaju da rezervišu poslednju sobu.
+Objasni svojim rečima:
+1. kako može nastati overbooking bez locking-a,
+2. kako SELECT ... FOR UPDATE rešava problem,
+3. i zašto je ovaj query zanimljiv kao alternativa:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-11-01'
+  AND available > 0;
+
+posebno ako posle proverimo broj affected rows.
+
+---
+

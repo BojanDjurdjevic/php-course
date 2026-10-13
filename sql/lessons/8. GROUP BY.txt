@@ -1,0 +1,256 @@
+Lekcija 8 — GROUP BY
+Do sada smo radili agregaciju nad celim rezultujućim skupom.
+Na primer:
+SELECT AVG(base_price)
+FROM hotels;
+
+dobiješ jedan prosek za sve hotele.
+Ali šta ako pitaš:
+Kolika je prosečna cena hotela za svaki grad posebno?
+
+Tu ulazi:
+GROUP BY
+
+Recimo da imamo:
+city	base_price
+Novi Sad	100
+Novi Sad	150
+Belgrade	200
+Belgrade	300
+Niš	80
+
+
+Query:
+SELECT city, AVG(base_price) AS average_price
+FROM hotels
+GROUP BY city;
+
+MySQL mentalno napravi grupe:
+Novi Sad
+→ 100, 150
+→ AVG = 125
+
+Belgrade
+→ 200, 300
+→ AVG = 250
+
+Niš
+→ 80
+→ AVG = 80
+
+Rezultat:
+city	average_price
+Novi Sad	125
+Belgrade	250
+Niš	80
+
+
+Dakle:
+GROUP BY
+→ podeli redove u grupe
+→ aggregate funkcija radi zasebno nad svakom grupom
+
+COUNT po grupama
+Koliko hotela ima svaki grad?
+SELECT
+    city,
+    COUNT(*) AS total_hotels
+FROM hotels
+GROUP BY city;
+
+Umesto jednog:
+47
+
+dobiješ:
+Novi Sad → 12
+Belgrade → 28
+Niš      → 7
+
+Više agregata po grupi
+Možeš:
+SELECT
+    city,
+    COUNT(*) AS total_hotels,
+    AVG(base_price) AS average_price,
+    MIN(base_price) AS min_price,
+    MAX(base_price) AS max_price
+FROM hotels
+GROUP BY city;
+
+Sada za svaki grad dobijaš malu statistiku.
+WHERE + GROUP BY
+Recimo da želiš samo aktivne hotele, ali statistiku po gradu:
+SELECT
+    city,
+    COUNT(*) AS total_hotels,
+    AVG(base_price) AS average_price
+FROM hotels
+WHERE is_active = TRUE
+GROUP BY city;
+
+Mentalni redosled:
+hotels
+↓
+WHERE
+izbaci neaktivne
+↓
+GROUP BY city
+napravi grupe
+↓
+COUNT / AVG
+računaj za svaku grupu
+
+To će nam za minut biti ključno da razumemo HAVING.
+Važno pravilo — šta sme u SELECT uz GROUP BY?
+Ako napišeš:
+SELECT
+    city,
+    COUNT(*)
+FROM hotels
+GROUP BY city;
+
+city ima smisla jer je po njemu grupa definisana.
+Ali ovo je problematično:
+SELECT
+    city,
+    name,
+    COUNT(*)
+FROM hotels
+GROUP BY city;
+
+Zašto?
+Za grupu:
+Novi Sad
+
+možda imamo:
+Danube Hotel
+Petrovaradin Inn
+City Hotel
+Sheraton...
+
+Koji name bi MySQL trebalo da vrati za grupu?
+Nema jednoznačnog odgovora.
+Zato praktično pravilo:
+Kada koristiš GROUP BY, kolone u SELECT treba da budu ili grupisane kolone ili rezultat aggregate funkcije.
+
+Dakle:
+SELECT
+    city,
+    COUNT(*),
+    AVG(base_price)
+FROM hotels
+GROUP BY city;
+
+✅
+Ali:
+SELECT
+    city,
+    name,
+    COUNT(*)
+FROM hotels
+GROUP BY city;
+
+❌ konceptualno nema smisla, osim ako name takođe učestvuje u grupisanju ili se nad njim radi odgovarajuća agregacija.
+Grupisanje po više kolona
+Možeš:
+SELECT
+    city,
+    stars,
+    COUNT(*) AS total
+FROM hotels
+GROUP BY city, stars;
+
+Tada grupa više nije samo:
+Novi Sad
+
+nego:
+Novi Sad + 3 stars
+Novi Sad + 4 stars
+Novi Sad + 5 stars
+Belgrade + 3 stars
+Belgrade + 4 stars
+...
+
+Dakle GROUP BY može definisati kombinaciju.
+Laravel paralela
+SQL:
+SELECT city, COUNT(*) AS total
+FROM hotels
+GROUP BY city;
+
+Laravel Query Builder približno:
+DB::table('hotels')
+    ->select('city', DB::raw('COUNT(*) AS total'))
+    ->groupBy('city')
+    ->get();
+
+Ali opet — Laravel samo gradi isti SQL koncept.
+Za „2 ujutru“
+aggregate bez GROUP BY
+→ jedna statistika za ceo skup
+
+GROUP BY
+→ podeli skup u grupe
+
+aggregate + GROUP BY
+→ jedna statistika za svaku grupu
+
+Pitanje 8
+Napiši query koji za aktivne hotele, za svaki city, vraća:
+city
+total_hotels
+average_price
+
+i sortiraj gradove tako da grad sa najvećim brojem hotela bude prvi.
+
+---
+
+SELECT city, COUNT(*) hotels AS total_hotels, AVG(base_price) AS average_price
+FROM hotels
+GROUP BY city
+ORDER BY total_hotels DESC;
+
+---
+
+Dobar pokušaj — logika GROUP BY ti je pogođena, ali imaš dve greške, pa bih dao 8.5/10.
+
+Prva je sintaksna:
+
+COUNT(*) hotels AS total_hotels
+
+Treba samo:
+
+COUNT(*) AS total_hotels
+
+Druga je da smo tražili samo aktivne hotele, pa nedostaje:
+
+WHERE is_active = TRUE
+
+Ispravno:
+
+SELECT
+    city,
+    COUNT(*) AS total_hotels,
+    AVG(base_price) AS average_price
+FROM hotels
+WHERE is_active = TRUE
+GROUP BY city
+ORDER BY total_hotels DESC;
+
+Ono što je bitnije: ovo si dobro razumeo:
+
+GROUP BY city
+
+→ jedna grupa za svaki grad,
+
+a:
+
+COUNT(*) AS total_hotels
+
+→ broj hotela unutar svake te grupe.
+
+I lepo si koristio alias:
+
+ORDER BY total_hotels DESC
+
+umesto ponavljanja COUNT(*).

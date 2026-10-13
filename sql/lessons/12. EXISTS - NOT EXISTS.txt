@@ -1,0 +1,257 @@
+Lekcija 12 — EXISTS i NOT EXISTS
+
+Ovo je jedan od najvažnijih SQL koncepata za realne aplikacije.
+
+EXISTS ne pita:
+„Koje vrednosti vraća subquery?“
+
+nego:
+„Da li subquery vraća makar jedan red?“
+
+Ako vraća makar jedan red:
+EXISTS → TRUE
+
+Ako ne vraća nijedan:
+EXISTS → FALSE
+
+Primer: users koji imaju hotel
+SELECT
+    u.id,
+    u.name
+FROM users u
+WHERE EXISTS (
+    SELECT 1
+    FROM hotels h
+    WHERE h.owner_id = u.id
+);
+
+Mentalno:
+za svakog user-a
+↓
+pogledaj postoji li hotel
+gde h.owner_id = u.id
+↓
+ako postoji makar jedan
+→ zadrži user-a
+
+Ovde je subquery correlated, jer koristi:
+u.id
+
+iz outer query-ja.
+Zašto SELECT 1?
+Često ćeš videti:
+SELECT 1
+
+unutar EXISTS.
+Zašto ne:
+SELECT *
+
+ili:
+SELECT h.id
+
+Jer EXISTS ne zanima sadržaj reda.
+Zanima ga samo:
+postoji li makar jedan red?
+
+Dakle:
+SELECT 1
+
+lepo komunicira nameru.
+Nije poenta da SQL stvarno treba broj 1 kao podatak.
+NOT EXISTS
+Suprotno:
+nađi users koji nemaju nijedan hotel.
+
+SELECT
+    u.id,
+    u.name
+FROM users u
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM hotels h
+    WHERE h.owner_id = u.id
+);
+
+Mentalno:
+za user-a
+↓
+postoji hotel?
+↓
+DA → izbaci ga
+NE → zadrži ga
+
+Poređenje sa LEFT JOIN ... IS NULL
+Ranije smo isti problem rešili:
+SELECT
+    u.id,
+    u.name
+FROM users u
+LEFT JOIN hotels h
+    ON h.owner_id = u.id
+WHERE h.id IS NULL;
+
+A sada:
+SELECT
+    u.id,
+    u.name
+FROM users u
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM hotels h
+    WHERE h.owner_id = u.id
+);
+
+Oba rešavaju:
+users bez hotela.
+
+Meni je NOT EXISTS često semantički lepši kada problem prirodno glasi:
+„nađi one za koje ne postoji povezani zapis“.
+
+EXISTS vs IN
+Recimo:
+SELECT id, name
+FROM users
+WHERE id IN (
+    SELECT owner_id
+    FROM hotels
+);
+
+i:
+SELECT
+    u.id,
+    u.name
+FROM users u
+WHERE EXISTS (
+    SELECT 1
+    FROM hotels h
+    WHERE h.owner_id = u.id
+);
+
+oba mogu dati isti rezultat.
+Ali mentalni model je različit:
+IN
+→ da li je vrednost u skupu?
+
+EXISTS
+→ da li postoji makar jedan odgovarajući red?
+
+Kod relacija tipa:
+user has hotels
+hotel has rooms
+driver has tours
+booking has payments
+
+EXISTS često jako prirodno leži.
+Realan BookYourHotel primer
+Hoćemo samo hotele koji imaju makar jednu sobu:
+SELECT
+    h.id,
+    h.name
+FROM hotels h
+WHERE EXISTS (
+    SELECT 1
+    FROM rooms r
+    WHERE r.hotel_id = h.id
+);
+
+A hotele bez soba:
+SELECT
+    h.id,
+    h.name
+FROM hotels h
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM rooms r
+    WHERE r.hotel_id = h.id
+);
+
+Još realniji primer: rezervacije
+Recimo da hoćeš hotele koji imaju makar jednu aktivnu rezervaciju:
+SELECT
+    h.id,
+    h.name
+FROM hotels h
+WHERE EXISTS (
+    SELECT 1
+    FROM bookings b
+    WHERE b.hotel_id = h.id
+      AND b.status = 'confirmed'
+);
+
+Ovde se baš lepo vidi šta EXISTS znači:
+za ovaj hotel
+→ postoji li makar jedan confirmed booking?
+
+Za „2 ujutru“
+EXISTS
+→ postoji makar jedan red?
+
+NOT EXISTS
+→ ne postoji nijedan red?
+
+SELECT 1
+→ sadržaj nas ne zanima, samo existence
+
+correlated subquery
+→ inner query koristi vrednost iz outer reda
+
+Pitanje 12
+Napiši query koji vraća:
+id
+name
+
+svih aktivnih hotela koji nemaju nijednu sobu.
+Pretpostavi:
+hotels
+------
+id
+name
+is_active
+
+rooms
+-----
+id
+hotel_id
+name
+
+Koristi NOT EXISTS.
+
+---
+
+SELECT id, name
+FROM hotels h
+WHERE NOT EXISTS (SELECT 1 FROM rooms r WHERE r.hotel_id = h.id)
+AND is_active = TRUE;
+
+---
+
+Tačno — 10/10.
+Tvoj query:
+SELECT id, name
+FROM hotels h
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM rooms r
+    WHERE r.hotel_id = h.id
+)
+AND is_active = TRUE;
+
+radi ispravno.
+Jedina stilska dorada: pošto si već dao alias tabeli h, ja bih bio dosledan i pisao:
+SELECT h.id, h.name
+FROM hotels h
+WHERE h.is_active = TRUE
+  AND NOT EXISTS (
+      SELECT 1
+      FROM rooms r
+      WHERE r.hotel_id = h.id
+  );
+
+To je čitljivije, posebno kad query kasnije dobije JOIN-ove ili više tabela.
+Mentalno si ga pogodio savršeno:
+za svaki aktivan hotel
+↓
+postoji li makar jedna room gde room.hotel_id = hotel.id?
+↓
+NOT EXISTS
+→ zadrži samo one gde ne postoji nijedna
