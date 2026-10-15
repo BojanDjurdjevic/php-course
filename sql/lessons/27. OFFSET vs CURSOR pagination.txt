@@ -1,0 +1,277 @@
+Lekcija 27 — OFFSET pagination vs cursor/keyset pagination
+
+Sećaš se našeg:
+SELECT *
+FROM hotels
+ORDER BY id
+LIMIT 10 OFFSET 20;
+
+To znači:
+preskoči 20
+vrati sledećih 10
+
+i odgovara otprilike:
+page 1 → OFFSET 0
+page 2 → OFFSET 10
+page 3 → OFFSET 20
+
+Formula:
+offset = (page - 1) * perPage
+
+To je klasična pagination.
+Problem velikog OFFSET-a
+Recimo:
+SELECT id, name
+FROM hotels
+ORDER BY id
+LIMIT 20 OFFSET 1000000;
+
+Na prvi pogled kažeš:
+Treba mi samo 20 redova.
+
+Ali baza često mora da prođe kroz ogroman broj prethodnih 
+redova da bi došla do mesta gde treba da počne.
+
+Mentalno:
+pronađi/sortiraj rezultat
+↓
+preskoči 1,000,000
+↓
+vrati 20
+
+Zato duboke stranice mogu postati skupe.
+Dakle:
+OFFSET 20
+→ nikakav problem
+
+OFFSET 1,000,000
+→ može postati veoma skup
+
+Keyset / cursor pagination
+Ako rezultate stabilno sortiramo po id, umesto:
+LIMIT 20 OFFSET 1000000
+
+možemo klijentu zapamtiti poslednji ID koji je video.
+Recimo poslednji red prethodne strane:
+id = 52840
+
+Sledeći query:
+SELECT id, name
+FROM hotels
+WHERE id > 52840
+ORDER BY id ASC
+LIMIT 20;
+
+Mentalno:
+Ne zanima me koja je ovo stranica. Daj mi sledećih 20 posle poslednjeg reda koji sam video.
+
+Ako je id indexed/PK, ovo može biti veoma efikasno.
+id > 52840
+↓
+idi direktno u odgovarajući deo indeksa
+↓
+uzmi sledećih 20
+
+OFFSET vs cursor mentalni model
+OFFSET pagination
+→ "daj mi stranicu broj 50001"
+
+cursor pagination
+→ "nastavi posle ovog reda"
+
+OFFSET je odličan kada ti treba:
+page 1
+page 2
+page 3
+...
+
+i user može da skače:
+1 2 3 ... 50
+
+Cursor je odličan za:
+Load more
+infinite scroll
+API feed
+velike tabele
+
+Stabilnost rezultata
+Još jedan problem OFFSET pagination-a je što se podaci mogu promeniti između request-ova.
+Recimo imamo:
+page 1:
+100
+99
+98
+97
+
+sortirano:
+ORDER BY id DESC
+
+U međuvremenu neko ubaci novi red:
+101
+
+Kad user traži page 2 sa OFFSET-om, pomeranje redova može dovesti do:
+duplikata
+ili
+preskočenog reda
+
+Cursor pristup:
+WHERE id < 97
+ORDER BY id DESC
+LIMIT 4;
+
+kaže:
+Nastavi strogo posle poslednjeg reda koji sam već video.
+
+To je često stabilnije za feed-style rezultate.
+Descending cursor
+Ako ideš:
+ORDER BY id DESC
+
+onda sledeća strana nije:
+WHERE id > last_id
+
+nego:
+WHERE id < last_id
+
+Primer:
+SELECT id, name
+FROM hotels
+WHERE id < 52840
+ORDER BY id DESC
+LIMIT 20;
+
+Mentalno:
+ASC
+→ id > last_id
+
+DESC
+→ id < last_id
+
+A šta ako sortiram po created_at?
+Može:
+SELECT id, created_at, name
+FROM bookings
+WHERE created_at < '2026-10-14 20:00:00'
+ORDER BY created_at DESC
+LIMIT 20;
+
+Ali postoji problem:
+više redova može imati isti created_at.
+Zato je često bolji deterministic cursor sa:
+created_at + id
+
+i odgovarajućim composite index-om.
+Na primer:
+ORDER BY created_at DESC, id DESC
+
+i cursor čuva obe vrednosti.
+To je naprednija verzija, ali ideja je ista:
+sorting mora biti determinističan
+
+Laravel paralela
+Sada vidiš razliku između koncepata iza:
+Model::paginate(20);
+
+i:
+Model::cursorPaginate(20);
+
+paginate() tipično razmišlja u smislu:
+COUNT
++
+LIMIT/OFFSET
++
+page number
+
+dok cursorPaginate() koristi vrednosti sortiranja kao cursor i izbegava duboki OFFSET.
+Laravel nije izmislio drugi tip pagination-a — samo ti daje API preko SQL koncepta.
+Kada koji koristiti?
+Praktično:
+Admin tabela sa:
+1 2 3 4 5
+→ OFFSET pagination je sasvim normalna
+
+Infinite scroll / feed
+→ cursor vrlo prirodan
+
+milioni redova + duboka pagination
+→ cursor često mnogo bolji
+
+moram direktno na page 742
+→ OFFSET je jednostavniji
+
+Nije:
+cursor je uvek bolji.
+
+Ponovo tradeoff i business requirement.
+Za „2 ujutru“
+OFFSET
+→ preskoči N redova
+→ velike vrednosti mogu biti skupe
+
+cursor/keyset
+→ nastavi posle poslednjeg viđenog reda
+
+ASC:
+WHERE id > last_id
+
+DESC:
+WHERE id < last_id
+
+cursor:
+→ brz za velike rezultate
+→ odličan za load-more/feed
+→ nije prirodan za "idi direktno na page 57"
+
+Pitanje 27
+Imamo milion booking-a i API vraća po 20, sortirano:
+ORDER BY id DESC
+
+Korisnik je upravo dobio stranicu čiji poslednji booking ima:
+id = 845000
+
+Napiši query za sledećih 20 booking-a koristeći cursor/keyset pagination.
+I objasni zašto ovde koristiš:
+id < 845000
+
+a ne:
+id > 845000
+
+---
+
+SELECT id, hotel_name
+FROM bookings
+WHERE id < 845000
+ORDER BY id DESC
+LIMIT 20;
+
+Zato sto idemo unazad - DESC i < dakle treba nam manji od poslednjeg pa uzimamo sledecih 20
+
+---
+
+Tačno — 10/10.
+SELECT id, hotel_name
+FROM bookings
+WHERE id < 845000
+ORDER BY id DESC
+LIMIT 20;
+
+Logika ti je potpuno ispravna:
+DESC
+→ idemo od većih ka manjim ID-jevima
+
+poslednji viđen ID = 845000
+
+sledeća strana
+→ mora da nastavi ispod njega
+
+WHERE id < 845000
+
+Da je bilo:
+ORDER BY id ASC
+
+onda bismo koristili:
+WHERE id > last_id
+
+To je cela cursor logika u jednoj slici:
+ASC  → >
+DESC → <

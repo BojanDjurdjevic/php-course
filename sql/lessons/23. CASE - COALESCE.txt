@@ -1,0 +1,258 @@
+Lekcija 23 — CASE, COALESCE i rad sa NULL
+
+Ovo su veoma korisni SQL alati za oblikovanje rezultata.
+
+CASE
+CASE ti omogućava da napraviš uslovnu logiku direktno u query-ju.
+
+Primer:
+SELECT
+    id,
+    name,
+    base_price,
+    CASE
+        WHEN base_price < 100 THEN 'budget'
+        WHEN base_price < 200 THEN 'mid-range'
+        ELSE 'premium'
+    END AS price_category
+FROM hotels;
+
+Rezultat može biti:
+Danube Hotel     85.00   budget
+Central Hotel   140.00   mid-range
+Grand Palace    280.00   premium
+
+Mentalno je veoma slično:
+if ($price < 100) {
+    ...
+} elseif ($price < 200) {
+    ...
+} else {
+    ...
+}
+
+samo što SQL radi klasifikaciju nad svakim redom.
+CASE može i u ORDER BY
+Recimo želimo aktivne hotele prve:
+SELECT id, name, is_active
+FROM hotels
+ORDER BY
+    CASE
+        WHEN is_active = TRUE THEN 0
+        ELSE 1
+    END,
+    name ASC;
+
+Dakle SQL može koristiti uslovnu logiku i za sortiranje.
+NULL opet nije obična vrednost
+Već smo videli:
+WHERE deleted_at IS NULL
+
+a ne:
+WHERE deleted_at = NULL
+
+Jer SQL radi sa three-valued logic:
+TRUE
+FALSE
+UNKNOWN
+
+Na primer:
+NULL = NULL
+
+nije TRUE.
+Rezultat je konceptualno:
+UNKNOWN
+
+Zato koristimo:
+IS NULL
+IS NOT NULL
+
+COALESCE
+COALESCE vraća prvu vrednost koja nije NULL.
+COALESCE(value1, value2, value3, ...)
+
+Primer:
+SELECT
+    name,
+    COALESCE(description, 'No description') AS description
+FROM hotels;
+
+Ako:
+description = NULL
+
+dobiješ:
+No description
+
+Ako description postoji, dobiješ originalnu vrednost.
+Mentalno:
+uzmi prvu non-null vrednost
+
+Više fallback vrednosti
+Recimo user može imati:
+display_name
+name
+email
+
+Možemo:
+SELECT
+    COALESCE(display_name, name, email, 'Unknown user') AS label
+FROM users;
+
+SQL ide s leva na desno:
+display_name postoji?
+↓ ne
+name postoji?
+↓ ne
+email postoji?
+↓ da
+→ koristi email
+
+COALESCE uz LEFT JOIN
+Ovo je vrlo praktično.
+Recimo:
+SELECT
+    h.name,
+    COUNT(r.id) AS room_count
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+GROUP BY h.id, h.name;
+
+COUNT(r.id) će već dati 0 kada nema room-a, ali kod drugih agregacija možemo dobiti NULL.
+Na primer:
+SELECT
+    h.name,
+    AVG(r.price) AS avg_room_price
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+GROUP BY h.id, h.name;
+
+Hotel bez soba može dobiti:
+avg_room_price = NULL
+
+Možeš:
+SELECT
+    h.name,
+    COALESCE(AVG(r.price), 0) AS avg_room_price
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+GROUP BY h.id, h.name;
+
+NULL i matematika
+Ako:
+price = 100
+discount = NULL
+
+onda:
+price - discount
+
+nije 100.
+Rezultat može biti:
+NULL
+
+Jer:
+100 - UNKNOWN
+→ UNKNOWN
+
+Zato:
+price - COALESCE(discount, 0)
+
+ima mnogo više smisla ako NULL znači „nema popusta“.
+CASE + agregacija
+Vrlo korisna tehnika:
+SELECT
+    COUNT(*) AS total_hotels,
+    SUM(
+        CASE
+            WHEN is_active = TRUE THEN 1
+            ELSE 0
+        END
+    ) AS active_hotels
+FROM hotels;
+
+Mentalno:
+Za svaki red:
+active?
+→ 1
+nije active?
+→ 0
+
+pa SUM sabere sve jedinice.
+Ovo se često zove conditional aggregation.
+Možeš čak:
+SELECT
+    city,
+    COUNT(*) AS total,
+    SUM(CASE WHEN is_active = TRUE THEN 1 ELSE 0 END) AS active,
+    SUM(CASE WHEN is_active = FALSE THEN 1 ELSE 0 END) AS inactive
+FROM hotels
+GROUP BY city;
+
+Vrlo korisno za dashboard/statistiku.
+Za „2 ujutru“
+CASE
+→ if / elseif / else u SQL-u
+
+COALESCE
+→ prva non-null vrednost
+
+NULL
+→ nije jednako NULL-u
+→ koristi IS NULL / IS NOT NULL
+
+NULL u matematici
+→ često daje NULL
+
+conditional aggregation
+→ SUM(CASE WHEN ... THEN 1 ELSE 0 END)
+
+Pitanje 23
+Imamo:
+hotels
+------
+id
+name
+base_price
+discount
+
+discount može biti NULL, a tada znači nema popusta.
+Napiši query koji vraća:
+id
+name
+final_price
+
+gde je:
+final_price = base_price - discount
+
+ali NULL discount treba tretirati kao 0.
+Koristi COALESCE.
+
+---
+
+SELECT id, name, 
+base_price - COALESCE(discount, 0) as final_price 
+FROM hotels;
+
+---
+
+Tačno — 10/10.
+SELECT
+    id,
+    name,
+    base_price - COALESCE(discount, 0) AS final_price
+FROM hotels;
+
+Tačno si primenio mentalni model:
+discount = 20
+→ base_price - 20
+
+discount = NULL
+→ COALESCE(NULL, 0)
+→ base_price - 0
+
+Bez COALESCE bi:
+100 - NULL
+
+dao NULL, a ne 100.

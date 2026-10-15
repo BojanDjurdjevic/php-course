@@ -1,0 +1,302 @@
+Lekcija 22 — DISTINCT, duplikati i JOIN-ovi
+
+Ovo deluje kao mala SQL komanda, ali je veoma korisna kada radiš JOIN-ove.
+
+Pretpostavimo:
+hotels
+------
+id
+name
+
+rooms
+-----
+id
+hotel_id
+name
+
+Hotel 1 ima tri sobe.
+Ako uradiš:
+SELECT h.id, h.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+možeš dobiti:
+1 Danube Hotel
+1 Danube Hotel
+1 Danube Hotel
+
+Zašto?
+Jer JOIN ne kaže:
+vrati svaki hotel jednom
+
+nego:
+vrati svaku kombinaciju redova koja zadovoljava relaciju.
+
+Jedan hotel ima 3 room reda, pa dobiješ 3 joined reda.
+DISTINCT
+Ako te zanimaju samo jedinstveni hoteli:
+SELECT DISTINCT
+    h.id,
+    h.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+rezultat:
+1 Danube Hotel
+
+DISTINCT uklanja duplikate iz kombinacije svih selektovanih kolona.
+To je važna nijansa.
+Ako imaš:
+SELECT DISTINCT
+    h.id,
+    h.name,
+    r.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+a sobe su:
+Single
+Double
+Suite
+
+onda redovi nisu duplikati:
+1 Danube Hotel Single
+1 Danube Hotel Double
+1 Danube Hotel Suite
+
+pa DISTINCT neće vratiti samo jedan hotel.
+Jer se gleda cela selektovana kombinacija:
+h.id + h.name + r.name
+
+DISTINCT nije lek za loš JOIN
+Ovo je bitno.
+Ako dobiješ duplikate, nemoj automatski:
+SELECT DISTINCT ...
+
+samo da „nestanu“.
+Prvo pitaj:
+Da li su duplikati zapravo prirodna posledica one-to-many relacije?
+
+Ako jesu, možda ti treba:
+GROUP BY
+
+ili:
+EXISTS
+
+ili drugačiji query.
+Na primer, ako samo hoću:
+svi hoteli koji imaju makar jednu sobu
+
+onda je meni često semantički čistije:
+SELECT h.id, h.name
+FROM hotels h
+WHERE EXISTS (
+    SELECT 1
+    FROM rooms r
+    WHERE r.hotel_id = h.id
+);
+
+nego:
+SELECT DISTINCT h.id, h.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+Oba mogu rešiti problem, ali EXISTS direktno kaže ono što pitamo:
+postoji li makar jedna soba?
+
+COUNT(DISTINCT ...)
+Vrlo korisno.
+Recimo hoćemo broj različitih gradova:
+SELECT COUNT(DISTINCT city)
+FROM hotels;
+
+Ako imamo:
+Novi Sad
+Novi Sad
+Beograd
+Beograd
+Niš
+
+dobijemo:
+3
+
+Možemo i:
+SELECT
+    owner_id,
+    COUNT(DISTINCT city) AS city_count
+FROM hotels
+GROUP BY owner_id;
+
+što kaže:
+u koliko različitih gradova svaki owner ima hotele?
+
+DISTINCT i NULL
+Ako radiš:
+SELECT DISTINCT city
+FROM hotels;
+
+više NULL vrednosti se u rezultatu ponašaju kao jedna distinct grupa vrednosti za ovaj purpose.
+Dakle možeš dobiti:
+Novi Sad
+Beograd
+NULL
+
+ne deset NULL redova.
+Kada DISTINCT može biti skup
+Da bi uklonio duplikate, MySQL mora nekako da odredi:
+koje kombinacije su iste?
+
+To može uključiti:
+sorting
+temporary structures
+index usage
+
+zavisno od query-ja i plana.
+Zato:
+DISTINCT
+
+nije „besplatni dodatak“.
+Ako ga stavljaš zato što:
+„JOIN mi čudno duplira stvari“
+
+prvo proveri query model.
+Realan primer: broj hotela po owner-u
+Ako uradimo:
+SELECT
+    u.id,
+    u.name,
+    COUNT(h.id) AS hotel_count
+FROM users u
+LEFT JOIN hotels h
+    ON h.owner_id = u.id
+GROUP BY u.id, u.name;
+
+ovde nam DISTINCT ne treba.
+GROUP BY prirodno kaže:
+napravi jednu grupu po user-u i prebroj hotele.
+
+Jedna važna LEFT JOIN zamka
+Imamo:
+SELECT
+    h.id,
+    h.name,
+    r.id AS room_id
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+WHERE r.is_active = TRUE;
+
+Na prvi pogled kažeš:
+hoću sve hotele i njihove aktivne sobe.
+
+Ali WHERE radi posle JOIN-a.
+Za hotel bez sobe, r.is_active je:
+NULL
+
+i ne zadovoljava:
+r.is_active = TRUE
+
+Zato hotel bez sobe nestane.
+Praktično si ubio jedan deo značenja LEFT JOIN.
+Ako želiš:
+svi hoteli, ali od room strane spoji samo aktivne sobe
+
+bolje:
+SELECT
+    h.id,
+    h.name,
+    r.id AS room_id
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+   AND r.is_active = TRUE;
+
+Ovo je jedna od najvažnijih JOIN nijansi:
+ON
+→ utiče na to šta će se spojiti
+
+WHERE
+→ filtrira već nastali rezultat
+
+Kod INNER JOIN razlika često nije vidljiva na isti način.
+Kod LEFT JOIN može potpuno promeniti rezultat.
+Za „2 ujutru“
+DISTINCT
+→ uklanja duplikate selektovane kombinacije kolona
+
+one-to-many JOIN
+→ prirodno može napraviti više parent redova
+
+DISTINCT nije lek za svaki JOIN
+
+COUNT(DISTINCT x)
+→ broj različitih vrednosti
+
+LEFT JOIN:
+uslov nad desnom tabelom u WHERE
+→ može izbaciti NULL/non-matching leve redove
+
+uslov u ON
+→ zadrži left rows, filtriraj šta se spaja sa desne strane
+
+Pitanje 22
+Imamo query:
+SELECT
+    h.id,
+    h.name,
+    r.name AS room_name
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+WHERE r.is_active = TRUE;
+
+Želimo:
+sve hotele, uključujući i one koji nemaju nijednu aktivnu sobu, ali ako postoje sobe, želimo da spojimo samo aktivne.
+
+Šta je problem sa trenutnim query-jem i kako bi ga ispravio?
+
+---
+
+Pa problem je pre svega sto ovde WHERE radi posle JOIN, te is_active moze da se ne pojavi jer ne zadovoljava uslov.
+
+Posto ON odlucuje sta ce se spojiti onda bolje umesto WHERe jednostavno staviiti AND
+
+---
+
+Tačno — 9.8/10.
+Suština je upravo ovo:
+ON
+→ određuje šta će se spojiti
+
+WHERE
+→ filtrira rezultat nakon JOIN-a
+
+Kod trenutnog query-ja:
+SELECT
+    h.id,
+    h.name,
+    r.name AS room_name
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+WHERE r.is_active = TRUE;
+
+hotel bez odgovarajuće sobe dobije NULL na r.*, pa:
+r.is_active = TRUE
+
+nije ispunjeno i taj hotel nestane iz rezultata. Time smo praktično izgubili ono što smo želeli od LEFT JOIN.
+Ispravno:
+SELECT
+    h.id,
+    h.name,
+    r.name AS room_name
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+   AND r.is_active = TRUE;
+
+Dakle, baš kao što si rekao: prebaciš uslov iz WHERE u ON i dodaš ga sa AND.

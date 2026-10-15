@@ -1,0 +1,332 @@
+Lekcija 25 — ALTER TABLE, DROP i promena schema-e
+
+Do sada smo uglavnom pravili tabelu pomoću:
+CREATE TABLE
+
+Ali aplikacija evoluira.
+Danas napraviš:
+hotels
+-------
+id
+name
+
+sutra ti treba:
+city
+
+Nećeš obrisati bazu i napraviti sve ponovo. Menjaš postojeću schema-u pomoću:
+ALTER TABLE
+
+Dodavanje kolone
+ALTER TABLE hotels
+ADD COLUMN city VARCHAR(100) NOT NULL;
+
+Mentalno:
+ALTER TABLE hotels
+→ menjam strukturu hotels
+
+ADD COLUMN
+→ dodajem novu kolonu
+
+Može i:
+ALTER TABLE hotels
+ADD COLUMN description TEXT NULL;
+
+Menjanje postojeće kolone
+U MySQL-u možeš koristiti MODIFY COLUMN.
+Recimo:
+ALTER TABLE hotels
+MODIFY COLUMN name VARCHAR(200) NOT NULL;
+
+Promenili smo definiciju postojeće kolone.
+Na primer sa:
+VARCHAR(100)
+
+na:
+VARCHAR(200)
+
+CHANGE COLUMN
+MySQL ima i:
+ALTER TABLE hotels
+CHANGE COLUMN old_name name VARCHAR(200) NOT NULL;
+
+Možeš promeniti i ime i definiciju kolone.
+Ali u modernom kodu, kada želiš samo rename, jasnije je:
+ALTER TABLE hotels
+RENAME COLUMN hotel_name TO name;
+
+Brisanje kolone
+ALTER TABLE hotels
+DROP COLUMN description;
+
+Ovo je već destruktivno.
+Podaci iz te kolone nestaju.
+Zato:
+ADD
+→ uglavnom bezbedniji
+
+DROP
+→ stani i proveri šta brišeš
+
+Dodavanje constraint-a kasnije
+Recimo napravio si tabelu:
+CREATE TABLE users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL
+);
+
+Kasnije shvatiš:
+email mora biti unique.
+
+Možeš:
+ALTER TABLE users
+ADD CONSTRAINT uq_users_email UNIQUE (email);
+
+Ali ovde postoji praktičan problem.
+Ako baza već sadrži:
+a@test.com
+b@test.com
+a@test.com
+
+MySQL ne može samo da kaže:
+Od sada UNIQUE.
+
+Postojeći podaci već krše pravilo.
+ALTER će pasti dok ne rešiš duplikate.
+Ovo je veoma bitna stvar kod migracija:
+Nova schema mora biti kompatibilna i sa postojećim podacima.
+
+Dodavanje foreign key-a
+ALTER TABLE hotels
+ADD CONSTRAINT fk_hotels_owner
+FOREIGN KEY (owner_id)
+REFERENCES users(id)
+ON DELETE RESTRICT;
+
+Opet:
+Ako već postoji:
+hotels.owner_id = 999
+
+a:
+users.id = 999
+
+ne postoji, constraint ne može uredno da se uvede dok ne očistiš podatke.
+Dodavanje index-a
+Već smo videli:
+ALTER TABLE hotels
+ADD INDEX idx_hotels_city (city);
+
+ili:
+CREATE INDEX idx_hotels_city
+ON hotels(city);
+
+Oba pristupa se koriste.
+Composite:
+ALTER TABLE hotels
+ADD INDEX idx_city_active_price (
+    city,
+    is_active,
+    base_price
+);
+
+Brisanje index-a
+ALTER TABLE hotels
+DROP INDEX idx_hotels_city;
+
+ili MySQL sintaksa:
+DROP INDEX idx_hotels_city
+ON hotels;
+
+Brisanje foreign key-a
+Tu je jedna česta zamka.
+Ako constraint ima ime:
+fk_hotels_owner
+
+onda:
+ALTER TABLE hotels
+DROP FOREIGN KEY fk_hotels_owner;
+
+Ne:
+DROP COLUMN owner_id;
+
+To su dve različite stvari.
+Constraint je schema pravilo.
+Kolona je podatak/atribut.
+DROP TABLE
+Ovo:
+DROP TABLE hotels;
+
+kaže:
+Ukloni ceo table object.
+
+Nestaju:
+structure
++
+rows
++
+indexes
++
+constraints vezani za tu tabelu
+
+Naravno, foreign key relacije iz drugih tabela mogu sprečiti ili zakomplikovati operaciju.
+DROP DATABASE
+Još destruktivnije:
+DROP DATABASE booking_app;
+
+Ovo briše celu bazu.
+Dakle:
+DROP COLUMN
+→ jedna kolona
+
+DROP TABLE
+→ jedna tabela
+
+DROP DATABASE
+→ cela baza
+
+Dobro je da ti prsti imaju malo straha od DROP. 😄
+DELETE vs TRUNCATE vs DROP
+Ovo je čest interview trio.
+DELETE
+DELETE FROM hotels;
+
+Briše redove.
+Tabela ostaje.
+Možeš imati:
+DELETE FROM hotels
+WHERE is_active = FALSE;
+
+Dakle podržava WHERE.
+TRUNCATE
+TRUNCATE TABLE hotels;
+
+Kaže:
+isprazni celu tabelu.
+
+Nema:
+TRUNCATE TABLE hotels WHERE ...
+
+TRUNCATE radi nad celom tabelom.
+Tipično je efikasniji način da isprazniš celu tabelu nego red-po-red DELETE.
+Takođe resetuje AUTO_INCREMENT brojač u tipičnom MySQL slučaju.
+DROP
+DROP TABLE hotels;
+
+Ne prazni tabelu.
+Uklanja samu tabelu.
+Mentalno:
+DELETE
+→ obriši rows
+
+TRUNCATE
+→ brzo isprazni celu tabelu
+
+DROP
+→ obriši samu tabelu
+
+Važna transaction nijansa za MySQL
+Sećaš se:
+START TRANSACTION;
+
+DELETE FROM hotels;
+
+ROLLBACK;
+
+Kod transactional engine-a poput InnoDB, običan DELETE može biti deo transaction-a i rollbackovan.
+Ali TRUNCATE TABLE u MySQL-u spada u DDL ponašanje i ne treba ga mentalno tretirati kao običan transactional DELETE.
+Isto važi za mnoge DDL operacije:
+CREATE
+ALTER
+DROP
+TRUNCATE
+
+One imaju posebnu transaction semantiku u MySQL-u.
+Za naš nivo dovoljno je da ne kažeš:
+"TRUNCATE je samo brži DELETE."
+
+Nije. Semantika je drugačija.
+Laravel paralela
+Sve ovo si već viđao:
+Schema::table('hotels', function (Blueprint $table) {
+    $table->string('city');
+});
+
+ispod toga postoji ideja:
+ALTER TABLE ...
+
+A:
+Schema::dropIfExists('hotels');
+
+je schema-level operacija koja se svodi na koncept:
+DROP TABLE ...
+
+Migracije su ti zapravo version-controlled način upravljanja SQL schema promenama.
+Za „2 ujutru“
+ALTER TABLE
+→ promeni postojeću schema-u
+
+ADD COLUMN
+→ dodaj kolonu
+
+MODIFY COLUMN
+→ promeni definiciju
+
+DROP COLUMN
+→ ukloni kolonu
+
+ADD CONSTRAINT
+→ dodaj pravilo
+
+DELETE
+→ rows, podržava WHERE
+
+TRUNCATE
+→ isprazni celu tabelu
+
+DROP
+→ ukloni schema object
+
+Pitanje 25
+Objasni razliku između:
+DELETE FROM hotels;
+
+TRUNCATE TABLE hotels;
+
+DROP TABLE hotels;
+
+I reci koji bi od ta tri koristio kada želiš da tabela ostane potpuno ista, ali želiš da obrišeš samo neaktivne hotele.
+
+---
+
+Za tvoje potpitanje:
+Koristio bih: DELETE from hovtels -> jer podrzava WHERE is_active = FALSE;
+
+Dakle on brise redove i podrzava filtriranje sa WHERE koje odredjuje koje redove obrisati i ne izmenjuje na drugi nacin tabelu.
+
+TRUNCATE -> brzo pražnjenje tabele s tim st se i ID vrati na 0 pa prvi sledeci unos nosice ID 1. Dakle, kao da kaze ajmo ispocetka.
+
+DROP TABLE -> brise celu tablu sa svim unosima, sto je rizicno. Trajno se gube podaci ali i schema
+
+---
+
+Odlično — 9.8/10.
+Jedina sitna preciznost je kod TRUNCATE: bolje je reći da u tipičnom MySQL AUTO_INCREMENT slučaju resetuje brojač na početnu vrednost, pa će sledeći ID obično ponovo biti 1. Nije baš konceptualno „ID se postavi na 0“, iako efekat koji si opisao jeste taj koji ćeš najčešće videti.
+Tvoja mapa je inače tačna:
+DELETE
+→ briše redove
+→ može WHERE
+→ tabela/schema ostaje
+
+TRUNCATE
+→ prazni celu tabelu
+→ nema WHERE
+→ tipično resetuje AUTO_INCREMENT
+→ nije samo "brži DELETE"
+
+DROP TABLE
+→ nestaju redovi + sama tabela/schema
+
+I za:
+DELETE FROM hotels
+WHERE is_active = FALSE;
+
+apsolutno pravi izbor.

@@ -1,0 +1,284 @@
+Lekcija 26 — Composite UNIQUE: kada kombinacija mora biti jedinstvena
+
+Već znamo običan:
+email VARCHAR(255) UNIQUE
+
+što znači:
+vrednost email ne sme da se ponovi.
+
+Ali vrlo često pojedinačne kolone smeju da se ponavljaju, dok njihova kombinacija ne sme.
+Recimo inventory tabela:
+room_inventory
+--------------
+id
+room_id
+date
+available
+price
+
+Za sobu 15 možemo imati mnogo datuma:
+room_id | date
+--------+------------
+15      | 2026-11-01
+15      | 2026-11-02
+15      | 2026-11-03
+
+I isti datum naravno može postojati za mnogo različitih soba:
+15 | 2026-11-01
+16 | 2026-11-01
+17 | 2026-11-01
+
+Dakle ne možemo staviti:
+UNIQUE(room_id)
+
+jer jedna soba treba mnogo inventory dana.
+Ne možemo ni:
+UNIQUE(date)
+
+jer mnogo soba ima isti datum.
+Ali ovo ima smisla:
+UNIQUE(room_id, date)
+
+Jer za jednu konkretnu sobu i jedan konkretan datum treba da postoji samo jedan inventory red.
+Na primer ovo je validno:
+15 | 2026-11-01
+15 | 2026-11-02
+16 | 2026-11-01
+
+ali ovo nije:
+15 | 2026-11-01
+15 | 2026-11-01   ❌
+
+To je composite unique constraint.
+Možemo ga definisati:
+CREATE TABLE room_inventory (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    room_id BIGINT UNSIGNED NOT NULL,
+    date DATE NOT NULL,
+    available INT UNSIGNED NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT uq_room_inventory_room_date
+        UNIQUE (room_id, date)
+);
+
+Ili kasnije:
+ALTER TABLE room_inventory
+ADD CONSTRAINT uq_room_inventory_room_date
+UNIQUE (room_id, date);
+
+UNIQUE(room_id, date) nije isto što i dva UNIQUE
+Ovo je veoma važna razlika.
+Ovo:
+UNIQUE(room_id, date)
+
+znači:
+kombinacija mora biti jedinstvena.
+
+Ali ovo:
+UNIQUE(room_id),
+UNIQUE(date)
+
+znači:
+svaki room_id sme da se pojavi samo jednom
+i svaki date sme da se pojavi samo jednom.
+
+To bi potpuno pokvarilo inventory model.
+Mentalno:
+UNIQUE(a, b)
+→ jedinstven PAR
+
+UNIQUE(a)
+UNIQUE(b)
+→ svaka kolona pojedinačno jedinstvena
+
+Composite UNIQUE je ujedno i indeks
+Baš kao što smo pričali za email:
+UNIQUE(email)
+
+MySQL koristi unique index da sprovede constraint.
+Isto važi za:
+UNIQUE(room_id, date)
+
+Dakle query:
+SELECT *
+FROM room_inventory
+WHERE room_id = 15
+  AND date = '2026-11-01';
+
+već ima veoma dobar indeks nad:
+(room_id, date)
+
+Ne treba dodatno da praviš:
+INDEX(room_id, date)
+
+jer bi to bilo redundantno.
+A šta sa room_id samostalno?
+Pošto imamo:
+UNIQUE(room_id, date)
+
+leftmost prefix pravilo nam kaže da indeks može biti koristan i za:
+WHERE room_id = 15
+
+jer room_id je prva kolona.
+Ali nije prirodno isti indeks za:
+WHERE date = '2026-11-01'
+
+jer preskačemo room_id.
+Ponovo se vraćamo na isti mentalni model:
+(room_id, date)
+
+room_id ✅
+room_id + date ✅
+date samo ⚠️
+
+Dakle constraint i performance dizajn često se lepo preklapaju.
+Realan drugi primer — booking participant
+Recimo junction tabela:
+booking_guests
+--------------
+booking_id
+user_id
+
+Ako isti user ne sme dvaput biti dodat istom booking-u:
+UNIQUE(booking_id, user_id)
+
+Ali isti user sme biti u različitim booking-ima:
+booking 10 + user 5
+booking 11 + user 5
+
+i isti booking sme imati više različitih user-a:
+booking 10 + user 5
+booking 10 + user 8
+
+Opet je jedinstvena kombinacija, ne pojedinačna vrednost.
+Composite PRIMARY KEY
+Tehnički možemo čak imati:
+PRIMARY KEY (booking_id, user_id)
+
+u junction tabeli umesto posebnog:
+id
+
+To znači da je identitet reda upravo kombinacija dva ključa.
+Na primer:
+CREATE TABLE hotel_amenities (
+    hotel_id BIGINT UNSIGNED NOT NULL,
+    amenity_id BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (hotel_id, amenity_id)
+);
+
+Tu poseban:
+id
+
+nije nužno potreban.
+U praksi oba dizajna postoje:
+surrogate PK:
+id
++
+UNIQUE(hotel_id, amenity_id)
+
+ili:
+composite PK:
+PRIMARY KEY(hotel_id, amenity_id)
+
+Koji ćeš koristiti zavisi od modela, ORM-a i potreba aplikacije.
+Laravel/Eloquent često čini single-column surrogate id praktičnijim, ali relational model ne zahteva da svaki PK bude jedna kolona.
+UNIQUE i business rules
+Najvažnije: UNIQUE ne dodajemo samo zato što:
+„Možda ubrza query.“
+
+Prvo pitanje je:
+Da li je ovo pravilo istine u našem sistemu?
+
+Ako jeste:
+jedan email po user account-u
+jedan inventory red po room/date kombinaciji
+jedan amenity jednom po hotelu
+
+onda constraint pripada bazi.
+Application validation:
+// proveri da ne postoji
+
+nije dovoljna zaštita zbog concurrency-ja.
+Dva request-a mogu istovremeno uraditi:
+A proveri → nema
+B proveri → nema
+
+A INSERT
+B INSERT
+
+Bez DB UNIQUE oba mogu proći.
+Sa UNIQUE:
+jedan uspe
+drugi dobije constraint violation
+
+Baza je poslednja linija odbrane integriteta.
+Za „2 ujutru“
+UNIQUE(a, b)
+→ jedinstvena kombinacija
+
+nije isto kao:
+UNIQUE(a)
+UNIQUE(b)
+
+composite UNIQUE
+→ constraint + unique index
+
+leftmost prefix i dalje važi
+
+DB UNIQUE
+→ štiti integritet čak i kod race condition-a
+
+Pitanje 26
+Imamo:
+room_inventory
+--------------
+id
+room_id
+date
+available
+price
+
+Business pravilo glasi:
+Za jednu sobu sme postojati najviše jedan inventory red za jedan datum.
+
+Da li bi stavio:
+UNIQUE(room_id)
+
+UNIQUE(date)
+
+ili:
+UNIQUE(room_id, date)
+
+i zašto?
+I dodatno: ako imamo UNIQUE(room_id, date), da li nam treba još jedan običan:
+INDEX(room_id, date)
+
+preko iste kombinacije?
+
+---
+
+Prvi: stavio bih UNIQUE(room_id, date), jer to je upravo pravilo - jedan room_id jedan datum, ali isti id moze imati vise razlicitih datuma i obrnuto. Da ne govorimo koliko je besmisleno pojedinacno staviti unique...
+
+Drugo: Ne bih postavljao dodatno index jer je to redudantno... unique je vec sam po sebi index
+
+---
+
+Tačno — 10/10.
+Prvi deo si objasnio baš kako treba:
+UNIQUE(room_id, date)
+→ jedinstvena je kombinacija
+
+isti room_id + drugi date ✅
+drugi room_id + isti date ✅
+isti room_id + isti date ❌
+
+I drugi deo je potpuno tačan:
+UNIQUE(room_id, date)
+→ već postoji unique index nad tom kombinacijom
+
+INDEX(room_id, date)
+→ redundantno
+
+Dakle dobio bi dodatni indeks koji praktično ponavlja istu strukturu, a onda samo plaćaš više storage-a i skuplje INSERT/UPDATE/DELETE.

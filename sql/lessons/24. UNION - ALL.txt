@@ -1,0 +1,286 @@
+Lekcija 24 — UNION i UNION ALL
+
+JOIN spaja tabele horizontalno — dodaje kolone.
+UNION spaja rezultate vertikalno — dodaje redove.
+To je najbolji mentalni model:
+JOIN
+→ kolone jedna pored druge
+
+UNION
+→ redovi jedni ispod drugih
+
+Recimo imamo:
+customers
+---------
+id
+name
+email
+
+suppliers
+---------
+id
+name
+email
+
+Hoćemo zajedničku listu email adresa:
+SELECT email
+FROM customers
+
+UNION
+
+SELECT email
+FROM suppliers;
+
+Rezultati prvog query-ja i drugog query-ja se spoje u jedan rezultat.
+UNION uklanja duplikate
+Ako postoji:
+customers:
+bojan@test.com
+
+suppliers:
+bojan@test.com
+
+onda:
+SELECT email FROM customers
+UNION
+SELECT email FROM suppliers;
+
+vratiće:
+bojan@test.com
+
+samo jednom.
+Dakle:
+UNION
+→ spoji rezultate
+→ ukloni duplikate
+
+To znači i da MySQL ima dodatni posao da utvrdi koji redovi su duplikati.
+UNION ALL
+Ako napišemo:
+SELECT email
+FROM customers
+
+UNION ALL
+
+SELECT email
+FROM suppliers;
+
+dobijamo sve:
+bojan@test.com
+bojan@test.com
+
+Dakle:
+UNION ALL
+→ spoji rezultate
+→ NE uklanjaj duplikate
+
+Zbog toga je UNION ALL obično jednostavniji i potencijalno efikasniji kada ne treba deduplikacija.
+Nemoj automatski koristiti UNION ako nemaš razlog da ukloniš duplikate.
+Query-ji moraju biti kompatibilni
+Ne mora biti ista tabela, ali oba SELECT-a moraju vraćati isti broj kolona sa kompatibilnim tipovima.
+Ovo ima smisla:
+SELECT id, name
+FROM hotels
+
+UNION ALL
+
+SELECT id, name
+FROM rooms;
+
+Oba vraćaju:
+2 kolone
+
+Ali ovo:
+SELECT id, name, city
+FROM hotels
+
+UNION ALL
+
+SELECT id, name
+FROM rooms;
+
+❌ ne može.
+Prvi vraća 3 kolone, drugi 2.
+Nazivi kolona rezultata
+Recimo:
+SELECT id, name
+FROM hotels
+
+UNION ALL
+
+SELECT id, room_name
+FROM archived_rooms;
+
+nazivi kolona finalnog result seta uglavnom se uzimaju iz prvog SELECT-a.
+Zato možeš lepo koristiti aliases:
+SELECT
+    id,
+    name AS item_name,
+    'hotel' AS item_type
+FROM hotels
+
+UNION ALL
+
+SELECT
+    id,
+    name,
+    'room'
+FROM rooms;
+
+Rezultat:
+id | item_name      | item_type
+---+----------------+----------
+1  | Danube Hotel   | hotel
+2  | Central Hotel  | hotel
+1  | Deluxe Room    | room
+2  | Single Room    | room
+
+Ovo je veoma korisno kada želiš objedinjeni search/feed/report iz više izvora.
+ORDER BY sa UNION-om
+Ako želiš sortirati ceo spojeni rezultat:
+SELECT name
+FROM hotels
+
+UNION ALL
+
+SELECT name
+FROM rooms
+
+ORDER BY name ASC;
+
+ORDER BY na kraju se odnosi na finalni rezultat.
+Mentalno:
+SELECT A
+       \
+        → UNION → ORDER BY → result
+       /
+SELECT B
+
+UNION nije isto što i JOIN
+Ovo treba odmah razlikovati na intervjuu.
+Imamo:
+users
+hotels
+
+Ako želimo:
+hotel + njegov owner
+
+koristimo:
+JOIN
+
+jer povezujemo povezane entitete po kolonama:
+SELECT
+    h.name,
+    u.name AS owner_name
+FROM hotels h
+JOIN users u
+    ON u.id = h.owner_id;
+
+Ako želimo:
+zajedničku listu imena iz dve različite tabele
+
+možemo:
+SELECT name FROM hotels
+UNION ALL
+SELECT name FROM users;
+
+Dakle:
+JOIN
+→ poveži povezane redove
+→ rezultat postaje širi
+
+UNION
+→ naslaži kompatibilne rezultate
+→ rezultat postaje duži
+
+Realan primer
+Recimo da imaš dve tabele:
+current_bookings
+archived_bookings
+
+Hoćeš sve booking reference:
+SELECT reference, created_at
+FROM current_bookings
+
+UNION ALL
+
+SELECT reference, created_at
+FROM archived_bookings
+
+ORDER BY created_at DESC;
+
+Ako znaš da isti booking ne može biti i u current i archived tabeli, nema razloga da plaćaš deduplikaciju:
+UNION ALL
+
+je prirodan izbor.
+Za „2 ujutru“
+JOIN
+→ horizontalno
+→ dodaje kolone
+
+UNION
+→ vertikalno
+→ dodaje redove
+→ uklanja duplikate
+
+UNION ALL
+→ dodaje redove
+→ zadržava duplikate
+→ obično jeftiniji ako deduplikacija nije potrebna
+
+SELECT-i:
+→ isti broj kolona
+→ kompatibilni tipovi
+
+Pitanje 24
+Imamo:
+hotels
+------
+id
+name
+
+archived_hotels
+---------------
+id
+name
+
+Želimo jednu listu svih trenutnih i arhiviranih hotela, a dozvoljeno je da dva različita zapisa imaju isto ime — ne želimo da SQL uklanja duplikate.
+Napiši query i objasni zašto bi ovde izabrao UNION ALL, a ne UNION.
+
+---
+
+SELECT id, name
+FROM hotels
+
+UNION ALL
+
+SELECT id, name
+FROM archived_hotels
+
+Ovde koristim UNION ALL jer ne zelim da sql uklanja duplikate i da bez potrebe ima dodatni posao
+
+---
+
+Tačno — 10/10.
+SELECT id, name
+FROM hotels
+
+UNION ALL
+
+SELECT id, name
+FROM archived_hotels;
+
+I objašnjenje ti je potpuno tačno:
+UNION
+→ spaja rezultate
+→ uklanja duplikate
+→ dodatni posao
+
+UNION ALL
+→ samo spaja rezultate
+→ zadržava duplikate
+→ nema nepotrebne deduplikacije
+
+Još jedna fina nijansa: pošto selektuješ id, name zajedno, UNION bi smatrao duplikatom samo red gde su obe vrednosti iste. 
+Dakle dva hotela sa istim name, ali različitim id, ionako nisu identični redovi. 
+Ali pošto business zahtev eksplicitno kaže „ne deduplikuj ništa“, UNION ALL je i dalje pravi izbor.

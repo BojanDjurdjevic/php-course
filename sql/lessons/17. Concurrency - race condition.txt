@@ -331,3 +331,78 @@ posebno ako posle proverimo broj affected rows.
 
 ---
 
+1. Transakcija, sama po sebi, ne resava problem overbooking-a jer ne zaključ̣ava redove, pa se dogodi:
+Request A ->čita availability i vidi 1 sobu
+Request B isto to.
+Transakcije provere availability, odrade booking i smanje availability, svaka posebno prođe - overbooking.
+2. Tu dolazi SELECT ... FOR UPDATE; ovo for update kaze: selektuj mi ovo s namerom da kad dobijem rezultate iste izmenim. 
+Pa onda dok request A čita, B čeka... Transakcija A se zavrsi (sa commiy ili rollback), B pocinje da čita).
+3. Ovaj query je dobra alternativa jer sprečava race condition i lost update jer ovde sql računa i umanjyje availability a ne php. 
+Php sam po sebi ne zna stanje, uzima ga iz baze a baza ima svoje stanje i kaze 
+availability = availabiliti - 1 -> trenutni availability -1 i ovo na kraju AND available > 0 osigurava da se nece ići ispod 0.
+
+---
+
+Odlično — 9.7/10. Suštinski si razumeo concurrency problem kako treba.
+Samo jedna važna preciznost oko prve rečenice:
+„Transakcija sama po sebi ne zaključava redove“
+
+to je malo preširoko rečeno.
+Preciznije:
+transaction sama po sebi
+→ ne znači da će običan SELECT zaključati pročitane redove
+
+Ali UPDATE, DELETE i određene locking reads svakako koriste lock-ove.
+Dakle problem je više ovo:
+START TRANSACTION;
+
+SELECT available
+FROM room_inventory
+WHERE ...;
+
+Običan SELECT ne znači automatski:
+„zaključaj ovaj inventory red za mene dok ne završim.“
+
+Zato oba request-a mogu pročitati availability na način koji vodi ka race condition-u, zavisno od flow-a.
+Drugi deo ti je odličan:
+A → SELECT ... FOR UPDATE → lock
+B → pokušava isti locking read → čeka
+
+A → COMMIT / ROLLBACK
+→ lock se oslobađa
+
+B → nastavlja i vidi novo stanje
+
+I treći deo je takođe vrlo dobar. Posebno želim da zapamtiš ovo:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-11-01'
+  AND available > 0;
+
+ovde:
+provera available > 0
++
+decrement
+
+nisu dve application operacije:
+READ
+↓
+PHP IF
+↓
+WRITE
+
+nego deo jedne SQL write operacije.
+To drastično smanjuje prostor za race condition.
+A onda je ključ:
+affected rows = 1
+→ uspeo sam da rezervišem inventory
+
+affected rows = 0
+→ uslov available > 0 nije zadovoljen
+→ nema availability
+
+To će ti kasnije kroz PDO biti veoma prirodno:
+$stmt->rowCount();
+
+Tu ćemo ga konkretno koristiti.
