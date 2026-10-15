@@ -1,0 +1,547 @@
+Lekcija 36 — CHECK, DEFAULT, ENUM i generated columns
+Ovo je dobra završna schema-design lekcija pre velike SQL mape, jer povezuje ono što smo već učili o tome šta treba garantovati u PHP-u, a šta može i sama baza.
+Već znamo:
+PRIMARY KEY
+FOREIGN KEY
+UNIQUE
+NOT NULL
+
+Sada dodajemo još nekoliko korisnih mehanizama.
+1. CHECK constraint
+Recimo imamo inventory:
+room_inventory
+--------------
+id
+room_id
+date
+available
+price
+
+Business rule:
+available ne sme biti negativan
+price ne sme biti negativna
+
+Možemo napisati:
+CREATE TABLE room_inventory (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    room_id BIGINT UNSIGNED NOT NULL,
+    date DATE NOT NULL,
+    available INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+
+    CHECK (available >= 0),
+    CHECK (price >= 0)
+);
+
+Sada baza sama odbija:
+INSERT INTO room_inventory (
+    room_id,
+    date,
+    available,
+    price
+)
+VALUES (
+    15,
+    '2026-12-20',
+    -3,
+    100.00
+);
+
+jer:
+available = -3
+❌ krši CHECK
+
+Mentalno:
+CHECK
+→ vrednost mora zadovoljiti DB pravilo
+
+Zašto CHECK ako već validiramo u PHP-u?
+Odlično pitanje.
+Laravel može imati:
+'available' => ['required', 'integer', 'min:0']
+
+ali to je application validation.
+Ako sutra neko promeni podatak preko:
+phpMyAdmin
+SQL skripte
+drugog servisa
+bugovanog application koda
+
+DB constraint i dalje kaže:
+negativan availability nije validno stanje.
+
+Dakle:
+application validation
+→ lep error korisniku
+
+DB constraint
+→ poslednja linija integriteta
+
+Često želiš oba.
+2. Cross-column CHECK
+CHECK ne mora gledati samo jednu kolonu.
+Recimo booking:
+check_in
+check_out
+
+Naravno da želimo:
+check_out > check_in
+
+Možemo:
+CREATE TABLE bookings (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    check_in DATE NOT NULL,
+    check_out DATE NOT NULL,
+
+    CHECK (check_out > check_in)
+);
+
+Sada:
+2026-12-20 → 2026-12-25 ✅
+2026-12-25 → 2026-12-20 ❌
+2026-12-20 → 2026-12-20 ❌
+
+Ovo je odličan primer business invarianta koji baza može da zaštiti.
+3. DEFAULT
+Već smo ga koristili usput.
+Na primer:
+is_active BOOLEAN NOT NULL DEFAULT TRUE
+
+Ako:
+INSERT INTO hotels (name)
+VALUES ('Danube Hotel');
+
+ne prosledimo is_active, MySQL koristi:
+TRUE
+
+Dakle:
+DEFAULT
+→ vrednost koju baza koristi ako nije eksplicitno prosleđena
+
+Drugi primer:
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+pa:
+INSERT INTO hotels (name)
+VALUES ('Danube Hotel');
+
+automatski dobije vreme kreiranja.
+DEFAULT nije isto što i NULL
+Ako imamo:
+status VARCHAR(30) NOT NULL DEFAULT 'pending'
+
+i izostavimo kolonu:
+INSERT INTO bookings (user_id)
+VALUES (15);
+
+dobijemo:
+status = pending
+
+Ali ako pokušamo eksplicitno:
+INSERT INTO bookings (user_id, status)
+VALUES (15, NULL);
+
+NOT NULL će to odbiti.
+Dakle:
+nije poslato
+→ DEFAULT
+
+eksplicitno NULL
+→ NULL pokušaj
+→ može pasti zbog NOT NULL
+
+Važna razlika.
+4. ENUM
+MySQL ima:
+status ENUM(
+    'pending',
+    'confirmed',
+    'cancelled'
+)
+
+Primer:
+CREATE TABLE bookings (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+    status ENUM(
+        'pending',
+        'confirmed',
+        'cancelled'
+    ) NOT NULL DEFAULT 'pending'
+);
+
+Sada status mora biti jedna od dozvoljenih ENUM vrednosti.
+Mentalno:
+ENUM
+→ jedna vrednost iz unapred definisanog skupa
+
+Deluje idealno za:
+booking status
+payment status
+role
+
+Ali postoji tradeoff.
+5. Problem sa ENUM
+Recimo danas imamo:
+pending
+confirmed
+cancelled
+
+Sutra business kaže:
+Dodaj expired.
+
+Moraš menjati schema-u.
+ALTER TABLE bookings
+MODIFY COLUMN status ENUM(
+    'pending',
+    'confirmed',
+    'cancelled',
+    'expired'
+) NOT NULL;
+
+Ako se skup vrednosti često menja, ENUM postaje manje fleksibilan.
+Zato možeš alternativno imati:
+status VARCHAR(30) NOT NULL
+
+uz:
+CHECK (
+    status IN (
+        'pending',
+        'confirmed',
+        'cancelled'
+    )
+)
+
+ili posebnu lookup tabelu ako status zaista predstavlja zaseban entitet/configuration.
+Kada bih koristio ENUM?
+Nije:
+ENUM je loš
+
+niti:
+ENUM je uvek najbolji
+
+Ako je skup:
+mali
+stabilan
+jasno ograničen
+
+može biti potpuno razuman.
+Na primer:
+direction:
+one_way
+return
+
+ako znaš da su to zaista jedine moguće vrednosti.
+Ali ako business stalno dodaje nove statuse i pravila, application enum + string/check pristup može biti praktičniji.
+Laravel paralela
+Migration:
+$table->enum('status', [
+    'pending',
+    'confirmed',
+    'cancelled',
+]);
+
+ili:
+$table->string('status');
+
+A u modernom PHP-u možeš imati:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+}
+
+Bitno je razlikovati:
+PHP enum
+→ application/type layer
+
+MySQL ENUM
+→ database schema type
+
+Nisu ista stvar, iako mogu predstavljati isti koncept.
+6. Generated columns
+Ovo je zanimljiv MySQL feature.
+Recimo imamo:
+quantity
+unit_price
+
+i želimo:
+total_price = quantity * unit_price
+
+Možemo napraviti generated column:
+CREATE TABLE booking_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    quantity INT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+
+    total_price DECIMAL(10,2)
+        GENERATED ALWAYS AS (
+            quantity * unit_price
+        ) STORED
+);
+
+Sada ne šalješ:
+total_price
+
+ručno.
+MySQL ga računa iz:
+quantity * unit_price
+
+Zašto je ovo zanimljivo?
+Bez generated column-a možeš napraviti bug:
+quantity = 2
+unit_price = 100
+total_price = 180 ❌
+
+Podaci sami sebi protivreče.
+Ako je:
+total_price
+
+uvek čista funkcija drugih kolona, možda nema smisla da application ručno održava sve tri vrednosti.
+Generated column garantuje:
+quantity = 2
+unit_price = 100
+→ total_price = 200
+
+VIRTUAL vs STORED
+Generated column može biti konceptualno:
+VIRTUAL
+→ računa se kada treba
+
+STORED
+→ izračunata vrednost se fizički čuva
+
+Primer:
+total_price DECIMAL(10,2)
+GENERATED ALWAYS AS (quantity * unit_price) VIRTUAL
+
+ili:
+total_price DECIMAL(10,2)
+GENERATED ALWAYS AS (quantity * unit_price) STORED
+
+Za naš nivo ne moraš pamtiti interne detalje performansi.
+Bitno:
+generated column
+→ vrednost izvodi DB iz drugih kolona
+
+Ali oprez sa istorijskim cenama
+Ovde odmah povezujemo sa normalizacijom.
+Za booking:
+booked_price
+
+ne bih automatski generisao iz:
+rooms.current_price
+
+jer to nije ista činjenica.
+Ako se trenutna cena promeni, istorijski booking mora ostati isti.
+Dakle generated column ima smisla za:
+matematički izvedenu vrednost istog reda
+
+ali ne za nešto što mora biti istorijski snapshot drugog entiteta.
+7. Constraint hierarchy — koji alat za koji problem?
+Ovo vredi znati napamet.
+Ako kažeš:
+email mora biti jedinstven
+
+koristi:
+UNIQUE
+
+Ako kažeš:
+owner mora postojati
+
+koristi:
+FOREIGN KEY
+
+Ako kažeš:
+value ne sme biti NULL
+
+koristi:
+NOT NULL
+
+Ako kažeš:
+availability mora biti >= 0
+
+koristi:
+CHECK
+
+Ako kažeš:
+ako vrednost nije poslata, neka bude pending
+
+koristi:
+DEFAULT
+
+Ako kažeš:
+vrednost se računa iz drugih kolona
+
+razmisli o:
+GENERATED COLUMN
+
+Ako kažeš:
+kad se UPDATE desi, automatski uradi još nešto
+
+tek tada možda:
+TRIGGER
+
+To je mnogo bolji schema design nego rešavati sve trigger-ima ili application if-ovima.
+8. DB constraint vs business rule
+Ne može svako poslovno pravilo elegantno u DB constraint.
+Na primer:
+Supplier sme da napravi maksimalno 5 aktivnih hotela ako je na Basic planu.
+
+To zavisi od:
+supplier plan
+broja postojećih hotela
+statusa
+drugih redova/tabela
+
+To je mnogo prirodnije:
+Service/domain logic
+
+uz odgovarajuću transaction/concurrency zaštitu.
+Dakle:
+jednostavan invariant jednog reda/schema-e
+→ DB constraint je odličan
+
+složena poslovna procedura
+→ application/service layer
+
+Baza nije zamena za domain layer.
+Za „2 ujutru“
+CHECK
+→ vrednost mora zadovoljiti uslov
+
+DEFAULT
+→ koristi vrednost ako nije poslata
+
+ENUM
+→ ograničen skup vrednosti
+→ praktičan, ali schema-coupled
+
+GENERATED COLUMN
+→ DB računa vrednost iz drugih kolona
+
+application validation
+→ user-friendly validation
+
+DB constraint
+→ integrity safety net
+
+Pitanje 36
+Imamo tabelu:
+bookings
+--------
+id
+check_in
+check_out
+status
+
+Želimo sledeća pravila:
+check_out mora biti posle check_in
+
+ako status nije prosleđen,
+neka bude 'pending'
+
+status sme biti samo:
+pending
+confirmed
+cancelled
+
+Kako bi to modelovao na nivou MySQL schema-e?
+Ne moraš pisati ceo CREATE TABLE; dovoljno je da napišeš 
+odgovarajuće definicije/constraints za check_in, check_out i status.
+
+---
+
+Za status bih u ovom slucaju definitivno izabrao ENUM sa pdredjenim statusima, 
+dok bih za check_in / out razmislio da uvedem CHECK jer bi to bila najsmislenija
+poslednja linija odbrane da nemamo checkout veći odnosno pre checkin.
+
+---
+
+Da — suštinski si pogodio, ali ovde bih dao 9/10 
+jer ti je promakao jedan eksplicitni zahtev: DEFAULT 'pending'.
+Za datume je ovo baš pravi DB-level invariant:
+check_in DATE NOT NULL,
+check_out DATE NOT NULL,
+
+CHECK (check_out > check_in)
+
+Time baza ne dozvoljava ni:
+check_in  = 2026-12-20
+check_out = 2026-12-19 ❌
+
+ni:
+check_in  = 2026-12-20
+check_out = 2026-12-20 ❌
+
+Za status je ENUM ovde sasvim razuman jer imamo mali i stabilan skup vrednosti:
+status ENUM(
+    'pending',
+    'confirmed',
+    'cancelled'
+) NOT NULL DEFAULT 'pending'
+
+Dakle kompletna ideja:
+check_in DATE NOT NULL,
+check_out DATE NOT NULL,
+
+status ENUM(
+    'pending',
+    'confirmed',
+    'cancelled'
+) NOT NULL DEFAULT 'pending',
+
+CHECK (check_out > check_in)
+
+Mentalno:
+CHECK
+→ check_out mora biti posle check_in
+
+ENUM
+→ status mora biti jedna od dozvoljenih vrednosti
+
+DEFAULT
+→ ako status nije poslat, koristi 'pending'
+
+NOT NULL
+→ status i datumi ne smeju biti NULL
+
+Ono što mi se sviđa u tvom odgovoru jeste formulacija „poslednja linija odbrane“. To je upravo prava podela odgovornosti:
+PHP/Laravel validation
+→ odbije korisnika lepo i rano
+
+MySQL constraint
+→ garantuje da nevalidan state ipak ne završi u bazi
+
+Time smo zatvorili teorijski deo MySQL modula
+Prošli smo od osnova SQL-a pa sve do:
+DDL / DML / SELECT
+constraints
+INSERT / UPDATE / DELETE
+WHERE / ORDER BY / LIMIT
+LIKE / IN / BETWEEN / NULL
+aggregates / GROUP BY / HAVING
+JOIN
+subqueries
+EXISTS / NOT EXISTS
+indexes + composite indexes
+EXPLAIN / SARGable queries
+transactions / ACID
+locking / FOR UPDATE
+isolation levels / deadlocks / SAVEPOINT
+normalization
+DISTINCT
+CASE / COALESCE
+UNION
+ALTER / DROP / TRUNCATE
+composite UNIQUE
+pagination / cursor pagination
+UPSERT
+CTE
+window functions
+VIEW
+date/time tipove
+JSON
+procedures / functions / triggers
+CHECK / DEFAULT / ENUM / generated columns

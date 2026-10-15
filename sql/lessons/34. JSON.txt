@@ -1,0 +1,344 @@
+Lekcija 34 — JSON kolone u MySQL-u: kada imaju smisla, a kada su loš dizajn
+
+Pošto radiš Laravel, ovo će ti biti korisno jer si sigurno viđao:
+$table->json('settings');
+
+ili Eloquent cast:
+protected $casts = [
+    'settings' => 'array',
+];
+
+Ali ispod toga postoji pravi MySQL JSON tip.
+Recimo tabela:
+CREATE TABLE hotels (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    settings JSON NULL
+);
+
+U settings možemo čuvati nešto poput:
+{
+    "check_in": "14:00",
+    "check_out": "11:00",
+    "pets_allowed": true,
+    "languages": ["sr", "en", "de"]
+}
+
+Mentalno:
+normalne kolone
+→ podaci koji su stabilan deo relational modela
+
+JSON
+→ fleksibilna strukturisana dodatna data
+
+1. Insert JSON-a
+Možeš ubaciti validan JSON:
+INSERT INTO hotels (name, settings)
+VALUES (
+    'Danube Hotel',
+    '{
+        "check_in": "14:00",
+        "check_out": "11:00",
+        "pets_allowed": true
+    }'
+);
+
+MySQL validira da je sadržaj validan JSON.
+Dakle ovo nije običan TEXT string koji baza potpuno ignoriše.
+2. Čitanje vrednosti iz JSON-a
+Možemo koristiti:
+JSON_EXTRACT(settings, '$.check_in')
+
+Primer:
+SELECT
+    name,
+    JSON_EXTRACT(settings, '$.check_in') AS check_in
+FROM hotels;
+
+Path:
+$.check_in
+
+znači:
+$
+→ root JSON objekta
+
+.check_in
+→ property check_in
+
+Možeš naići i na kraću operator sintaksu:
+SELECT
+    name,
+    settings->'$.check_in'
+FROM hotels;
+
+Ali rezultat može ostati JSON vrednost.
+Ako hoćeš tekstualnu vrednost bez JSON navodnika, često koristiš:
+settings->>'$.check_in'
+
+Dakle mentalno:
+->
+→ JSON vrednost
+
+->>
+→ scalar/text vrednost
+
+3. Filter po JSON property-ju
+Recimo:
+SELECT id, name
+FROM hotels
+WHERE settings->>'$.pets_allowed' = 'true';
+
+Možemo tražiti hotele čiji JSON sadrži određenu vrednost.
+Ali ovde dolazi veoma važno pitanje:
+Ako stalno filtriram po pets_allowed, zašto je to uopšte JSON?
+
+Ako aplikacija često radi:
+WHERE pets_allowed = TRUE
+
+onda je često bolji schema design:
+pets_allowed BOOLEAN NOT NULL DEFAULT FALSE
+
+nego da svaki put kopamo po JSON-u.
+4. Kada JSON ima smisla?
+Dobar primer je nešto fleksibilno:
+hotel settings
+provider metadata
+external API payload
+optional configuration
+UI preferences
+
+Recimo različiti hoteli mogu imati različite integracione opcije:
+{
+    "channel_manager": "booking-sync",
+    "auto_confirm": true,
+    "voucher_template": "compact"
+}
+
+Takva struktura može evoluirati bez dodavanja deset novih kolona za svaku sitnicu.
+5. Kada JSON nema smisla?
+Loše:
+{
+    "owner_id": 15,
+    "city_id": 4,
+    "base_price": 120,
+    "is_active": true
+}
+
+a tabela ima samo:
+id
+name
+data JSON
+
+To bi praktično značilo da si relational bazu pretvorio u dokument bazu unutar jedne kolone.
+Gubiš prirodne prednosti:
+FOREIGN KEY
+normalni indeksi
+constraints
+JOIN-ovi
+jasan schema design
+type semantics
+
+Dakle JSON nije:
+„Ne znam kako da modelujem bazu, pa sve ću staviti u JSON.“
+
+😄
+6. Ažuriranje jednog dela JSON-a
+Ne moraš da zameniš ceo JSON dokument.
+Možeš:
+UPDATE hotels
+SET settings = JSON_SET(
+    settings,
+    '$.check_in',
+    '15:00'
+)
+WHERE id = 42;
+
+Mentalno:
+uzmi settings
+↓
+promeni samo check_in
+↓
+sačuvaj novi JSON
+
+Možeš dodati property koji ranije nije postojao.
+7. Uklanjanje property-ja
+UPDATE hotels
+SET settings = JSON_REMOVE(
+    settings,
+    '$.pets_allowed'
+)
+WHERE id = 42;
+
+Dakle imamo funkcije za rad sa delovima JSON dokumenta.
+8. JSON arrays
+Recimo:
+{
+    "languages": ["sr", "en", "de"]
+}
+
+Možeš raditi JSON operacije nad array-em, proveravati elemente, menjati ih itd.
+Ali opet isto pravilo:
+Ako je ovo stvarna relational many-to-many relacija koju često query-jaš:
+hotel ↔ languages
+
+možda je bolji model:
+hotels
+languages
+hotel_languages
+
+nego JSON array.
+Zašto?
+Jer onda imaš:
+FK
+UNIQUE
+JOIN
+INDEX
+COUNT/GROUP BY
+
+na prirodan relational način.
+9. JSON vs normalizacija
+Ovo je najvažniji deo lekcije.
+Recimo amenities:
+{
+    "amenities": ["wifi", "spa", "parking"]
+}
+
+tehnički možeš to da čuvaš u JSON-u.
+Ali ako često radiš:
+svi hoteli sa WiFi + Spa
+
+koliko hotela ima Parking
+
+spoji amenity podatke
+
+spreči nepostojeći amenity
+
+onda relational model:
+amenities
+hotel_amenities
+
+ima mnogo više smisla.
+JSON je fleksibilan.
+Relational schema je mnogo jača kada podatak ima:
+relacije
+constraints
+česte filtere
+agregacije
+JOIN-ove
+
+10. JSON i indeksi
+Ovo je važna performance tema.
+Ako često radiš:
+WHERE settings->>'$.check_in' = '14:00'
+
+običan indeks na celoj JSON koloni nije isto što i klasičan indeks na:
+check_in
+
+Za često query-jane JSON vrednosti možeš koristiti naprednije 
+pristupe poput generated/functional index strategija, ali to je signal da treba da se zapitaš:
+
+Da li bi ova vrednost zapravo trebalo da bude obična kolona?
+
+Ako je ključna za business logic, često odgovor jeste:
+DA
+
+11. Laravel paralela
+Migration:
+$table->json('settings')->nullable();
+
+Eloquent:
+protected $casts = [
+    'settings' => 'array',
+];
+
+onda:
+$hotel->settings['check_in']
+
+deluje kao običan PHP array.
+Ali u bazi i dalje imaš strukturisan JSON podatak.
+Laravel ti samo olakšava serialization/deserialization.
+Praktično pravilo
+Ja bih razmišljao ovako:
+Da li je podatak core business atribut?
+→ normalna kolona
+
+Da li učestvuje u FK relaciji?
+→ normalna tabela/kolona
+
+Da li ga često filtriram/sortiram/groupujem?
+→ normalna kolona često bolja
+
+Da li je fleksibilna config/metadata struktura?
+→ JSON može biti odličan
+
+Za „2 ujutru“
+JSON
+→ fleksibilna strukturisana data
+
+JSON_EXTRACT(...)
+→ izvuci vrednost
+
+-> 
+→ JSON value
+
+->>
+→ scalar/text value
+
+JSON_SET
+→ dodaj/promeni property
+
+JSON_REMOVE
+→ ukloni property
+
+JSON nije zamena za dobar relational model
+
+Pitanje 34
+Imamo dve stvari koje želimo da čuvamo za hotel:
+owner_id
+
+i:
+settings:
+- default voucher template
+- UI theme
+- auto-confirm flag
+
+Šta bi od toga stavio u običnu kolonu/FK relaciju, a šta u JSON — i zašto?
+
+---
+
+Owner_id bih stavio u obicnu kolonu fk, jer:
+
+Cesto se pretrazuje
+Strani kljuc pre svega
+
+A settings bih stavio u JSON jer su fleksible metadata
+
+---
+
+Da — 10/10.
+Za owner_id je ključna stvar upravo to što predstavlja relaciju prema drugom entitetu:
+owner_id BIGINT UNSIGNED NOT NULL,
+
+FOREIGN KEY (owner_id)
+    REFERENCES users(id)
+
+Time dobijaš referential integrity, normalne JOIN-ove i dobar index/FK model. 
+To što ga često koristiš u query-jima je dodatni razlog da bude prava kolona, 
+ali FK/business relationship je glavni razlog.
+A:
+voucher template
+UI theme
+auto-confirm
+
+su mnogo prirodniji kandidat za:
+settings JSON
+
+jer predstavljaju fleksibilnu konfiguraciju koja može 
+da se menja i širi bez menjanja osnovne relational schema-e.
+
+Mentalno:
+core relational data
+→ columns / tables / FK
+
+flexible configuration / metadata
+→ JSON

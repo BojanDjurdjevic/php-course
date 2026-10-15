@@ -1,0 +1,1401 @@
+MySQL / SQL — velika mapa
+
+Najvažniji mentalni model na početku:
+SQL
+→ jezik
+
+MySQL
+→ DBMS koji razume SQL
+
+database
+→ konkretna baza podataka
+
+table
+→ skup redova
+
+row
+→ jedan zapis
+
+column
+→ jedno svojstvo zapisa
+
+constraint
+→ pravilo integriteta
+
+index
+→ struktura za efikasnije pronalaženje
+
+1. DDL — struktura baze
+
+
+| SQL                   | Značenje                  | Primer |
+|------------------------------------------------------------------
+| `CREATE DATABASE`     | Kreira bazu               | `CREATE DATABASE booking_app;` |
+| `USE`                 | Bira aktivnu bazu         | `USE booking_app;` |
+| `CREATE TABLE`        | Kreira tabelu             | `CREATE TABLE hotels (...);` |
+| `ALTER TABLE`         | Menja postojeću tabelu    | `ALTER TABLE hotels ADD city VARCHAR(100);` |
+| `ADD COLUMN`          | Dodaje kolonu             | `ALTER TABLE hotels ADD description TEXT;` |
+| `MODIFY COLUMN`       | Menja definiciju kolone   | `ALTER TABLE hotels MODIFY name VARCHAR(200);` |
+| `RENAME COLUMN`       | Menja ime kolone          | `ALTER TABLE hotels RENAME COLUMN hotel_name TO name;` |
+| `DROP COLUMN`         | Briše kolonu              | `ALTER TABLE hotels DROP COLUMN description;` |
+| `DROP TABLE`          | Briše tabelu + podatke    | `DROP TABLE hotels;` |
+| `DROP DATABASE`       | Briše celu bazu           | `DROP DATABASE booking_app;` |
+| `TRUNCATE TABLE`      | Prazni celu tabelu        | `TRUNCATE TABLE hotels;` |
+
+
+Ključna razlika:
+DELETE
+→ briše redove
+→ može WHERE
+
+TRUNCATE
+→ prazni celu tabelu
+→ nema WHERE
+→ tipično resetuje AUTO_INCREMENT
+
+DROP
+→ uklanja samu tabelu/schema object
+
+2. Najvažniji tipovi podataka
+
+
+| Tip               | Koristi se za                         | Primer |
+|--------------------------------------------------------------------------------------
+| `TINYINT`         | Mali integer                          | `stars TINYINT UNSIGNED` |
+| `INT`             | Standardni integer                    | `available INT UNSIGNED` |
+| `BIGINT`          | Veliki integer / ID                   | `id BIGINT UNSIGNED` |
+| `DECIMAL(p,s)`    | Precizan novac                        | `price DECIMAL(10,2)` |
+| `FLOAT / DOUBLE`  | Approx decimal                        | naučni/merni podaci |
+| `VARCHAR(n)`      | Kraći string                          | `name VARCHAR(150)` |
+| `TEXT`            | Veći tekst                            | `description TEXT` |
+| `BOOLEAN`         | true/false                            | `is_active BOOLEAN` |
+| `DATE`            | Datum                                 | `2026-12-25` |
+| `DATETIME`        | Datum + vreme                         | `2026-12-25 14:30:00` |
+| `TIMESTAMP`       | Timestamp/date-time use cases         | `created_at TIMESTAMP` |
+| `TIME`            | Samo vreme                            | `14:30:00` |
+| `JSON`            | Fleksibilna strukturisana data        | settings/metadata |
+| `ENUM`            | Jedna vrednost iz definisanog skupa   | booking status |
+
+
+Za novac:
+DECIMAL(10,2)
+
+ne:
+FLOAT
+
+zbog preciznosti.
+
+3. Osnovni constraints
+
+| Constraint            | Značenje |
+|-------------------------------------------
+| `PRIMARY KEY`         | Jedinstveni identitet reda |
+| `AUTO_INCREMENT`      | Automatski generiše sledeći ID |
+| `NOT NULL`            | Vrednost je obavezna |
+| `NULL`                | Vrednost sme nedostajati |
+| `UNIQUE`              | Vrednost/kombinacija ne sme da se ponovi |
+| `FOREIGN KEY`         | Garantuje validnu relaciju |
+| `CHECK`               | Vrednost mora zadovoljiti uslov |
+| `DEFAULT`             | Default vrednost ako kolona nije prosleđena |
+
+
+Primer:
+CREATE TABLE hotels (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_id BIGINT UNSIGNED NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    base_price DECIMAL(10,2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    FOREIGN KEY (owner_id)
+        REFERENCES users(id),
+
+    CHECK (base_price >= 0)
+);
+
+4. PRIMARY KEY
+id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+
+Garantuje:
+unique
++
+not null
++
+identitet reda
++
+index
+
+Može biti i composite:
+PRIMARY KEY (hotel_id, amenity_id)
+
+5. UNIQUE
+Jedna kolona:
+email VARCHAR(255) NOT NULL UNIQUE
+
+Composite:
+UNIQUE(room_id, date)
+
+Znači:
+room 15 + 1 Nov ✅
+room 15 + 2 Nov ✅
+room 16 + 1 Nov ✅
+room 15 + 1 Nov ponovo ❌
+
+Važno:
+UNIQUE(a, b)
+
+nije isto kao:
+UNIQUE(a);
+UNIQUE(b);
+
+UNIQUE MySQL sprovodi unique index-om, pa dodatni isti INDEX obično ne treba.
+6. FOREIGN KEY
+FOREIGN KEY (owner_id)
+REFERENCES users(id)
+
+Garantuje referential integrity.
+Ne dozvoljava:
+hotels.owner_id = 999
+
+ako:
+users.id = 999
+
+ne postoji.
+ON DELETE
+ON DELETE RESTRICT
+
+→ ne dozvoli brisanje parent-a dok children postoje.
+ON DELETE CASCADE
+
+→ obriši i children.
+ON DELETE SET NULL
+
+→ postavi child FK na NULL.
+Za SET NULL, FK kolona naravno mora dozvoljavati NULL.
+7. CHECK
+Jedna kolona:
+CHECK (available >= 0)
+
+Više kolona:
+CHECK (check_out > check_in)
+
+Mentalno:
+PHP validation
+→ user-friendly zaštita
+
+CHECK
+→ DB integrity zaštita
+
+8. DEFAULT
+status VARCHAR(30)
+NOT NULL
+DEFAULT 'pending'
+
+Ako status izostaviš:
+INSERT INTO bookings (user_id)
+VALUES (15);
+
+dobije:
+status = pending
+
+Ali:
+status = NULL
+
+nije isto što i „nije prosleđen“.
+9. INSERT
+Osnovni:
+INSERT INTO hotels (
+    owner_id,
+    name,
+    base_price
+)
+VALUES (
+    15,
+    'Danube Hotel',
+    125.50
+);
+
+Uvek je dobra praksa navesti kolone.
+Multi-row:
+INSERT INTO hotels (owner_id, name)
+VALUES
+    (15, 'Hotel A'),
+    (15, 'Hotel B'),
+    (20, 'Hotel C');
+
+NULL:
+VALUES (15, 'Hotel', NULL);
+
+nije:
+'NULL'
+
+jer je to običan string.
+10. SELECT
+Sve:
+SELECT *
+FROM hotels;
+
+Bolje kada znaš šta treba:
+SELECT id, name, base_price
+FROM hotels;
+
+Alias:
+SELECT
+    id,
+    name,
+    base_price AS price
+FROM hotels;
+
+Table alias:
+SELECT h.id, h.name
+FROM hotels h;
+
+11. WHERE
+SELECT *
+FROM hotels
+WHERE is_active = TRUE;
+
+Više uslova:
+WHERE city = 'Novi Sad'
+  AND base_price <= 150
+
+OR:
+WHERE city = 'Novi Sad'
+   OR city = 'Beograd'
+
+Koristi zagrade kada kombinuješ:
+WHERE is_active = TRUE
+  AND (
+      city = 'Novi Sad'
+      OR city = 'Beograd'
+  )
+
+12. Poređenja
+Operator	Značenje
+=	jednako
+<> / !=	nije jednako
+>	veće
+<	manje
+>=	veće ili jednako
+<=	manje ili jednako
+
+
+Primer:
+WHERE base_price >= 100
+  AND base_price <= 200
+
+13. AND, OR, NOT
+WHERE is_active = TRUE
+AND city = 'Novi Sad'
+
+WHERE city = 'Novi Sad'
+OR city = 'Beograd'
+
+WHERE NOT is_active = TRUE
+
+Kod ozbiljnijih kombinacija koristi zagrade.
+14. ORDER BY
+ORDER BY base_price ASC
+
+ASC je rastuće i često default.
+ORDER BY base_price DESC
+
+Više kolona:
+ORDER BY city ASC, base_price DESC
+
+15. LIMIT i OFFSET
+LIMIT 10
+
+→ maksimalno 10 redova.
+LIMIT 10 OFFSET 20
+
+→ preskoči 20, vrati narednih 10.
+Pagination:
+offset = (page - 1) × perPage
+
+Page 3, po 10:
+LIMIT 10 OFFSET 20
+
+16. Cursor / keyset pagination
+ASC:
+SELECT *
+FROM bookings
+WHERE id > 500
+ORDER BY id ASC
+LIMIT 20;
+
+DESC:
+SELECT *
+FROM bookings
+WHERE id < 500
+ORDER BY id DESC
+LIMIT 20;
+
+Mentalno:
+OFFSET
+→ idi na page N
+
+cursor
+→ nastavi posle poslednjeg reda
+
+Za veoma velike rezultate cursor često bolje skalira.
+17. LIKE
+Počinje sa:
+WHERE name LIKE 'Danube%'
+
+Sadrži:
+WHERE name LIKE '%Danube%'
+
+Jedan bilo koji znak:
+LIKE 'H_tel'
+
+Wildcards:
+%
+→ zero ili više znakova
+
+_
+→ tačno jedan znak
+
+Leading wildcard:
+'%Danube%'
+
+je uglavnom mnogo manje pogodan za običan B-tree index.
+18. IN
+Umesto:
+WHERE city = 'Novi Sad'
+   OR city = 'Beograd'
+   OR city = 'Niš'
+
+može:
+WHERE city IN (
+    'Novi Sad',
+    'Beograd',
+    'Niš'
+);
+
+Negacija:
+WHERE city NOT IN (...)
+
+19. BETWEEN
+WHERE base_price BETWEEN 100 AND 200
+
+BETWEEN je inclusive:
+>= 100
+AND
+<= 200
+
+20. NULL
+Ispravno:
+WHERE deleted_at IS NULL
+
+ili:
+WHERE deleted_at IS NOT NULL
+
+Ne:
+deleted_at = NULL
+
+jer SQL ima:
+TRUE
+FALSE
+UNKNOWN
+
+21. COALESCE
+Prva vrednost koja nije NULL:
+COALESCE(discount, 0)
+
+Primer:
+SELECT
+    base_price - COALESCE(discount, 0)
+        AS final_price
+FROM hotels;
+
+Više fallback-a:
+COALESCE(display_name, name, email, 'Unknown')
+
+22. CASE
+SQL if / elseif / else.
+SELECT
+    name,
+    CASE
+        WHEN base_price < 100 THEN 'budget'
+        WHEN base_price < 200 THEN 'mid'
+        ELSE 'premium'
+    END AS price_category
+FROM hotels;
+
+23. Aggregate funkcije
+Funkcija	Značenje
+COUNT()	broj
+SUM()	zbir
+AVG()	prosek
+MIN()	minimum
+MAX()	maksimum
+
+
+Primer:
+SELECT
+    COUNT(*) AS total,
+    AVG(base_price) AS average_price,
+    MIN(base_price) AS cheapest,
+    MAX(base_price) AS most_expensive
+FROM hotels
+WHERE is_active = TRUE;
+
+COUNT(*) vs COUNT(column)
+COUNT(*)
+
+→ svi redovi.
+COUNT(description)
+
+→ samo redovi gde description IS NOT NULL.
+24. GROUP BY
+Bez grouping-a:
+SELECT AVG(base_price)
+FROM hotels;
+
+→ prosek svih.
+Po gradu:
+SELECT
+    city,
+    COUNT(*) AS total_hotels,
+    AVG(base_price) AS avg_price
+FROM hotels
+GROUP BY city;
+
+→ jedna grupa po city.
+25. HAVING
+WHERE filtrira redove pre grouping-a.
+HAVING filtrira grupe posle grouping-a.
+SELECT
+    city,
+    COUNT(*) AS total_hotels
+FROM hotels
+WHERE is_active = TRUE
+GROUP BY city
+HAVING COUNT(*) >= 3;
+
+MySQL često dozvoljava i alias:
+HAVING total_hotels >= 3
+
+Mentalni logical order:
+FROM
+→ WHERE
+→ GROUP BY
+→ HAVING
+→ SELECT
+→ ORDER BY
+→ LIMIT
+
+26. Conditional aggregation
+SELECT
+    city,
+    COUNT(*) AS total,
+    SUM(
+        CASE
+            WHEN is_active = TRUE THEN 1
+            ELSE 0
+        END
+    ) AS active
+FROM hotels
+GROUP BY city;
+
+Veoma korisno za dashboard statistiku.
+27. DISTINCT
+SELECT DISTINCT city
+FROM hotels;
+
+Uklanja duplicate kombinacije selektovanih kolona.
+SELECT DISTINCT id, name
+
+gleda kombinaciju:
+id + name
+
+COUNT(DISTINCT ...)
+SELECT COUNT(DISTINCT city)
+FROM hotels;
+
+28. INNER JOIN
+Vraća samo matched redove.
+SELECT
+    h.id,
+    h.name,
+    u.name AS owner_name
+FROM hotels h
+INNER JOIN users u
+    ON u.id = h.owner_id;
+
+JOIN bez prefiksa tipično znači INNER JOIN.
+29. LEFT JOIN
+Vrati sve sa leve strane.
+SELECT
+    h.name,
+    r.name AS room_name
+FROM hotels h
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id;
+
+Hotel bez sobe:
+hotel fields → postoje
+room fields  → NULL
+
+30. LEFT JOIN — ON vs WHERE
+Ovo:
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+WHERE r.is_active = TRUE
+
+može ukloniti hotele bez odgovarajuće sobe.
+Ako želiš sve hotele, ali samo active room matches:
+LEFT JOIN rooms r
+    ON r.hotel_id = h.id
+   AND r.is_active = TRUE
+
+Mentalno:
+ON
+→ šta se spaja
+
+WHERE
+→ šta ostaje posle spajanja
+
+31. One-to-many JOIN i duplikati
+Hotel sa tri sobe:
+SELECT h.id, h.name
+FROM hotels h
+JOIN rooms r
+    ON r.hotel_id = h.id;
+
+može vratiti hotel 3 puta.
+To nije SQL greška.
+To su tri matched kombinacije.
+Ako želiš samo „hotel postoji ako ima room“, EXISTS često bolje opisuje nameru.
+32. Subquery — scalar
+SELECT id, name, base_price
+FROM hotels
+WHERE base_price > (
+    SELECT AVG(base_price)
+    FROM hotels
+);
+
+Inner query vraća jednu vrednost.
+33. Subquery sa IN
+SELECT id, name
+FROM users
+WHERE id IN (
+    SELECT owner_id
+    FROM hotels
+);
+
+Inner query vraća skup vrednosti.
+34. Correlated subquery
+Inner query zavisi od trenutnog outer row-a.
+SELECT h.id, h.name
+FROM hotels h
+WHERE h.base_price > (
+    SELECT AVG(h2.base_price)
+    FROM hotels h2
+    WHERE h2.city = h.city
+);
+
+Mentalno:
+za svaki hotel
+→ izračunaj prosek njegovog grada
+→ uporedi cenu
+
+35. EXISTS
+SELECT u.id, u.name
+FROM users u
+WHERE EXISTS (
+    SELECT 1
+    FROM hotels h
+    WHERE h.owner_id = u.id
+);
+
+Pitanje je:
+postoji li makar jedan matching row?
+
+SELECT 1 komunicira da sadržaj reda nije bitan.
+36. NOT EXISTS
+SELECT h.id, h.name
+FROM hotels h
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM rooms r
+    WHERE r.hotel_id = h.id
+);
+
+→ hoteli bez soba.
+37. UNION
+Vertikalno spaja result setove i uklanja duplikate:
+SELECT email FROM customers
+
+UNION
+
+SELECT email FROM suppliers;
+
+38. UNION ALL
+Isto, ali čuva duplikate:
+SELECT id, name
+FROM hotels
+
+UNION ALL
+
+SELECT id, name
+FROM archived_hotels;
+
+Ako ti deduplication ne treba, UNION ALL je prirodniji.
+Mentalno:
+JOIN
+→ širi rezultat kolonama
+
+UNION
+→ produžava rezultat redovima
+
+39. UPDATE
+UPDATE hotels
+SET base_price = 199.99
+WHERE id = 42;
+
+Više kolona:
+UPDATE hotels
+SET
+    name = 'Danube Grand',
+    is_active = TRUE
+WHERE id = 42;
+
+Možeš koristiti staru vrednost:
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 10;
+
+Najveći alarm:
+UPDATE hotels
+SET is_active = FALSE;
+
+bez WHERE menja sve redove.
+40. DELETE
+DELETE FROM hotels
+WHERE id = 42;
+
+Bez WHERE:
+DELETE FROM hotels;
+
+→ svi redovi.
+Schema ostaje.
+41. Soft delete
+SQL ideja iza Laravel SoftDeletes:
+UPDATE hotels
+SET deleted_at = CURRENT_TIMESTAMP
+WHERE id = 42;
+
+Normalni query:
+SELECT *
+FROM hotels
+WHERE deleted_at IS NULL;
+
+42. UPSERT
+MySQL:
+INSERT INTO room_inventory (
+    room_id,
+    date,
+    available,
+    price
+)
+VALUES (
+    15,
+    '2026-12-24',
+    3,
+    180.00
+)
+ON DUPLICATE KEY UPDATE
+    available = 3,
+    price = 180.00;
+
+Logika:
+ne postoji
+→ INSERT
+
+PK / UNIQUE konflikt
+→ UPDATE
+
+Odličan za:
+inventory sync
+settings
+bulk calendar
+
+43. Index
+CREATE INDEX idx_hotels_city
+ON hotels(city);
+
+Pomaže pri određenim:
+WHERE
+JOIN
+ORDER BY
+GROUP BY
+
+ali indeks nije besplatan:
+više storage-a
+više memory/cache usage-a
+skuplji INSERT
+skuplji UPDATE
+skuplji DELETE
+
+44. Primary / Unique već imaju index
+Ako:
+PRIMARY KEY(id)
+
+ne treba dodatni:
+INDEX(id)
+
+Ako:
+UNIQUE(email)
+
+ne treba dodatni isti:
+INDEX(email)
+
+45. Selectivity
+Dobro:
+email
+
+jer jedna vrednost možda pronalazi 1 od milion redova.
+Slabije:
+is_active
+
+ako je 95% tabele:
+TRUE
+
+Optimizer može zaključiti da mu indeks nije koristan.
+46. Composite index
+INDEX(city, is_active, base_price)
+
+Jedna indeksna struktura preko više kolona.
+Redosled je bitan.
+47. Leftmost prefix
+Za:
+INDEX(city, is_active, base_price)
+
+prirodno:
+city ✅
+
+city + is_active ✅
+
+city + is_active + base_price ✅
+
+is_active samo ⚠️
+
+base_price samo ⚠️
+
+Ne govori da indeks nužno postaje potpuno beskoristan kada preskočiš kolonu, već da continuous leftmost index lookup više nije isti.
+48. Equality → range
+Vrlo čest dobar pattern:
+INDEX(city, is_active, base_price)
+
+za:
+WHERE city = 'Novi Sad'
+  AND is_active = TRUE
+  AND base_price BETWEEN 80 AND 150
+
+Mentalno:
+equality
+→ equality
+→ range
+
+49. EXPLAIN
+EXPLAIN
+SELECT *
+FROM users
+WHERE email = 'a@test.com';
+
+Najvažnije gledati:
+Field	Značenje
+type	Kako pristupa tabeli
+possible_keys	Koje indekse može koristiti
+key	Koji indeks je stvarno izabrao
+rows	Procena broja redova
+Extra	Dodatne informacije
+
+
+50. EXPLAIN type
+Česte vrednosti:
+ALL
+→ full table scan
+
+range
+→ range scan
+
+ref
+→ indexed lookup koji može vratiti više redova
+
+const
+→ vrlo precizan lookup, tipično jedan row
+
+ALL nije automatski loš ako tabela ima 10 redova.
+51. Index postoji ≠ koristiće se
+Optimizer bira plan.
+Ako:
+INDEX(is_active)
+
+ali:
+95% rows = TRUE
+
+optimizer može izabrati full scan.
+Zato:
+ne nagađaj
+→ EXPLAIN
+
+52. SARGable query
+Lošije:
+WHERE YEAR(created_at) = 2026
+
+Bolje:
+WHERE created_at >= '2026-01-01'
+  AND created_at <  '2027-01-01'
+
+Mentalno:
+ostavi indeksiranu kolonu "golu"
+
+kad god ima smisla.
+53. Date range
+Lošije:
+DATE(created_at) = '2026-10-15'
+
+Bolje:
+created_at >= '2026-10-15 00:00:00'
+AND created_at < '2026-10-16 00:00:00'
+
+Half-open interval:
+>= start
+< next_start
+
+je veoma dobar obrazac.
+54. Transaction
+START TRANSACTION;
+
+-- SQL
+
+COMMIT;
+
+ili:
+ROLLBACK;
+
+Mentalno:
+COMMIT
+→ potvrdi
+
+ROLLBACK
+→ poništi transaction promene
+
+55. ACID
+Slovo	Značenje
+A	Atomicity
+C	Consistency
+I	Isolation
+D	Durability
+
+
+Mentalno:
+Atomicity
+→ all or nothing
+
+Consistency
+→ valid state → valid state
+
+Isolation
+→ paralelne transactions ne prave haos
+
+Durability
+→ committed data ostaje
+
+56. Atomicity
+Booking:
+INSERT booking
+UPDATE inventory #1
+UPDATE inventory #2
+UPDATE inventory #3
+
+Ako #3 padne:
+ROLLBACK
+→ ništa ne ostaje
+
+57. SELECT ... FOR UPDATE
+START TRANSACTION;
+
+SELECT available
+FROM room_inventory
+WHERE room_id = 15
+  AND date = '2026-12-24'
+FOR UPDATE;
+
+Locking read:
+čitam red zato što nameravam da ga menjam
+
+Druga transaction koja traži konkurentan lock može morati da čeka.
+58. Atomic conditional UPDATE
+Vrlo koristan inventory pattern:
+UPDATE room_inventory
+SET available = available - 1
+WHERE room_id = 15
+  AND date = '2026-12-24'
+  AND available > 0;
+
+Posle proveri affected rows:
+1 row
+→ uspeh
+
+0 rows
+→ nema availability
+
+Odlično izbegava:
+SELECT
+→ PHP izračunaj
+→ UPDATE
+
+race window.
+59. Lost update
+Početno:
+available = 5
+
+A pročita 5.
+B pročita 5.
+Oba izračunaju 4.
+Oba upišu 4.
+Finalno:
+4
+
+a trebalo je:
+3
+
+To je lost update.
+60. Isolation levels
+Od slabijeg ka strožem:
+READ UNCOMMITTED
+READ COMMITTED
+REPEATABLE READ
+SERIALIZABLE
+
+61. Dirty read
+čitam tuđu UNCOMMITTED promenu
+
+A je možda kasnije rollbackuje.
+62. Non-repeatable read
+isti red
+isto transaction
+dva čitanja
+različita committed vrednost
+
+63. Phantom read
+isti query
+dva čitanja
+promenio se skup matching redova
+
+Najlakša razlika:
+non-repeatable
+→ promenio se isti row
+
+phantom
+→ pojavio/nestao matching row
+
+64. SERIALIZABLE
+Najstroža izolacija, ali tradeoff:
+više čekanja
+više locking/contention-a
+manji concurrency
+
+Nije automatski „najbolji“ izbor za sve.
+65. SAVEPOINT
+SAVEPOINT after_booking;
+
+Marker unutar transaction-a.
+66. ROLLBACK TO SAVEPOINT
+ROLLBACK TO SAVEPOINT after_booking;
+
+Poništi samo ono posle savepoint-a.
+Transaction ostaje otvorena.
+67. RELEASE SAVEPOINT
+RELEASE SAVEPOINT after_booking;
+
+Uklanja marker.
+Ne radi COMMIT.
+68. Autocommit
+Van explicit transaction-a MySQL tipično automatski potvrđuje successful statement.
+UPDATE hotels
+SET ...
+WHERE ...;
+
+može odmah biti committed.
+Ako želiš transaction boundaries:
+START TRANSACTION;
+
+69. Deadlock
+T1 drži A → čeka B
+
+T2 drži B → čeka A
+
+Ciklus čekanja.
+Database može abortovati jednu transaction.
+70. Smanjenje deadlock rizika
+Najbitniji mentalni pattern:
+kratke transaction-e
+
+isti lock order
+
+ne radi spor external work dok držiš DB lockove
+
+application retry kada treba
+
+71. Normalizacija
+Cilj:
+manje nepotrebnog duplication-a
+manje anomalies
+jasnije relacije
+
+72. 1NF
+jedna ćelija
+→ jedna atomic vrednost
+
+Loše:
+amenities = "wifi,spa,pool"
+
+Bolje:
+amenities
+hotel_amenities
+
+73. 2NF
+Relevantno posebno kod composite key-a.
+non-key kolona mora zavisiti od CELOG ključa
+
+Ne samo od jednog dela composite key-a.
+74. 3NF
+non-key podatak treba da zavisi od ključa,
+ne od drugog non-key podatka
+
+Primer:
+hotels:
+id
+city_id
+city_name ❌
+
+city_name pripada cities.
+75. Denormalizacija / snapshots
+Nije svako duplication loše.
+Booking historical price:
+room current price = 180
+
+booking booked_price = 100
+
+booked_price mora ostati istorijski podatak.
+To nisu više ista činjenica.
+76. CTE — WITH
+CTE daje ime privremenom result set-u unutar query-ja.
+WITH active_hotels AS (
+    SELECT id, name, city
+    FROM hotels
+    WHERE is_active = TRUE
+)
+SELECT *
+FROM active_hotels
+WHERE city = 'Novi Sad';
+
+Mentalno:
+napravi imenovani query result
+→ koristi ga u sledećem query-ju
+
+Često poboljšava čitljivost kompleksnih query-ja.
+77. Window functions
+Za razliku od GROUP BY, window funkcije ne moraju da „sruše“ više redova u jedan.
+Primer:
+SELECT
+    id,
+    city,
+    base_price,
+    AVG(base_price) OVER (
+        PARTITION BY city
+    ) AS city_avg
+FROM hotels;
+
+Svaki hotel ostaje svoj row, ali dobija i prosek svog grada.
+78. OVER()
+Definiše window nad kojim se funkcija računa.
+AVG(base_price) OVER ()
+
+→ prosek nad celim result set-om.
+79. PARTITION BY
+AVG(base_price) OVER (
+    PARTITION BY city
+)
+
+→ poseban window po svakom gradu.
+Mentalno:
+GROUP BY
+→ grupiše i sažima rows
+
+PARTITION BY
+→ pravi analitičku grupu,
+  ali rows ostaju
+
+80. Ranking window functions
+Česte:
+ROW_NUMBER()
+RANK()
+DENSE_RANK()
+
+Primer:
+SELECT
+    name,
+    city,
+    base_price,
+    ROW_NUMBER() OVER (
+        PARTITION BY city
+        ORDER BY base_price DESC
+    ) AS position
+FROM hotels;
+
+→ rangira hotele po ceni unutar svakog grada.
+81. VIEW
+CREATE VIEW active_hotels AS
+SELECT id, name, city, base_price
+FROM hotels
+WHERE is_active = TRUE;
+
+Posle:
+SELECT *
+FROM active_hotels;
+
+View je:
+sačuvan SQL query
+koji se ponaša nalik virtualnoj tabeli
+
+Ne treba ga mentalno tretirati kao automatski cache rezultata.
+82. DATE
+Samo datum:
+2026-12-24
+
+Odličan za:
+check_in
+check_out
+inventory date
+birthday
+
+kada vreme nije deo značenja.
+83. DATETIME
+Datum + vreme:
+2026-12-24 18:30:00
+
+Dobar za business date/time koji želiš da čuvaš kao calendar value.
+84. TIMESTAMP
+Takođe predstavlja timestamp/date-time koncept, ali ima drugačije MySQL semantics i timezone/conversion ponašanje od DATETIME.
+Za aplikaciju je bitno da ne biraš nasumično:
+DATE
+→ samo datum
+
+DATETIME/TIMESTAMP
+→ datum + vreme
+
+i da unapred odlučiš timezone strategiju.
+85. CURRENT_TIMESTAMP
+created_at DATETIME
+DEFAULT CURRENT_TIMESTAMP
+
+Automatski postavlja trenutno vreme.
+Može se koristiti i u:
+UPDATE ...
+SET deleted_at = CURRENT_TIMESTAMP
+
+86. JSON
+settings JSON
+
+Dobar za:
+fleksibilnu config data
+metadata
+external payload
+optional settings
+
+Nije zamena za pravi relational model.
+87. JSON_EXTRACT
+JSON_EXTRACT(
+    settings,
+    '$.check_in'
+)
+
+Izvlači vrednost iz JSON-a.
+88. JSON -> / ->>
+settings->'$.check_in'
+
+→ JSON representation.
+settings->>'$.check_in'
+
+→ scalar/text representation.
+89. JSON_SET
+UPDATE hotels
+SET settings = JSON_SET(
+    settings,
+    '$.check_in',
+    '15:00'
+)
+WHERE id = 42;
+
+Dodaje ili menja JSON property.
+90. JSON_REMOVE
+UPDATE hotels
+SET settings = JSON_REMOVE(
+    settings,
+    '$.pets_allowed'
+)
+WHERE id = 42;
+
+91. Stored Procedure
+Sačuvana SQL rutina:
+CALL GetActiveHotels();
+
+Može imati:
+više SQL statement-a
+parameters
+IF
+variables
+transaction logic
+
+Ne znači da treba svu business logiku prebaciti u DB.
+92. Stored Function
+DB funkcija koja vraća vrednost.
+Može se koristiti:
+SELECT CalculatePrice(...);
+
+Mentalno:
+procedure
+→ izvrši rutinu
+
+function
+→ vrati vrednost
+
+93. Trigger
+Automatski se izvršava na DB događaj.
+BEFORE INSERT
+AFTER INSERT
+BEFORE UPDATE
+AFTER UPDATE
+BEFORE DELETE
+AFTER DELETE
+
+94. OLD / NEW
+Kod UPDATE:
+OLD.base_price
+→ stara cena
+
+NEW.base_price
+→ nova cena
+
+Odlično za audit/history trigger.
+95. Trigger vs constraint
+Ako problem glasi:
+email mora biti unique
+
+koristi:
+UNIQUE
+
+ne trigger.
+Ako:
+svaki UPDATE cene treba automatski auditovati
+
+trigger može imati smisla.
+96. ENUM
+status ENUM(
+    'pending',
+    'confirmed',
+    'cancelled'
+)
+
+Dobar za mali i stabilan skup vrednosti.
+Tradeoff:
+dodavanje nove vrednosti
+→ schema change
+
+97. Generated column
+total_price DECIMAL(10,2)
+GENERATED ALWAYS AS (
+    quantity * unit_price
+) STORED
+
+DB računa vrednost iz drugih kolona.
+
+Dobar kada je podatak čista deterministička izvedena vrednost istog reda.
+Nije zamena za historical snapshots.
+98. Query safety — UPDATE / DELETE
+Pre ovoga:
+UPDATE hotels
+SET is_active = FALSE;
+
+ili:
+DELETE FROM hotels;
+
+uvek mentalno proveri:
+Da li stvarno želim SVE rows?
+
+Ako ne:
+GDE MI JE WHERE?
+
+99. SQL injection — najvažniji bridge ka PDO modulu
+Ovo:
+$sql = "
+    SELECT *
+    FROM users
+    WHERE email = '$email'
+";
+
+je pogrešan pravac kada $email dolazi od korisnika.
+U sledećem modulu koristićemo:
+PDO
++
+prepared statements
++
+bound parameters
+
+Dakle:
+SQL structure
+→ application definiše
+
+untrusted values
+→ parameter binding
+
+Ne rešavaj SQL injection sa:
+ručno escape-uj sve stringove
+
+ako imaš prepared statements.
+100. Najvažnija mapa odgovornosti
+Problem	Pravi alat
+Identitet reda	PRIMARY KEY
+Jedinstvenost	UNIQUE
+Relacija	FOREIGN KEY
+Obavezna vrednost	NOT NULL
+Default vrednost	DEFAULT
+Range/invariant	CHECK
+Brže pretraživanje	INDEX
+Više DB promena zajedno	Transaction
+Concurrency locking	FOR UPDATE / atomic UPDATE
+Partial rollback	SAVEPOINT
+SQL performance analiza	EXPLAIN
+Fleksibilna metadata	JSON
+Historical snapshot	posebna stored vrednost
+Automatska DB reakcija	Trigger
+User input DB safety	PDO prepared statements
+
+
+Za „2 ujutru“ — cela SQL mapa u 30 sekundi
+CREATE
+→ napravi
+
+ALTER
+→ promeni schema-u
+
+DROP
+→ ukloni schema object
+
+INSERT
+→ dodaj row
+
+SELECT
+→ pročitaj
+
+UPDATE
+→ promeni row
+
+DELETE
+→ obriši row
