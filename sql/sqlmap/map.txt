@@ -271,13 +271,16 @@ WHERE is_active = TRUE
   )
 
 12. Poređenja
-Operator	Značenje
-=	jednako
-<> / !=	nije jednako
->	veće
-<	manje
->=	veće ili jednako
-<=	manje ili jednako
+
+
+| Operator          | Značenje |
+|---|---|
+| `=`               | jednako |
+| `<>` / `!=`       | nije jednako |
+| `>`               | veće |
+| `<`               | manje |
+| `>=`              | veće ili jednako |
+| `<=`              | manje ili jednako |
 
 
 Primer:
@@ -424,12 +427,15 @@ SELECT
 FROM hotels;
 
 23. Aggregate funkcije
-Funkcija	Značenje
-COUNT()	broj
-SUM()	zbir
-AVG()	prosek
-MIN()	minimum
-MAX()	maksimum
+
+
+| Funkcija  | Značenje |
+|----------------------|
+| `COUNT()` | broj |
+| `SUM()`   | zbir |
+| `AVG()`   | prosek |
+| `MIN()`   | minimum |
+| `MAX()`   | maksimum |
 
 
 Primer:
@@ -885,11 +891,14 @@ ROLLBACK
 → poništi transaction promene
 
 55. ACID
-Slovo	Značenje
-A	Atomicity
-C	Consistency
-I	Isolation
-D	Durability
+
+
+| Slovo     | Značenje |
+|-----------------------
+| A |       Atomicity |
+| C |       Consistency |
+| I |       Isolation |
+| D |       Durability |
 
 
 Mentalno:
@@ -1360,22 +1369,25 @@ ručno escape-uj sve stringove
 
 ako imaš prepared statements.
 100. Najvažnija mapa odgovornosti
-Problem	Pravi alat
-Identitet reda	PRIMARY KEY
-Jedinstvenost	UNIQUE
-Relacija	FOREIGN KEY
-Obavezna vrednost	NOT NULL
-Default vrednost	DEFAULT
-Range/invariant	CHECK
-Brže pretraživanje	INDEX
-Više DB promena zajedno	Transaction
-Concurrency locking	FOR UPDATE / atomic UPDATE
-Partial rollback	SAVEPOINT
-SQL performance analiza	EXPLAIN
-Fleksibilna metadata	JSON
-Historical snapshot	posebna stored vrednost
-Automatska DB reakcija	Trigger
-User input DB safety	PDO prepared statements
+
+
+| Problem                   | Pravi alat |
+|-------------------------------------
+| Identitet reda            | `PRIMARY KEY` |
+| Jedinstvenost             | `UNIQUE` |
+| Relacija                  | `FOREIGN KEY` |
+| Obavezna vrednost         | `NOT NULL` |
+| Default vrednost          | `DEFAULT` |
+| Range/invariant           | `CHECK` |
+| Brže pretraživanje        | `INDEX` |
+| Više DB promena zajedno   | Transaction |
+| Concurrency locking       | `FOR UPDATE` / atomic UPDATE |
+| Partial rollback          | `SAVEPOINT` |
+| SQL performance analiza   | `EXPLAIN` |
+| Fleksibilna metadata      | `JSON` |
+| Historical snapshot       | posebna stored vrednost |
+| Automatska DB reakcija    | Trigger |
+| User input DB safety      | PDO prepared statements |
 
 
 Za „2 ujutru“ — cela SQL mapa u 30 sekundi
