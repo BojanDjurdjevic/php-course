@@ -1,0 +1,271 @@
+Lekcija 33 — SAVEPOINT, autocommit i delimični rollback
+Do sada smo transaction posmatrali ovako:
+START TRANSACTION;
+
+-- operacija 1
+-- operacija 2
+-- operacija 3
+
+COMMIT;
+
+ili:
+ROLLBACK;
+
+što vraća celu transaction.
+Ali MySQL omogućava da unutar transaction-a napravimo kontrolnu tačku:
+SAVEPOINT naziv;
+
+Osnovni primer
+START TRANSACTION;
+
+INSERT INTO bookings (...);
+
+SAVEPOINT booking_created;
+
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 10;
+
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 11;
+
+Recimo kasnije shvatimo da poslednje promene treba poništiti.
+Možemo:
+ROLLBACK TO SAVEPOINT booking_created;
+
+To ne vraća celu transaction na početak.
+Vraća je do:
+SAVEPOINT booking_created
+
+Dakle:
+INSERT booking
+✅ ostaje deo otvorene transaction
+
+UPDATE posle savepoint-a
+↩ poništen
+
+Transaction i dalje nije završena.
+Posle toga možemo nastaviti:
+-- druge operacije
+
+COMMIT;
+
+ROLLBACK vs ROLLBACK TO SAVEPOINT
+ROLLBACK;
+
+znači:
+Poništi celu transaction.
+
+Dok:
+ROLLBACK TO SAVEPOINT my_point;
+
+znači:
+Poništi samo ono što se dogodilo nakon te kontrolne tačke.
+
+Mentalno:
+START
+│
+├── A
+├── B
+│
+├── SAVEPOINT x
+│
+├── C
+├── D
+│
+└── ROLLBACK TO x
+
+rezultat:
+A ✅
+B ✅
+C ❌
+D ❌
+
+transaction je i dalje otvorena
+
+RELEASE SAVEPOINT
+Ako ti više ne treba:
+RELEASE SAVEPOINT booking_created;
+
+time uklanjaš taj savepoint.
+Ne radi COMMIT.
+Samo kažeš:
+Ova kontrolna tačka mi više nije potrebna.
+
+Gde ovo ima smisla?
+Ne treba svaki booking flow pretvoriti u 15 savepoint-a.
+Za naš standardni:
+create booking
++
+reduce inventory
+
+češće želiš pravo:
+all or nothing
+
+pa je običan ROLLBACK savršen.
+SAVEPOINT ima smisla kod složenijih transaction-a gde neki deo želiš da možeš vratiti, a da prethodni DB rad unutar iste transaction ostane.
+Autocommit
+MySQL normalno radi sa konceptom:
+autocommit
+
+U uobičajenom režimu, samostalni statement poput:
+UPDATE hotels
+SET name = 'Danube'
+WHERE id = 5;
+
+se automatski potvrđuje kada uspe.
+Mentalno kao da baza za samostalan statement uradi:
+statement
+↓
+uspeo
+↓
+COMMIT
+
+Zato ti za svaki običan INSERT ne pišeš:
+START TRANSACTION;
+INSERT ...
+COMMIT;
+
+Kada eksplicitno pokrenemo transaction
+START TRANSACTION;
+
+onda grupišemo više operacija:
+A
+B
+C
+
+u jednu logičku celinu.
+I sami odlučujemo:
+COMMIT;
+
+ili:
+ROLLBACK;
+
+Zašto je autocommit bitan za razumevanje?
+Jer početnik često misli:
+Ako nisam napisao COMMIT, promena nije sačuvana.
+
+Ali kod običnih statement-a, uz podrazumevani autocommit režim, jeste.
+Transaction eksplicitno uvodimo kada nam više operacija mora biti povezano kao celina.
+Deadlock — završavamo priču
+Ranije smo imali:
+Transaction A:
+zaključala row 1
+čeka row 2
+
+Transaction B:
+zaključala row 2
+čeka row 1
+
+To je:
+DEADLOCK
+
+Niko ne može da nastavi.
+DB mora da prekine jednu transaction da bi druga mogla da završi.
+Zato application kod treba da bude spreman da određene transaction-e ponovi kada baza prijavi deadlock.
+Ovo je važna razlika:
+deadlock
+≠ baza je pokvarena
+
+deadlock
+→ normalna moguća posledica concurrency-ja
+→ jednu transaction treba rollbackovati/retry-ovati
+
+Kako smanjujemo šansu za deadlock?
+Jedan od glavnih principa:
+Zaključavaj iste vrste resursa u istom redosledu.
+
+Loše:
+A:
+lock date 20
+lock date 21
+
+B:
+lock date 21
+lock date 20
+
+Mnogo bolje:
+A:
+20 → 21
+
+B:
+20 → 21
+
+Zato sam kod booking inventory-ja ranije pomenuo:
+ORDER BY date
+FOR UPDATE;
+
+Konzistentan redosled zaključavanja može značajno smanjiti deadlock rizik.
+Laravel paralela
+Kad radiš:
+DB::transaction(function () {
+    // ...
+});
+
+framework ti olakšava lifecycle:
+begin
+↓
+callback
+↓
+success → commit
+exception → rollback
+
+A Laravel podržava i pokušaje transaction-a kod deadlock situacija kroz drugi argument DB::transaction():
+DB::transaction(function () {
+    // ...
+}, 3);
+
+konceptualno:
+pokušaj
+↓
+deadlock?
+→ retry
+
+Poenta nije da pamtiš Laravel API sada, već da vidiš šta framework rešava preko SQL/database mehanizama.
+Za „2 ujutru“
+autocommit
+→ običan uspešan statement se automatski potvrđuje
+
+START TRANSACTION
+→ ja preuzimam kontrolu nad grupom operacija
+
+COMMIT
+→ potvrdi
+
+ROLLBACK
+→ poništi celu transaction
+
+SAVEPOINT x
+→ napravi kontrolnu tačku
+
+ROLLBACK TO SAVEPOINT x
+→ vrati samo deo transaction-a
+
+deadlock
+→ transactions čekaju jedna drugu
+→ DB prekida jednu
+→ application može retry
+
+Pitanje 33
+Imamo:
+START TRANSACTION;
+
+INSERT INTO bookings (...);
+
+SAVEPOINT after_booking;
+
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 10;
+
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 11;
+
+ROLLBACK TO SAVEPOINT after_booking;
+
+Šta je u tom trenutku poništeno, 
+šta je još uvek deo otvorene transaction i da li je išta od toga već trajno COMMIT-ovano?
+
+---

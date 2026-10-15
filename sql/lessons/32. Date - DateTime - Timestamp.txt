@@ -1,0 +1,328 @@
+Lekcija 32 — DATE, DATETIME, TIMESTAMP i rad sa datumima
+
+Ovo je posebno važno za booking aplikacije, jer nije svaki datum ista vrsta podatka.
+
+Imamo tri česta tipa:
+DATE
+DATETIME
+TIMESTAMP
+
+DATE
+Čuva samo:
+YYYY-MM-DD
+
+Na primer:
+2026-12-20
+
+Odličan je za podatke gde vreme u toku dana nema značenje:
+check_in_date
+check_out_date
+inventory.date
+birth_date
+
+Za tvoj room_inventory:
+date DATE NOT NULL
+
+je potpuno prirodno.
+Ako availability važi za 20. decembar kao kalendarski dan, ne treba ti:
+2026-12-20 00:00:00
+
+DATE jasnije predstavlja business meaning.
+DATETIME
+Čuva:
+YYYY-MM-DD HH:MM:SS
+
+Na primer:
+2026-12-20 14:35:12
+
+Koristan je kada nas zanima konkretan lokalni datum i vreme.
+Na primer:
+appointment_at
+event_starts_at
+
+ili neki business datum/vreme koje želiš sačuvati upravo kao napisanu vrednost.
+TIMESTAMP
+I TIMESTAMP predstavlja datum + vreme, ali ima važnu razliku u vezi sa vremenskim zonama.
+MySQL TIMESTAMP vrednosti konceptualno radi uz timezone konverziju između session time zone i UTC reprezentacije.
+Zato je često prirodan za stvari poput:
+created_at
+updated_at
+last_login_at
+
+odnosno:
+kada se događaj dogodio?
+
+Dok DATETIME više mentalno može predstavljati:
+ovaj kalendarski datum i satnica su business vrednost.
+
+Neću praviti apsolutno pravilo:
+created_at MORA TIMESTAMP
+appointment MORA DATETIME
+
+jer dizajn zavisi od aplikacije i načina na koji upravljaš timezone-ovima.
+Ali mentalni model je dobar:
+DATE
+→ samo kalendarski datum
+
+DATETIME
+→ datum + vreme kao vrednost
+
+TIMESTAMP
+→ trenutak u vremenu, sa timezone ponašanjem MySQL-a
+
+Booking primer
+Za rezervaciju možemo imati:
+check_in DATE NOT NULL,
+check_out DATE NOT NULL,
+created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+Zašto?
+check_in:
+2026-12-20
+
+znači:
+gost ima booking za taj kalendarski dan.
+
+Dok:
+created_at
+
+znači:
+booking je kreiran u određenom trenutku.
+
+To su različiti business koncepti.
+CURRENT_DATE i CURRENT_TIMESTAMP
+MySQL može dati trenutni datum:
+SELECT CURRENT_DATE;
+
+otprilike:
+2026-10-15
+
+A:
+SELECT CURRENT_TIMESTAMP;
+
+daje datum + vreme.
+Možeš koristiti:
+INSERT INTO bookings (
+    user_id,
+    created_at
+)
+VALUES (
+    15,
+    CURRENT_TIMESTAMP
+);
+
+Ali češće će schema sama imati:
+created_at TIMESTAMP
+DEFAULT CURRENT_TIMESTAMP
+
+pa ne moraš ni slati vrednost:
+INSERT INTO bookings (user_id)
+VALUES (15);
+
+Automatski updated_at
+MySQL može:
+updated_at TIMESTAMP
+    DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP
+
+pa se vreme automatski menja kada se red update-uje.
+Konceptualno:
+INSERT
+→ updated_at = sada
+
+UPDATE
+→ updated_at = novo "sada"
+
+Laravel ti uglavnom upravlja created_at i updated_at kroz Eloquent, ali ispod baze postoje i ovakve mogućnosti.
+DATEDIFF
+Vrlo zgodno za booking:
+SELECT DATEDIFF(
+    '2026-12-25',
+    '2026-12-20'
+);
+
+rezultat:
+5
+
+Dakle:
+check_out - check_in
+→ broj dana/noćenja u jednostavnom date modelu
+
+Na primer:
+SELECT
+    id,
+    DATEDIFF(check_out, check_in) AS nights
+FROM bookings;
+
+Ako je:
+check_in  = 20 Dec
+check_out = 23 Dec
+
+dobijamo:
+3 noćenja
+
+što se lepo poklapa sa booking logikom:
+20→21
+21→22
+22→23
+
+DATE_ADD i DATE_SUB
+Dodavanje vremena:
+SELECT DATE_ADD(
+    '2026-12-20',
+    INTERVAL 3 DAY
+);
+
+dobije:
+2026-12-23
+
+Može i:
+SELECT DATE_SUB(
+    CURRENT_DATE,
+    INTERVAL 7 DAY
+);
+
+što može značiti:
+datum pre sedam dana.
+
+Query:
+SELECT *
+FROM bookings
+WHERE created_at >= DATE_SUB(
+    CURRENT_TIMESTAMP,
+    INTERVAL 24 HOUR
+);
+
+→ bookings kreirani u poslednja 24 sata.
+YEAR, MONTH, DAY
+Možemo:
+SELECT
+    YEAR(created_at),
+    MONTH(created_at),
+    DAY(created_at)
+FROM bookings;
+
+To je korisno za output/reporting.
+Ali seti se SARGability lekcije.
+Ovo:
+WHERE YEAR(created_at) = 2026
+
+može biti manje index-friendly od:
+WHERE created_at >= '2026-01-01'
+  AND created_at < '2027-01-01'
+
+Dakle:
+YEAR()
+MONTH()
+DATE()
+
+nisu „loše funkcije“.
+Samo treba razlikovati:
+SELECT / reporting
+→ sasvim normalno
+
+WHERE nad indexed kolonom
+→ proveri da li nepotrebno otežavaš index lookup
+
+DATE_FORMAT
+Za prikaz možeš:
+SELECT
+    DATE_FORMAT(created_at, '%d.%m.%Y')
+FROM bookings;
+
+i dobiti:
+15.10.2026
+
+Ali u ozbiljnoj web aplikaciji često ćeš:
+DB
+→ vrati datum kao podatak
+
+PHP / frontend
+→ formatira za korisnika
+
+jer presentation format nije uvek odgovornost baze.
+Na primer jedan user želi:
+15.10.2026
+
+drugi:
+10/15/2026
+
+treći:
+15 Oct 2026
+
+Dakle SQL može, ali ne mora da radi presentation formatting.
+DATETIME i timezone — praktična zamka
+Ako application radi globalno, nemoj mešati:
+"2026-12-20 15:00"
+
+bez jasnog odgovora na:
+15:00 u kojoj vremenskoj zoni?
+
+Za događaje/trenutke često je dobar pristup:
+čuvaj konzistentan timezone / UTC
+↓
+pretvori za korisnika na output-u
+
+Dok nešto poput:
+hotel check-in starts at 14:00 local hotel time
+
+ima drugačiju semantiku.
+Ovo će ti postati posebno važno ako BookYourHotel ikada radi hotele u više vremenskih zona.
+Za „2 ujutru“
+DATE
+→ YYYY-MM-DD
+
+DATETIME
+→ datum + vreme
+
+TIMESTAMP
+→ trenutak u vremenu + MySQL timezone ponašanje
+
+CURRENT_DATE
+→ današnji datum
+
+CURRENT_TIMESTAMP
+→ sadašnji datum + vreme
+
+DATEDIFF(a, b)
+→ razlika u danima
+
+DATE_ADD
+DATE_SUB
+→ dodaj/oduzmi interval
+
+YEAR/MONTH/DATE u WHERE
+→ pazi na SARGability
+
+Pitanje 32
+Za sledeće kolone izaberi DATE, DATETIME ili TIMESTAMP i ukratko objasni zašto:
+1. room_inventory.date
+2. bookings.check_in
+3. bookings.created_at
+4. appointments.starts_at
+
+Kod četvrtog pretpostavi da appointment mora da se održi 20. decembra 2026. tačno u 14:30 po lokalnom vremenu poslovnice.
+
+---
+
+1. DATE - treba nam konkretan datum bez vremena
+2. Takođe DATE iz istog razloga
+3. TIMESTAMP - kada je booking kreiran - najčešće biramo current_timestamp
+4. DATETIME - zato što nas ovde interesuje kada će tačno kog datuma i u koje vreme appointment biti
+
+---
+
+Tačno — 10/10. Sve četiri si izabrao prema značenju podatka, što je upravo pravi način.
+1. room_inventory.date → DATE
+   → kalendarski dan inventory-ja
+
+2. bookings.check_in → DATE
+   → dan dolaska; sat nije deo tog podatka
+
+3. bookings.created_at → TIMESTAMP
+   → beležimo trenutak kada je događaj nastao
+
+4. appointments.starts_at → DATETIME
+   → konkretno lokalno "20.12.2026. u 14:30"
+
+Kod četvrtog je posebno bitno što si uhvatio razliku između trenutka kada se nešto dogodilo i lokalne kalendarske vrednosti koju business želi da sačuva.

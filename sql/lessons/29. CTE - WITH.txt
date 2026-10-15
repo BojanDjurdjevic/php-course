@@ -1,0 +1,266 @@
+Lekcija 29 — CTE: WITH
+
+Sad jedna stvar koja mnogo pomaže kada subquery postane nepregledan: Common Table Expression, odnosno CTE.
+
+CTE je privremeni imenovani result set koji postoji samo tokom jednog SQL statement-a.
+
+Osnovna sintaksa:
+WITH expensive_hotels AS (
+    SELECT id, name, base_price
+    FROM hotels
+    WHERE base_price > 200
+)
+SELECT *
+FROM expensive_hotels;
+
+Mentalno:
+WITH expensive_hotels AS (...)
+→ napravi mi privremeni rezultat sa ovim imenom
+
+SELECT ...
+FROM expensive_hotels
+→ koristi ga kao da je tabela
+
+Ali nije trajna tabela u bazi.
+Zašto CTE ako već imamo subqueries?
+Možemo napisati:
+SELECT *
+FROM (
+    SELECT id, name, base_price
+    FROM hotels
+    WHERE base_price > 200
+) AS expensive_hotels;
+
+Isto možemo mnogo čitljivije:
+WITH expensive_hotels AS (
+    SELECT id, name, base_price
+    FROM hotels
+    WHERE base_price > 200
+)
+SELECT *
+FROM expensive_hotels;
+
+CTE posebno dobija smisao kada query postane složen.
+Primer sa agregacijom
+Hoćemo prvo da izračunamo prosečnu cenu po gradu:
+WITH city_stats AS (
+    SELECT
+        city,
+        AVG(base_price) AS avg_price
+    FROM hotels
+    GROUP BY city
+)
+SELECT *
+FROM city_stats
+WHERE avg_price > 150;
+
+Mentalno:
+1. CTE:
+   GROUP BY city
+   → izračunaj prosek
+
+2. glavni query:
+   uzmi samo gradove gde je avg_price > 150
+
+Ovo možemo rešiti i HAVING-om:
+SELECT
+    city,
+    AVG(base_price) AS avg_price
+FROM hotels
+GROUP BY city
+HAVING AVG(base_price) > 150;
+
+Dakle CTE nije potreban samo zato što možeš da ga koristiš.
+Ali kod kompleksnijih query-ja postaje veoma koristan za organizaciju logike.
+Više CTE-ova
+Možemo:
+WITH
+active_hotels AS (
+    SELECT id, name, city, base_price
+    FROM hotels
+    WHERE is_active = TRUE
+),
+city_stats AS (
+    SELECT
+        city,
+        AVG(base_price) AS avg_price
+    FROM active_hotels
+    GROUP BY city
+)
+SELECT *
+FROM city_stats;
+
+Prvo:
+active_hotels
+
+onda drugi CTE koristi prvi:
+city_stats
+→ FROM active_hotels
+
+pa finalni query koristi rezultat.
+To može da izgleda skoro kao pipeline:
+raw tables
+↓
+active_hotels
+↓
+city_stats
+↓
+final SELECT
+
+Realan booking primer
+Recimo želimo bookings čiji total prelazi prosečan total svih confirmed booking-a.
+Možemo:
+WITH confirmed_bookings AS (
+    SELECT id, user_id, total_price
+    FROM bookings
+    WHERE status = 'confirmed'
+),
+booking_average AS (
+    SELECT AVG(total_price) AS avg_total
+    FROM confirmed_bookings
+)
+SELECT
+    b.id,
+    b.user_id,
+    b.total_price
+FROM confirmed_bookings b
+CROSS JOIN booking_average a
+WHERE b.total_price > a.avg_total;
+
+Nemoj da te ovde opterećuje CROSS JOIN; poenta je struktura:
+CTE 1
+→ confirmed booking-i
+
+CTE 2
+→ njihov prosek
+
+final
+→ oni iznad proseka
+
+Veliki query smo podelili na razumljive korake.
+CTE nije isto što i VIEW
+CTE:
+WITH ...
+
+postoji samo tokom tog jednog statement-a.
+VIEW ćemo posebno raditi, ali on se čuva kao database object.
+Mentalno:
+CTE
+→ privremeno ime unutar jednog query-ja
+
+VIEW
+→ sačuvani database object
+
+Recursive CTE
+Postoji i:
+WITH RECURSIVE
+
+koji omogućava da CTE referencira sam sebe.
+Koristi se za stvari kao:
+hijerarhije kategorija
+organizacione strukture
+tree data
+sekvence/datumi
+
+Na primer:
+Category
+└── Hotels
+    ├── Luxury
+    └── Budget
+
+ili:
+employee
+→ manager
+→ managerov manager
+→ ...
+
+Nećemo još duboko u rekurziju, ali treba da znaš da postoji.
+Performance napomena
+Nemoj CTE posmatrati kao:
+„CTE je automatski brži od subquery-ja.“
+
+Ne.
+CTE je pre svega:
+query organization
+readability
+reuse unutar statement-a
+
+Optimizer odlučuje kako će ga izvršiti.
+Dakle:
+CTE
+≠ performance magic
+
+Kao i uvek:
+EXPLAIN
+
+ako performance postane bitan.
+Laravel mentalna paralela
+Laravel nema bukvalno isti mentalni koncept kroz standardni Eloquent API za svaki slučaj, 
+ali kad vidiš vrlo kompleksan Query Builder/Eloquent chain sa više subquery-ja, SQL CTE često može da učini underlying SQL mnogo razumljivijim.
+Poenta našeg MySQL modula je baš da možeš da pogledaš takav SQL i razumeš šta se stvarno događa.
+Za „2 ujutru“
+CTE = Common Table Expression
+
+WITH name AS (...)
+→ imenuj privremeni result set
+
+postoji:
+→ samo tokom tog SQL statement-a
+
+koristi se za:
+→ čitljivost
+→ razbijanje kompleksnog query-ja
+→ ponovnu upotrebu logičkog result seta
+
+nije:
+→ trajna tabela
+→ automatska performance optimizacija
+
+WITH RECURSIVE
+→ hijerarhije / tree / recursion
+
+Pitanje 29
+Prepiši ovaj query koristeći CTE pod nazivom active_hotels:
+SELECT city, AVG(base_price) AS avg_price
+FROM (
+    SELECT city, base_price
+    FROM hotels
+    WHERE is_active = TRUE
+) AS active_hotels
+GROUP BY city;
+
+Dakle prvo CTE treba da izdvoji samo aktivne hotele, a finalni query da izračuna prosečnu cenu po gradu.
+
+---
+
+WITH active_hotels AS (
+  SELECT city, base_price
+  FROM hotels
+  WHERE is_active = TRUE
+)
+SELECT city, AVG(base_price) AS avg_price
+FROM active_hotels
+GROUP BY city;
+
+---
+
+Tačno — 10/10. Upravo tako se CTE koristi:
+WITH active_hotels AS (
+    SELECT city, base_price
+    FROM hotels
+    WHERE is_active = TRUE
+)
+SELECT
+    city,
+    AVG(base_price) AS avg_price
+FROM active_hotels
+GROUP BY city;
+
+Lepo si razdvojio dve odgovornosti:
+CTE
+→ izdvoji samo aktivne hotele
+
+final query
+→ grupiši ih po gradu i izračunaj AVG
+
+I bitna stvar: active_hotels ovde nije nova tabela u bazi. To ime postoji samo dok se izvršava ovaj statement.

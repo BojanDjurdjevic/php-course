@@ -1,0 +1,287 @@
+Lekcija 31 — VIEW: sačuvani SQL pogled
+CTE koji smo radili:
+WITH active_hotels AS (...)
+SELECT ...
+
+postoji samo tokom jednog statement-a.
+Ali šta ako stalno koristimo isti query?
+Na primer, aplikacija stalno treba:
+SELECT
+    h.id,
+    h.name,
+    h.base_price,
+    u.name AS owner_name
+FROM hotels h
+JOIN users u
+    ON u.id = h.owner_id
+WHERE h.is_active = TRUE
+  AND h.deleted_at IS NULL;
+
+Možemo napraviti VIEW:
+CREATE VIEW active_hotels_view AS
+SELECT
+    h.id,
+    h.name,
+    h.base_price,
+    u.name AS owner_name
+FROM hotels h
+JOIN users u
+    ON u.id = h.owner_id
+WHERE h.is_active = TRUE
+  AND h.deleted_at IS NULL;
+
+Onda možemo:
+SELECT *
+FROM active_hotels_view;
+
+Mentalno:
+VIEW
+→ sačuvani SELECT sa imenom
+
+Ne moraš svaki put ponavljati ceo JOIN + WHERE.
+VIEW nije kopija podataka
+Ovo je veoma važno.
+Običan view nije:
+nova tabela sa dupliranim hotelima
+
+nego database object koji predstavlja query.
+Ako promeniš:
+hotels
+users
+
+sledeći query nad view-om vidi aktuelne podatke.
+Dakle:
+TABLE
+→ čuva podatke
+
+VIEW
+→ čuva definiciju pogleda nad podacima
+
+To ga razlikuje i od istorijskog snapshot-a koji smo ranije pominjali.
+Možeš filtrirati VIEW dalje
+Ako imamo:
+SELECT *
+FROM active_hotels_view
+WHERE base_price < 150
+ORDER BY base_price;
+
+ne znači da view mora sadržati baš konačan rezultat koji ti treba.
+Može biti reusable baza za dalje query-je.
+Zašto koristiti VIEW?
+Recimo da imaš kompleksnu logiku:
+hotels
+JOIN users
+JOIN cities
+WHERE active
+WHERE not deleted
+
+koju koristi:
+admin report
+supplier dashboard
+analytics
+
+View može sakriti tu kompleksnost:
+SELECT *
+FROM available_hotels_view;
+
+Prednosti:
+čitljivost
+reuse
+centralizovana SQL logika
+može ograničiti šta korisnik vidi
+
+Poslednje je posebno zanimljivo.
+Možeš imati tabelu:
+users
+--------------
+id
+name
+email
+password_hash
+salary
+...
+
+a view:
+CREATE VIEW public_users AS
+SELECT id, name
+FROM users;
+
+Nekom DB user-u možeš dati pristup view-u, ali ne nužno celoj underlying tabeli.
+Dakle view može biti deo security/access dizajna.
+VIEW nije automatski performance optimization
+Ovo je slično CTE-u.
+Nemoj mentalno:
+napravio sam VIEW
+→ query je sada brži
+
+Ne nužno.
+Običan view prvenstveno predstavlja:
+saved query definition
+
+Optimizer i dalje mora da rešava underlying query.
+Ako je underlying query loš:
+SELECT ...
+FROM huge_table
+WHERE YEAR(created_at) = 2026;
+
+nazvati ga:
+nice_fast_view
+
+neće ga magično ubrzati. 😄
+Ponovo:
+EXPLAIN
+
+ako performance postane problem.
+Menjanje VIEW-a
+Možeš:
+CREATE OR REPLACE VIEW active_hotels_view AS
+SELECT ...
+
+ili ga ukloniti:
+DROP VIEW active_hotels_view;
+
+Obrati pažnju:
+DROP VIEW
+
+nije:
+DROP TABLE
+
+Underlying tabele ostaju.
+Brišeš samo definiciju view-a.
+Može li VIEW da se UPDATE-uje?
+Ponekad da, ali ne svaki.
+Jednostavni view nad jednom tabelom može biti updatable.
+Ali kada uvedeš:
+GROUP BY
+aggregates
+DISTINCT
+UNION
+određene JOIN-ove
+
+stvari postaju ograničenije.
+Za naš nivo najzdraviji mentalni model je:
+View prvenstveno koristim kao read abstraction; ako planiram write kroz njega, proveravam pravila konkretnog view-a.
+
+CTE vs VIEW
+Ovo je bitno:
+CTE
+→ postoji tokom jednog statement-a
+
+VIEW
+→ ostaje u database schema-i
+→ reusable između query-ja
+
+Na primer:
+WITH active_hotels AS (...)
+SELECT ...
+
+nestaje posle query-ja.
+Ali:
+CREATE VIEW active_hotels AS ...
+
+možeš koristiti sutra:
+SELECT * FROM active_hotels;
+
+Laravel paralela
+Laravel model obično mapiraš na tabelu, ali tehnički možeš raditi i sa database view-ovima kada ti je potreban read model/report.
+Konceptualno je zanimljivo i zbog arhitekture:
+write model
+→ normalizovane tabele
+
+read/report model
+→ view sa već spojenim informacijama
+
+Nije nešto što treba gurati svuda, ali je vrlo korisno da znaš da postoji.
+Za „2 ujutru“
+VIEW
+→ sačuvani SELECT
+
+ne čuva novu kopiju podataka
+→ čuva definiciju query-ja
+
+TABLE
+→ data
+
+VIEW
+→ pogled nad data
+
+CTE
+→ jedan statement
+
+VIEW
+→ persistent schema object
+
+DROP VIEW
+→ briše view
+→ ne briše underlying tables
+
+Pitanje 31
+Imamo query koji često koristimo:
+SELECT
+    id,
+    name,
+    base_price
+FROM hotels
+WHERE is_active = TRUE
+  AND deleted_at IS NULL;
+
+Napravi view pod nazivom:
+active_hotels
+
+koji predstavlja taj query.
+Zatim napiši i query kojim bi iz tog view-a vratio samo hotele sa:
+base_price < 150
+
+---
+
+CREATE VIEW active_hotels_view AS
+SELECT
+    id,
+    name,
+    base_price
+FROM hotels
+WHERE is_active = TRUE
+  AND deleted_at IS NULL;
+
+
+SELECT * FROM active_hotels
+WHERE base_price < 150;
+
+---
+
+WHERE base_price < 150;
+Skoro potpuno tačno — 9.5/10. Jedina greška je u imenu view-a.
+
+Napravio si:
+
+CREATE VIEW active_hotels_view AS
+SELECT
+    id,
+    name,
+    base_price
+FROM hotels
+WHERE is_active = TRUE
+  AND deleted_at IS NULL;
+
+a onda pokušao:
+
+SELECT *
+FROM active_hotels
+WHERE base_price < 150;
+
+Dakle ili oba treba da budu active_hotels_view, ili — pošto sam u zadatku tražio naziv active_hotels — ovako:
+
+CREATE VIEW active_hotels AS
+SELECT
+    id,
+    name,
+    base_price
+FROM hotels
+WHERE is_active = TRUE
+  AND deleted_at IS NULL;
+
+SELECT *
+FROM active_hotels
+WHERE base_price < 150;
+
+SQL logika ti je 10/10; skinuo sam samo pola boda zbog mismatch-a naziva database object-a.
