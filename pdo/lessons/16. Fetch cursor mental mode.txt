@@ -1,0 +1,206 @@
+Lekcija 16 — fetch() cursor mental model
+Ovo je mala lekcija, ali važna za razumevanje kako PDOStatement drži rezultat.
+Recimo query vrati 3 reda:
+1 Ana
+2 Marko
+3 Bojan
+
+Kad uradiš:
+$row = $stmt->fetch();
+
+dobiješ prvi red.
+Ponovo:
+$row = $stmt->fetch();
+
+dobiješ drugi.
+Ponovo:
+$row = $stmt->fetch();
+
+dobiješ treći.
+I još jednom:
+$row = $stmt->fetch();
+
+dobiješ:
+false
+
+Mentalno:
+result set:
+
+[1] Ana      ← cursor
+[2] Marko
+[3] Bojan
+
+posle prvog fetch():
+[1] Ana
+[2] Marko    ← cursor
+[3] Bojan
+
+Dakle fetch() nije:
+"daj mi uvek prvi red"
+
+nego:
+"daj mi sledeći red iz result set-a"
+
+Zato radi:
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    // obrada reda
+}
+
+i to je prirodan način za streaming-style obradu većeg result seta.
+Važna posledica: ako jednom potrošiš sve redove:
+$rows = $stmt->fetchAll();
+
+onda posle:
+$stmt->fetch();
+
+nema više šta da pročita.
+Result cursor je već na kraju.
+Mini interview pitanje 16
+Zašto će ovaj kod ispisati tri različita reda, a ne tri puta isti red?
+echo $stmt->fetch()['name'];
+echo $stmt->fetch()['name'];
+echo $stmt->fetch()['name'];
+
+I šta će sledeći fetch() vratiti ako su u result set-u bila samo ta tri reda?
+
+---
+
+Zato sto fetch() ne znaci daj prvi red, nego: 
+daj sledeci red i cursor se posle svakog citanja pomera za 1 na dole. 
+
+Ako ima 3 reda i iščitao je sva 3, 4to čitanje vraća false.
+
+PS. Zaboravih te pitati:
+
+Ako u pdo attribute stavimo (prilikom kreiranja pdo objekta):
+
+Fetch mode => _OBJ 
+
+A posle nam nekada zatreba ASSOC ili CLASS, 
+da li to mozemo pregaziti sa ->fetch(PDO::FETCH_ASSOC) ?
+
+---
+
+Da — tačno, i prethodni odgovor ti je 10/10.
+Ako prilikom kreiranja PDO konekcije staviš:
+$pdo = new PDO(
+    $dsn,
+    $user,
+    $password,
+    [
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+    ]
+);
+
+to samo znači:
+Ako mi ne kažeš drugačije, koristi FETCH_OBJ.
+
+Dakle:
+$user = $stmt->fetch();
+
+vratiće stdClass.
+Ali možeš za konkretan fetch() da pregaziš default:
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+i tada dobijaš:
+[
+    'id' => 5,
+    'name' => 'Bojan',
+]
+
+Mentalno:
+ATTR_DEFAULT_FETCH_MODE
+→ globalni/default izbor za tu PDO konekciju
+
+fetch(PDO::FETCH_ASSOC)
+→ izbor samo za ovaj konkretan fetch()
+→ pregazi default
+
+Isto važi za:
+$stmt->fetchAll(PDO::FETCH_ASSOC);
+
+Dakle možeš imati:
+PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ
+
+a onda negde:
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+bez problema.
+A FETCH_CLASS?
+Tu postoji mala razlika, jer PDO mora da zna koju klasu želiš.
+Tipično radiš:
+$stmt->setFetchMode(
+    PDO::FETCH_CLASS,
+    User::class
+);
+
+$user = $stmt->fetch();
+
+Znači možeš i to promeniti na nivou konkretnog statement-a.
+Recimo:
+// PDO default
+PDO::FETCH_OBJ
+
+ali za jedan query:
+$stmt = $pdo->query(
+    'SELECT id, name FROM users'
+);
+
+$stmt->setFetchMode(
+    PDO::FETCH_CLASS,
+    User::class
+);
+
+$user = $stmt->fetch();
+
+i sada dobijaš:
+$user instanceof User; // true
+
+Tako da postoji fina hijerarhija:
+PDO default fetch mode
+        ↓
+PDOStatement setFetchMode()
+        ↓
+fetch()/fetchAll() sa eksplicitnim mode-om
+
+Odnosno default nije nikakva zabrana — samo fallback kada ništa drugo ne navedeš.
+Ovo je vrlo slično drugim default podešavanjima u programiranju: kažeš „uglavnom želim OBJ“, 
+ali za pojedinačni slučaj slobodno kažeš „ovde mi ipak daj ASSOC“.
+
+Mini interview pitanje 17
+Ako PDO ima:
+PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ
+
+šta će vratiti:
+$a = $stmt->fetch();
+
+a šta:
+$b = $stmt->fetch(PDO::FETCH_ASSOC);
+
+I koja od te dve odluke ima prednost?
+
+---
+
+$a vraća Objrkat stdClass jer je tako podeseno po defaultu a
+$b vraca ASSOC jer sno eksplicitno trazili za taj fetch, dakle pregazice default.
+
+U a slucaju je fallback
+U b slucaju prednost ima eksplicitni navod
+
+---
+
+Tačno — 10/10.
+Baš kako treba:
+default fetch mode
+→ fallback ako ništa drugo ne navedeš
+
+fetch(PDO::FETCH_ASSOC)
+→ eksplicitna odluka za taj fetch
+→ ima prednost nad defaultom
+
+Dakle:
+$a = $stmt->fetch();
+// stdClass
+
+$b = $stmt->fetch(PDO::FETCH_ASSOC);
+// associative array

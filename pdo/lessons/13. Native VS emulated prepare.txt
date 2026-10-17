@@ -1,0 +1,138 @@
+Lekcija 13 — Native vs emulated prepared statements
+
+Ovo je već malo „ispod haube“, ali vredi razumeti jer koristiš prepare() godinama.
+
+Kada napišeš:
+
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+postoje dva moguća pristupa.
+1. Native prepared statement
+Kod native prepare-a ideja je:
+PHP/PDO
+   ↓
+MySQL-u pošalji SQL strukturu:
+SELECT ... WHERE email = ?
+   ↓
+MySQL pripremi statement
+   ↓
+kasnije pošalji vrednost
+   ↓
+MySQL izvrši pripremljen statement
+
+Dakle DB server zaista učestvuje u prepare fazi.
+Mentalno:
+PREPARE
+→ server dobije SQL strukturu
+
+EXECUTE
+→ server dobije parametre
+
+2. Emulated prepared statement
+PDO može i da emulira prepared statement.
+Tada PDO sloj odrađuje više posla na svojoj strani i prema DB serveru šalje finalni statement na drugačiji način.
+Mentalno, uprošćeno:
+PHP
+ ↓
+PDO emulira placeholder logiku
+ ↓
+PDO driver
+ ↓
+MySQL
+
+Zato postoji PDO attribute:
+PDO::ATTR_EMULATE_PREPARES
+
+Na primer:
+$pdo->setAttribute(
+    PDO::ATTR_EMULATE_PREPARES,
+    false
+);
+
+znači:
+Kada driver podržava native prepares, želim da ih koristim umesto PDO emulacije.
+
+Bitno: nemoj mentalno svesti ovo na:
+emulated = unsafe
+native = safe
+
+To je pregruba i pogrešna podela.
+Ako prepared statements pravilno koristiš sa parametrima, 
+poenta je i dalje da user vrednosti nisu SQL struktura.
+Razlika je više u tome ko obrađuje prepare mehanizam 
+i kako statement putuje do servera.
+
+Zašto bi nas ovo uopšte zanimalo?
+
+Native prepares mogu biti korisni jer server stvarno zna 
+za pripremljeni statement i vrednosti stižu odvojeno.
+
+Emulation može imati drugačije ponašanje kod određenih 
+SQL konstrukcija i placeholder-a.
+
+Zato je dobro da kao backend developer znaš da:
+prepare()
+
+ne znači nužno u svakoj PDO konfiguraciji:
+„MySQL server je već fizički pripremio statement.“
+
+Postoji još PDO sloj između.
+To je jedna od onih stvari koje objašnjavaju zašto je:
+PDO
+≠ samo tanka funkcija koja prosleđuje SQL
+
+nego pravi database-access abstraction layer sa sopstvenim ponašanjem.
+Mentalna mapa
+Native prepare
+PHP
+ ↓
+PDO
+ ↓
+MySQL PREPARE
+ ↓
+parametri
+ ↓
+EXECUTE
+
+naspram:
+Emulated prepare
+PHP
+ ↓
+PDO obrađuje prepare logiku
+ ↓
+MySQL dobija statement preko driver-a
+
+Za sada ne moramo ulaziti u svaki edge case. Važno je da znaš da postoje oba režima i šta termin znači.
+Mini interview pitanje 13
+Koja je osnovna razlika između native i emulated prepared statements?
+Posebno: ko kod native pristupa stvarno priprema statement — PDO ili DB server?
+
+---
+
+Razlika je sto kod native prepare DB ucestvuje vise i priprema statement, 
+dok kod emulated php radi vise posla i sam priprema statement
+
+---
+
+Tačno — 9.8/10.
+Najkraće:
+Native prepare
+→ DB server stvarno priprema statement
+
+Emulated prepare
+→ PDO/PHP sloj emulira prepared-statement ponašanje
+
+Dakle kod native pristupa MySQL zaista dobija prepare fazu odvojeno od execute faze, 
+dok kod emulation režima PDO preuzima više tog posla na sebe.
+
+Važna stvar koju si već dobro uhvatio: nemoj praviti mentalnu podelu:
+native = bezbedno
+emulated = nebezbedno
+
+To nije suština. Bitno je da se parametri pravilno koriste i da user input ne postane deo SQL strukture.

@@ -156,3 +156,30 @@ i zašto fetchAll() može biti loš izbor ako query vraća ogroman broj redova?
 
 ---
 
+fetch() - uzima jedan red
+fetchAll() - uzima sve redove
+fetchColumn() - uzima 1 kolonu.
+
+Za veliki br redova, los izbor je fetchAll zbog memorije, bolje je uzimati red po red.
+
+---
+
+Tačno — 9.7/10.
+Samo jedna važna nijansa za fetchColumn():
+fetchColumn()
+→ ne uzima "celu kolonu iz svih redova"
+→ uzima vrednost jedne kolone iz sledećeg reda
+
+Najčešće ga koristiš za nešto poput:
+$stmt = $pdo->query('SELECT COUNT(*) FROM users');
+
+$count = $stmt->fetchColumn();
+
+Dakle dobiješ jednu scalar vrednost.
+A za veliki rezultat si potpuno tačno rekao:
+fetchAll()
+→ učita sve u PHP memoriju odjednom
+
+fetch() u while petlji
+→ obrađuje red po red
+→ mnogo pogodnije za ogroman rezultat

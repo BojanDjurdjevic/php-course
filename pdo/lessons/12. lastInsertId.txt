@@ -1,0 +1,100 @@
+Lekcija 12 — lastInsertId()
+Kad uradimo:
+$stmt = $pdo->prepare(
+    'INSERT INTO bookings (user_id, room_id)
+     VALUES (:user_id, :room_id)'
+);
+
+$stmt->execute([
+    'user_id' => $userId,
+    'room_id' => $roomId,
+]);
+
+često nam odmah treba ID novog reda.
+Tu koristimo:
+$bookingId = $pdo->lastInsertId();
+
+Mentalno:
+INSERT
+→ baza napravi novi AUTO_INCREMENT id
+→ PDO konekcija zna poslednji generisani id
+→ lastInsertId()
+
+Bitna stvar: ovo zovemo na:
+$pdo
+
+ne na:
+$stmt
+
+jer je to informacija vezana za DB konekciju/session.
+Na primer:
+$pdo->beginTransaction();
+
+$stmt = $pdo->prepare(
+    'INSERT INTO bookings (user_id, room_id)
+     VALUES (:user_id, :room_id)'
+);
+
+$stmt->execute([
+    'user_id' => 7,
+    'room_id' => 15,
+]);
+
+$bookingId = $pdo->lastInsertId();
+
+$pdo->commit();
+
+Sada možemo taj ID odmah koristiti:
+$stmt = $pdo->prepare(
+    'INSERT INTO booking_items (booking_id, ...)
+     VALUES (:booking_id, ...)'
+);
+
+i proslediti:
+'booking_id' => $bookingId
+
+Mala nijansa: lastInsertId() ima smisla kada DB/driver koristi 
+mehanizam generisanog ID-a poput AUTO_INCREMENT. Ne zamišljamo ga kao univerzalno:
+
+„daj mi ID poslednjeg reda u tabeli“
+
+To nije isto.
+Nikad ne radiš nešto poput:
+SELECT MAX(id) FROM bookings
+
+da bi saznao „koji sam ja red upravo ubacio“, 
+jer u međuvremenu drugi request može ubaciti novi red.
+
+lastInsertId() je vezan za tvoju konekciju, pa je pravi alat za taj scenario.
+
+---
+
+Mini interview pitanje 12
+Zašto je:
+$pdo->lastInsertId()
+
+bezbedniji i smisleniji način da dobiješ ID reda koji si upravo ubacio nego:
+SELECT MAX(id) FROM bookings
+
+u aplikaciji sa više paralelnih request-ova?
+
+---
+
+Zato sto drugi request u međuvremenu moze napraviti novi red pa dobijamo netačan podatak.
+
+Posto je lastInsertId() vezan samo za moju konekciju - session, on je idealan za to.
+
+---
+
+Tačno — 10/10.
+Baš to:
+SELECT MAX(id)
+→ pita celu tabelu koji je trenutno najveći ID
+→ drugi request može u međuvremenu ubaciti novi red ❌
+
+lastInsertId()
+→ vezan za tvoju DB konekciju/session
+→ govori o ID-u generisanom za tvoj INSERT ✅
+
+I ovo je lep primer zašto je važno što smo na početku razjasnili 
+da $pdo predstavlja konkretnu konekciju.

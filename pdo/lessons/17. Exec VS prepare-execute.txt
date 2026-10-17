@@ -1,0 +1,177 @@
+Lekcija 17 — exec() vs query() vs prepare()
+
+Sada možemo da zaokružimo tri glavna načina na koja PDO šalje SQL.
+
+Već znamo:
+$pdo->query(...)
+
+i:
+$pdo->prepare(...)
+$stmt->execute(...)
+
+Ali postoji i:
+$pdo->exec(...)
+
+query()
+query() je praktičan kada imamo fiksan SQL koji vraća result set:
+$stmt = $pdo->query(
+    'SELECT id, name FROM hotels WHERE is_active = 1'
+);
+
+$hotels = $stmt->fetchAll();
+
+On vraća:
+PDOStatement
+
+jer posle treba da čitamo rezultate.
+Mentalno:
+query()
+→ izvrši SQL
+→ očekujem rezultat koji želim da fetch-ujem
+
+exec()
+exec() je namenjen SQL-u gde nas ne zanima result set, nego koliko je redova pogođeno.
+Na primer:
+$count = $pdo->exec(
+    "UPDATE hotels
+     SET is_active = 0
+     WHERE deleted_at IS NOT NULL"
+);
+
+$count može biti:
+5
+
+što znači da je statement pogodio/promijenio odgovarajući broj redova prema driver semantici.
+Ili:
+$count = $pdo->exec(
+    "DELETE FROM expired_sessions"
+);
+
+Dakle:
+query()
+→ vraća PDOStatement
+→ čitaš rezultat
+
+exec()
+→ izvrši statement
+→ vraća broj affected rows
+
+Ali ovde dolazi već poznato pravilo.
+Ovo:
+$pdo->exec(
+    "DELETE FROM users WHERE id = $id"
+);
+
+nije dobra ideja ako $id dolazi spolja.
+exec() nema placeholder flow kakav koristimo sa:
+prepare() + execute()
+
+Zato bi za dinamičku vrednost radio:
+$stmt = $pdo->prepare(
+    'DELETE FROM users WHERE id = :id'
+);
+
+$stmt->execute([
+    'id' => $id,
+]);
+
+pa:
+$count = $stmt->rowCount();
+
+Kako ih mentalno razdvojiti
+query()
+→ gotov/fiksan SQL
+→ očekujem result set
+→ dobijam PDOStatement
+
+exec()
+→ gotov/fiksan SQL
+→ ne očekujem result set
+→ zanima me affected rows
+
+prepare() + execute()
+→ imam dinamičke vrednosti
+→ koristim placeholders
+→ dobijam PDOStatement
+
+Na primer:
+// SELECT bez parametara
+$stmt = $pdo->query(
+    'SELECT * FROM hotels'
+);
+
+// statički UPDATE
+$count = $pdo->exec(
+    'UPDATE hotels SET is_active = 0'
+);
+
+// SELECT sa user-controlled vrednošću
+$stmt = $pdo->prepare(
+    'SELECT * FROM hotels WHERE city = :city'
+);
+
+$stmt->execute([
+    'city' => $city,
+]);
+
+U praksi ćeš često najviše koristiti prepare() + execute(), 
+jer realne aplikacije skoro uvek imaju neke dinamičke vrednosti.
+
+Mini interview pitanje 18
+Koja je osnovna razlika između:
+$pdo->query(...)
+
+i:
+$pdo->exec(...)
+
+Šta vraća jedan, šta drugi, i zašto bi za:
+DELETE FROM users WHERE id = $id
+
+gde $id dolazi od korisnika ipak izabrao prepare() + execute() umesto exec()?
+
+---
+
+query() vraća rezultat a exec() nakon izvrsene radnje 
+vraca samo number of affected rows.
+
+Ipak, exec() nema placeholders flow kao prepare, 
+pa ako bih imao dinamicku vrednost, 
+koristio bih prepare() + execute() a ako mi treba rowCount()
+
+---
+
+Tačno — 9.8/10.
+Samo terminološki preciznije:
+query()
+→ vraća PDOStatement
+→ iz njega zatim fetch()-ujemo result set
+
+exec()
+→ ne vraća PDOStatement za čitanje rezultata
+→ vraća broj affected rows
+
+A ovo ti je potpuno tačno:
+DELETE FROM users WHERE id = $id
+
+ako $id dolazi spolja, 
+ne ide kroz exec() sa interpolacijom, nego:
+
+$stmt = $pdo->prepare(
+    'DELETE FROM users WHERE id = :id'
+);
+
+$stmt->execute([
+    'id' => $id,
+]);
+
+$affected = $stmt->rowCount();
+
+Dakle:
+exec()
+→ statički DML/DDL kada nema parametara
+
+prepare() + execute()
+→ dinamičke vrednosti
+
+rowCount()
+→ affected rows konkretnog PDOStatement-a

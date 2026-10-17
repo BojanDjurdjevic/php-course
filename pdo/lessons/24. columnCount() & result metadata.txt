@@ -1,0 +1,97 @@
+Lekcija 24 — columnCount() i metadata rezultata
+PDOStatement može da nam kaže koliko kolona ima result set.
+Na primer:
+$stmt = $pdo->query(
+    'SELECT id, name, email FROM users'
+);
+
+$count = $stmt->columnCount();
+
+Ovde će:
+$count = 3
+
+jer SELECT vraća:
+id
+name
+email
+
+Važno:
+columnCount()
+→ broj kolona u result set-u
+
+rowCount()
+→ affected rows za određene statement-e
+
+To su potpuno različite stvari.
+Recimo:
+$stmt = $pdo->query(
+    'SELECT id, name FROM users'
+);
+
+echo $stmt->columnCount();
+
+vratiće:
+2
+
+bez obzira da li query vrati:
+0 redova
+10 redova
+1.000 redova
+
+jer pitanje nije:
+koliko ima redova?
+
+nego:
+koliko kolona ima struktura rezultata?
+
+Zašto bi ovo bilo korisno?
+U običnoj poslovnoj aplikaciji nećeš ga koristiti svaki dan.
+Ali može biti korisno kod:
+generic DB alata
+debugging-a
+export sistema
+dinamičkih tabela
+CSV export-a
+DB browser-a
+
+gde unapred možda ne znaš strukturu SELECT-a.
+Na primer generički exporter može da kaže:
+statement ima 5 kolona
+→ pročitaj metadata za tih 5 kolona
+→ generiši CSV header
+
+PDO ima i metode za metadata kolona, mada su takve stvari često driver-dependent i nisu nešto na šta bih stavljao veliki fokus za svakodnevni backend rad.
+Mentalna razlika
+rowCount()
+→ "koliko je redova pogođeno?"
+
+columnCount()
+→ "koliko kolona ima rezultat?"
+
+Primer:
+SELECT id, name, email
+FROM users
+WHERE id > 100;
+
+Može vratiti:
+250 redova
+3 kolone
+
+Dakle:
+columnCount() = 3
+
+a broj redova ne određujemo preko columnCount().
+Mini interview pitanje 25
+Ako imamo:
+$stmt = $pdo->query(
+    'SELECT id, name, email, created_at
+     FROM users'
+);
+
+šta će vratiti:
+$stmt->columnCount();
+
+i zašto to nema nikakve veze sa tim da li query vraća 5 ili 50.000 user-a?
+
+---
+

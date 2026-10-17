@@ -1,0 +1,94 @@
+Lekcija 23 — closeCursor() i ponovno korišćenje statement-a
+Ovo je manje poznata PDO tema, ali korisna.
+Kada statement vrati result set:
+$stmt = $pdo->query(
+    'SELECT id, name FROM users'
+);
+
+PDOStatement može i dalje imati nepročitane redove.
+Recimo:
+$user = $stmt->fetch();
+
+pročitao si samo prvi red, a ostatak rezultata još postoji.
+Ako želiš da eksplicitno kažeš:
+više me ne zanima ostatak ovog result set-a
+
+možeš:
+$stmt->closeCursor();
+
+Mentalno:
+fetch()
+→ čitam result set
+
+closeCursor()
+→ odustajem od preostalih redova
+→ statement oslobađa result resource za dalje korišćenje
+
+Ovo može biti korisno kada želiš da isti statement ponovo izvršiš, a prethodni rezultat nisi pročitao do kraja.
+Na primer:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE status = :status'
+);
+
+$stmt->execute([
+    'status' => 'active',
+]);
+
+$first = $stmt->fetch();
+
+// ne trebaju mi ostali active users
+$stmt->closeCursor();
+
+$stmt->execute([
+    'status' => 'inactive',
+]);
+
+Bez ulaska u driver-specific detalje, 
+dobra praksa je da znaš da result set ima lifecycle i da closeCursor() 
+služi da ga završiš pre ponovne upotrebe statement-a kada je to potrebno.
+
+Ako si već uradio:
+$rows = $stmt->fetchAll();
+
+onda si ionako potrošio preostali result set, pa je closeCursor() često nepotreban.
+Mentalno:
+fetchAll()
+→ potroši sve redove
+
+fetch() samo jednom
+→ možda ostaju nepročitani redovi
+
+closeCursor()
+→ zatvori/prestani da čitaš taj rezultat
+
+Mini interview pitanje 24
+Čemu služi:
+$stmt->closeCursor();
+
+i zašto može biti koristan ako si pročitao samo deo result set-a, 
+a želiš ponovo da izvršiš isti PDOStatement?
+
+---
+
+Služi da zatvori tj završi result set pre komplektnog 
+iščitavanja a radi pripreme za sledeći result set.
+
+Koristan je jer oslobađa memoriju za novi result set, 
+ako nam treba da ponovo izvršimo isti PDOStatement.
+
+---
+
+Da — 9.7/10.
+Suština ti je tačna:
+closeCursor()
+→ prekida dalju obradu trenutnog result set-a
+→ oslobađa statement/connection resurse vezane za taj rezultat
+→ omogućava da statement bude spreman za novo izvršenje
+
+Samo bih malo ublažio deo:
+„oslobađa memoriju“
+
+Može osloboditi resurse vezane za rezultat, 
+ali nemoj ga mentalno svesti samo na PHP memoriju. Važnije je:
+zatvara aktivni result set i omogućava 
+driver-u/konekciji da nastavi normalno sa sledećim izvršenjem.

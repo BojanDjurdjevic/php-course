@@ -1,0 +1,107 @@
+Lekcija 15 — fetch mode-ovi: FETCH_ASSOC, FETCH_OBJ, FETCH_CLASS
+
+Do sada smo uglavnom koristili:
+
+$stmt->fetch(PDO::FETCH_ASSOC);
+
+
+što daje:
+[
+    'id' => 5,
+    'name' => 'Bojan',
+]
+
+Ali PDO može rezultat mapirati i drugačije.
+PDO::FETCH_OBJ:
+$user = $stmt->fetch(PDO::FETCH_OBJ);
+
+daje objekat tipa stdClass, pa pristupaš ovako:
+echo $user->name;
+
+umesto:
+echo $user['name'];
+
+Još zanimljivije je:
+PDO::FETCH_CLASS
+
+Recimo:
+class User
+{
+    public int $id;
+    public string $name;
+}
+
+Možeš da kažeš PDO-u da red mapira u objekat te klase:
+$stmt->setFetchMode(PDO::FETCH_CLASS, User::class);
+
+$user = $stmt->fetch();
+
+i dobiješ objekat:
+$user->id;
+$user->name;
+
+Mentalno:
+FETCH_ASSOC
+→ associative array
+
+FETCH_OBJ
+→ stdClass objekat
+
+FETCH_CLASS
+→ instanca konkretne klase
+
+Ali ovo je važno: FETCH_CLASS nije ORM.
+PDO samo mapira kolone na properties objekta. Nema automatski:
+relations
+dirty tracking
+save()
+delete()
+casts
+events
+
+kao Eloquent.
+Dakle:
+PDO FETCH_CLASS
+→ row mapping
+
+Eloquent
+→ mnogo bogatiji ORM sloj
+
+Mini interview pitanje 15
+Koja je razlika između:
+PDO::FETCH_ASSOC
+PDO::FETCH_OBJ
+PDO::FETCH_CLASS
+
+i zašto FETCH_CLASS ne znači da je PDO postao ORM?
+
+---
+
+PDO::FETCH_ASSOC vraća podatke u vidu niza
+PDO::FETCH_OBJ - u vidu objekta stdClass
+PDO::FETCH_CLASS - mapira polja iz baze na properties jedne klase, na primer User
+
+Ipak, ovo poslednje nije ORM, samo mapira polja na properties 
+ali nema relations i ostalo što pripada ORM-u.
+
+---
+
+Tačno — 10/10.
+Baš ovako:
+FETCH_ASSOC
+→ associative array
+
+FETCH_OBJ
+→ stdClass objekat
+
+FETCH_CLASS
+→ mapira kolone na properties konkretne klase
+
+I odlično si razdvojio:
+FETCH_CLASS
+→ samo mapping reda
+
+ORM
+→ mapping + relations + persistence + lifecycle + query abstraction + još dosta toga
+
+Dakle PDO ostaje low-level DB access sloj.

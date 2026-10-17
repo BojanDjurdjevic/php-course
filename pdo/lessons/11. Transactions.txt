@@ -1,0 +1,154 @@
+Lekcija 11 — Transakcije kroz PDO
+
+Ovo će ti biti poznato iz SQL modula, 
+samo sada gledamo kako PHP upravlja transakcijom.
+
+SQL nivo:
+START TRANSACTION;
+
+UPDATE ...;
+INSERT ...;
+
+COMMIT;
+
+PDO nivo:
+$pdo->beginTransaction();
+
+try {
+    // SQL operacije
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    $pdo->rollBack();
+
+    throw $e;
+}
+
+Mentalna mapa:
+$pdo->beginTransaction()
+→ START TRANSACTION
+
+$pdo->commit()
+→ COMMIT
+
+$pdo->rollBack()
+→ ROLLBACK
+
+Dakle PDO ne izmišlja novu vrstu transakcije. 
+On samo daje PHP API kojim kontrolišemo DB transakciju.
+
+Na primer booking:
+$pdo->beginTransaction();
+
+try {
+    $stmt = $pdo->prepare(
+        'UPDATE room_inventory
+         SET available = available - 1
+         WHERE id = :id
+           AND available > 0'
+    );
+
+    $stmt->execute([
+        'id' => $inventoryId,
+    ]);
+
+    if ($stmt->rowCount() !== 1) {
+        throw new RuntimeException('No availability');
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO bookings (user_id, room_id)
+         VALUES (:user_id, :room_id)'
+    );
+
+    $stmt->execute([
+        'user_id' => $userId,
+        'room_id' => $roomId,
+    ]);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Ovde je veoma važna stvar:
+exception
+≠ automatski rollback
+
+Ako si otvorio transakciju, moraš da obezbediš da se neuspeh završi rollback-om.
+Zato često imamo:
+catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+inTransaction() proverava:
+da li PDO trenutno smatra da je konekcija unutar aktivne transakcije?
+
+To je korisno jer ne želiš da zoveš rollBack() ako transakcija više nije aktivna.
+Još jedna važna stvar:
+PDO transaction
+→ pripada konkretnoj PDO konekciji
+
+Dakle ako bi imao dve potpuno različite PDO konekcije:
+$pdoA
+$pdoB
+
+i otvoriš:
+$pdoA->beginTransaction();
+
+to ne znači da je $pdoB deo iste transakcije.
+Transakcija je vezana za tu DB connection/session.
+Mini interview pitanje 11
+Šta rade:
+$pdo->beginTransaction();
+$pdo->commit();
+$pdo->rollBack();
+$pdo->inTransaction();
+
+i zašto PDOException sam po sebi ne znači da je baza automatski rollback-ovala tvoju celu transakciju?
+
+---
+
+$pdo->beginTransaction(); - započinje Transakciju.
+$pdo->commit(); - konituje transakciju
+$pdo->rollBack(); - poništava transakciju.
+$pdo->inTransaction(); - proverava da li je u toku transakcija, na osnovu toga odlucujemo.
+
+Pdo Exception je vracanje greske ali to nije isto sto i zavrsetak transakcije. 
+Bolje je pitati inTransaction pa onda rollback
+
+---
+
+Tačno — 10/10.
+Lepo si razdvojio:
+PDOException
+→ signal da je nešto puklo
+
+ROLLBACK
+→ eksplicitna odluka da poništimo promene iz aktivne transakcije
+
+I zato je ovaj obrazac dobar:
+try {
+    $pdo->beginTransaction();
+
+    // DB operacije
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Važna nijansa: rollBack() vraća promene samo unutar te aktivne DB transakcije. 
+Ne može vratiti, recimo, obrisan fajl iz filesystem-a ili uspešan eksterni HTTP poziv.
