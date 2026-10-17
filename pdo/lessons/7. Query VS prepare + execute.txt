@@ -1,0 +1,188 @@
+Lekcija 7 — query() vs prepare() + execute()
+
+Oba služe da pošalju SQL bazi, ali nisu za iste situacije.
+
+1) $pdo->query()
+Koristi se kada nemaš spoljne/user-controlled vrednosti koje ubacuješ u upit.
+Primer:
+$stmt = $pdo->query(
+    'SELECT id, name FROM hotels ORDER BY name'
+);
+
+Ovde je SQL kompletan i fiksan.
+Mentalno:
+query()
+→ pošalji gotov SQL
+→ izvrši odmah
+→ vrati PDOStatement
+
+Dakle query() u jednom koraku praktično radi:
+pripremi + izvrši
+
+za jednostavan statički SQL.
+2) prepare() + execute()
+Koristiš kada imaš vrednosti koje dolaze spolja:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+Mentalno:
+prepare()
+→ SQL struktura
+
+execute()
+→ konkretne vrednosti + izvršenje
+
+Ovo je pravi pristup za:
+$_GET
+$_POST
+route parametre
+form input
+API payload
+bilo koje dinamičke vrednosti
+
+Ključna razlika
+Ovo je okej:
+$stmt = $pdo->query(
+    'SELECT * FROM hotels WHERE is_active = 1'
+);
+
+jer ništa spolja ne ubacujemo.
+Ali ovo:
+$email = $_POST['email'];
+
+$stmt = $pdo->query(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+
+je loš pristup.
+Ne zato što je query() sam po sebi nebezbedan, nego zato što si:
+SQL strukturu
++
+user input
+
+spojio u jedan string.
+Dakle:
+query()
+≠ nebezbedno
+
+prepare()
+≠ magično bezbedno samo zato što postoji
+
+Bezbednost dolazi iz toga da user vrednosti idu kroz placeholder-e.
+Šta oba vraćaju?
+Ovo je bitno:
+$stmt = $pdo->query(...);
+
+i:
+$stmt = $pdo->prepare(...);
+$stmt->execute(...);
+
+na kraju ti daju/rade preko:
+PDOStatement
+
+Zato posle oba možeš:
+$row = $stmt->fetch();
+
+ili:
+$rows = $stmt->fetchAll();
+
+Praktično pravilo
+Možeš da pamtiš ovako:
+Fiksan SQL bez dinamičkih vrednosti
+→ query()
+
+Dinamičke vrednosti
+→ prepare() + execute()
+
+Na primer:
+$pdo->query(
+    'SELECT COUNT(*) FROM hotels'
+);
+
+sasvim je okej.
+Ali:
+$stmt = $pdo->prepare(
+    'SELECT * FROM hotels WHERE city = :city'
+);
+
+$stmt->execute([
+    'city' => $city,
+]);
+
+je pravi izbor kada city dolazi od korisnika ili iz promenljive.
+Još jedna bitna stvar
+Prepared statement možeš ponovo koristiti:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE id = :id'
+);
+
+$stmt->execute(['id' => 5]);
+$user5 = $stmt->fetch();
+
+$stmt->execute(['id' => 10]);
+$user10 = $stmt->fetch();
+
+Dakle isti SQL template, različite vrednosti.
+To može biti praktično i za više sličnih operacija.
+Mentalna mapa:
+query()
+→ gotov SQL
+→ odmah izvršava
+
+prepare()
+→ priprema statement
+
+execute()
+→ prosleđuje vrednosti i izvršava
+
+oba
+→ rade preko PDOStatement rezultata
+
+Mini interview pitanje 7
+Zašto je ovo sasvim prihvatljivo:
+$pdo->query(
+    'SELECT id, name FROM hotels WHERE is_active = 1'
+);
+
+a ovo nije:
+$pdo->query(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+
+I da li je problem u samoj query() metodi ili u načinu na koji je drugi SQL sastavljen?
+
+---
+
+Prvi - query, sadrzi nesto sto je poznati podatak programeru i nije korisnicki unos.
+
+Drugi - sadrzi korisnicki unos slepljen direktno u upit i to nije bezbedno. Trebalo bi kroz prepared - pa execute.
+
+---
+
+Tačno — 10/10.
+Ključ je upravo ovo:
+problem nije query()
+problem je SQL string u koji je direktno ulepljen user-controlled podatak
+
+Dakle:
+$pdo->query(
+    'SELECT id, name FROM hotels WHERE is_active = 1'
+);
+
+je sasvim okej jer je SQL fiksan.
+Dok:
+$pdo->query(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+
+meša:
+SQL strukturu
++
+korisnički podatak
+
+i tu nastaje rizik od SQL injection-a.

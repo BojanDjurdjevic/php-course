@@ -1,0 +1,167 @@
+Lekcija 8 — execute([...]) vs bindValue() vs bindParam()
+Ovo je jedna od tema koju ljudi često koriste godinama, a nikad je ne razdvoje kako treba.
+Najjednostavniji stil je:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+Ovde vrednost prosleđujemo direktno u execute().
+To je često sasvim dovoljno.
+bindValue()
+Možemo i ovako:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->bindValue(':email', $email);
+
+$stmt->execute();
+
+Mentalno:
+bindValue()
+→ veži ovu konkretnu vrednost za placeholder
+
+Možemo navesti i tip:
+$stmt->bindValue(
+    ':id',
+    $id,
+    PDO::PARAM_INT
+);
+
+Na primer:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE id = :id'
+);
+
+$stmt->bindValue(':id', $id, PDO::PARAM_INT);
+
+$stmt->execute();
+
+bindParam() je drugačiji
+Ovde dolazi bitna razlika.
+$stmt->bindParam(':email', $email);
+
+bindParam() ne vezuje samo trenutnu vrednost promenljive.
+On vezuje promenljivu po referenci.
+To znači da se njena vrednost uzima kada se statement izvrši.
+Primer:
+$email = 'a@example.com';
+
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->bindParam(':email', $email);
+
+$email = 'b@example.com';
+
+$stmt->execute();
+
+Koji email ide u query?
+b@example.com
+
+Jer je bindParam() vezan za promenljivu $email, a ne za njenu vrednost u momentu bindovanja.
+Sa bindValue():
+$email = 'a@example.com';
+
+$stmt->bindValue(':email', $email);
+
+$email = 'b@example.com';
+
+$stmt->execute();
+
+statement koristi:
+a@example.com
+
+jer je vrednost uzeta u momentu bindValue() poziva.
+Mentalno:
+bindValue()
+→ veži vrednost
+
+bindParam()
+→ veži promenljivu po referenci
+
+Kada koristiti šta?
+U ogromnom broju običnih slučajeva dovoljno je:
+$stmt->execute([
+    'email' => $email,
+]);
+
+ili:
+$stmt->bindValue(':email', $email);
+$stmt->execute();
+
+bindParam() ima smisla kada namerno želiš da isti statement izvršavaš više puta dok menjaš istu promenljivu.
+Na primer:
+$stmt = $pdo->prepare(
+    'INSERT INTO tags (name) VALUES (:name)'
+);
+
+$stmt->bindParam(':name', $name);
+
+foreach ($tags as $tag) {
+    $name = $tag;
+    $stmt->execute();
+}
+
+Ovde lepo koristiš činjenicu da je placeholder vezan za $name.
+PDO parameter types
+Najčešći su:
+PDO::PARAM_STR
+PDO::PARAM_INT
+PDO::PARAM_BOOL
+PDO::PARAM_NULL
+
+Na primer:
+$stmt->bindValue(':id', $id, PDO::PARAM_INT);
+
+To eksplicitno kaže PDO-u:
+:id tretiraj kao integer
+
+Kod execute([...]) PDO nema tu istu eksplicitnu type specifikaciju po svakom parametru, pa bindValue() može biti koristan kada želiš precizniju kontrolu tipa.
+Mini interview pitanje 8
+Koja je suštinska razlika između:
+bindValue()
+
+i:
+bindParam()
+
+i šta će se desiti ovde:
+$email = 'a@example.com';
+
+$stmt->bindParam(':email', $email);
+
+$email = 'b@example.com';
+
+$stmt->execute();
+
+Koja vrednost će biti poslata bazi i zašto?
+
+---
+
+Tačno — 10/10.
+Suština je baš:
+bindValue()
+→ veže trenutnu vrednost
+
+bindParam()
+→ veže promenljivu po referenci
+→ vrednost se čita tek kada execute() krene
+
+Zato u:
+$email = 'a@example.com';
+
+$stmt->bindParam(':email', $email);
+
+$email = 'b@example.com';
+
+$stmt->execute();
+
+baza dobija:
+b@example.com
+
+jer je bindParam() vezan za $email kao promenljivu, ne za njen sadržaj u trenutku bindovanja.

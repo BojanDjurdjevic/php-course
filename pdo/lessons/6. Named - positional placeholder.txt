@@ -1,0 +1,299 @@
+Lekcija 6 — Named i positional placeholders
+PDO podržava dva glavna stila placeholder-a.
+Named placeholders
+Ovo si već koristio:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+Placeholder ima ime:
+:email
+
+Prednost je čitljivost.
+Ako imamo:
+$stmt = $pdo->prepare(
+    'SELECT *
+     FROM bookings
+     WHERE hotel_id = :hotel_id
+       AND status = :status'
+);
+
+$stmt->execute([
+    'hotel_id' => $hotelId,
+    'status' => 'confirmed',
+]);
+
+veoma jasno vidiš:
+:hotel_id → $hotelId
+:status   → confirmed
+
+Positional placeholders
+Možemo napisati i:
+$stmt = $pdo->prepare(
+    'SELECT *
+     FROM bookings
+     WHERE hotel_id = ?
+       AND status = ?'
+);
+
+$stmt->execute([
+    $hotelId,
+    'confirmed',
+]);
+
+Ovde nema imena.
+PDO ih povezuje po poziciji:
+prvi ?  → $hotelId
+drugi ? → 'confirmed'
+
+Dakle:
+named
+→ povezivanje po imenu
+
+positional
+→ povezivanje po redosledu
+
+Ja bih u većim query-jima uglavnom favorizovao named placeholders zbog čitljivosti.
+Na primer:
+WHERE hotel_id = :hotel_id
+  AND check_in >= :check_in
+  AND check_out <= :check_out
+  AND status = :status
+
+je lakše pratiti nego:
+WHERE hotel_id = ?
+  AND check_in >= ?
+  AND check_out <= ?
+  AND status = ?
+
+posebno kada query naraste.
+Placeholder predstavlja vrednost, ne SQL strukturu
+Ovo je jako važna stvar.
+Može:
+WHERE email = :email
+
+jer :email predstavlja vrednost.
+Ali ne treba očekivati da radi nešto poput:
+SELECT * FROM :table
+
+ili:
+ORDER BY :column
+
+u smislu da PDO placeholder bezbedno zameni naziv tabele ili kolone.
+Placeholder-i su za:
+VALUES
+
+ne za:
+SQL identifiers / SQL keywords / strukturu query-ja
+
+Dakle ovo je normalno:
+WHERE price >= :min_price
+
+Ali ako korisnik bira sortiranje:
+price
+name
+created_at
+
+ne radiš slepo:
+ORDER BY :sort
+
+nego aplikacija mora da napravi whitelist dozvoljenih SQL identifikatora:
+$allowed = ['price', 'name', 'created_at'];
+
+To ćemo kasnije dodatno povezati sa sigurnošću.
+Mini interview pitanje 6
+Koja je razlika između:
+WHERE email = :email
+
+i:
+WHERE email = ?
+
+i zašto placeholder možemo koristiti za vrednost, ali ne treba da ga tretiramo kao način da dinamički menjamo naziv tabele ili kolone?
+
+---
+
+Sustinska razlika je st prvi placeholder prepoznaje ime, dok drugi bira po poziciji. Za veće upite, praktičniji je prvi pristup.
+
+Placeholderi su namenjeni iskljucivo za VALUES, ne za kolone ili bilo sta drugo, jer ne mozemo ocekivati da placeholder izmeni kolonu.
+
+PS. Zaboravih te pitati jako vaznu stvar kod lekcije 1 i 2:
+
+Sta je sa prekidom konekcije na bazu? Da li je konekcija stalno otvorena u app ili jednostavno pdo driver to resava za nas?
+
+Znam da sql ima odredjeni limit po pitanju broja konekcija...
+
+---
+
+Da — i ovo je baš važan deo mentalnog modela PDO-a. 
+Tvoj odgovor za placeholder-e je 9.8/10; suština je tačna.
+Što se konekcije tiče: PDO konekcija po defaultu nije 
+zamišljena kao jedna večna konekcija koja stoji otvorena dok aplikacija postoji.
+
+U klasičnom PHP web request-u, recimo preko PHP-FPM:
+HTTP request
+   ↓
+PHP skripta počinje
+   ↓
+new PDO(...)
+   ↓
+otvara se DB konekcija
+   ↓
+query-ji
+   ↓
+response
+   ↓
+PHP request se završava
+   ↓
+PDO objekat se uništava
+   ↓
+DB konekcija se zatvara
+
+Dakle ako nemaš persistent connections, konekcija uglavnom živi koliko i taj PHP request.
+Na primer:
+$pdo = new PDO($dsn, $user, $pass);
+
+// query 1
+// query 2
+// query 3
+
+// kraj request-a
+
+Ne moraš na kraju da radiš nešto kao:
+$pdo->close();
+
+PDO čak nema klasičan close() metod kao neki drugi API-ji.
+Ako baš želiš ručno da oslobodiš reference:
+$pdo = null;
+
+ali u normalnom request lifecycle-u to uglavnom nije potrebno, jer PHP očisti objekat na kraju request-a.
+E sad, ono što si dobro primetio: MySQL ima limit konekcija. 
+To znači da server može istovremeno da prihvati samo određen broj aktivnih connection-a.
+
+Zato mentalno imamo:
+100 istovremenih PHP request-ova
+↓
+potencijalno do ~100 DB konekcija
+
+nije:
+1 aplikacija
+↓
+1 PDO konekcija zauvek
+
+nego više:
+svaki aktivni request koji koristi DB
+→ može imati svoju konekciju
+
+Naravno, stvarni broj zavisi od arhitekture, broja PHP-FPM worker-a, kada se konekcija otvara itd.
+Zato se često koristi lazy connection princip: nemoj otvarati DB konekciju ako request uopšte neće koristiti bazu.
+
+Na primer:
+GET /health
+
+možda ne treba DB.
+Dok:
+GET /hotels
+
+treba.
+Framework može da upravlja time za tebe.
+Postoje i persistent connections:
+$pdo = new PDO(
+    $dsn,
+    $user,
+    $password,
+    [
+        PDO::ATTR_PERSISTENT => true,
+    ]
+);
+
+Tada ideja nije:
+ova konekcija nikada neće biti zatvorena.
+
+nego više:
+kada se PHP request završi, konekcija može ostati vezana za worker/proces 
+i biti ponovo iskorišćena za neki sledeći request.
+
+Mentalno:
+bez persistent:
+
+Request A
+→ connect
+→ queries
+→ disconnect
+
+Request B
+→ connect
+→ queries
+→ disconnect
+
+sa persistent:
+PHP worker
+   ↓
+DB connection ostaje dostupna
+
+Request A
+→ koristi konekciju
+
+Request završen
+→ konekcija može ostati
+
+Request B na istom worker-u
+→ ponovo koristi postojeću konekciju
+
+To štedi cenu ponovnog uspostavljanja konekcije, ali uvodi dodatne komplikacije. 
+Zato persistent connection nije automatski „bolje“.
+
+Na primer moraš paziti na stanje konekcije:
+session variables
+temporary tables
+locks
+unfinished transaction
+connection-specific settings
+
+Ako konekciju ponovo koristi sledeći request, ne želiš da nasledi neko neočekivano stanje.
+Posebno ovo:
+$pdo->beginTransaction();
+
+pa request pukne pre:
+$pdo->commit();
+
+je nešto čime connection management mora pažljivo da se bavi.
+
+Zato se u modernim aplikacijama connection pooling/reuse rešava dosta pažljivo na nivou runtime-a, 
+proxy-ja ili infrastrukture, a ne samo tako što nasumično staviš:
+PDO::ATTR_PERSISTENT => true
+
+Najvažnije za sada:
+PDO objekat
+→ predstavlja DB konekciju
+
+standardni PHP request
+→ PDO konekcija tipično traje do kraja request-a
+
+kraj request-a
+→ PHP oslobađa objekat i normalna konekcija se zatvara
+
+više paralelnih request-ova
+→ više paralelnih DB konekcija
+
+MySQL max_connections
+→ ograničava koliko ih može biti istovremeno
+
+PDO driver
+→ obavlja low-level komunikaciju
+ali aplikacija/runtime i dalje moraju razumno upravljati konekcijama
+
+I ovo će ti možda posebno kliknuti zbog Laravela: kada u kontroleru napišeš:
+User::find(5);
+
+ti ne razmišljaš o:
+connect()
+query()
+disconnect()
+
+jer Laravel + PHP runtime upravljaju tim lifecycle-om ispod tebe. Ali MySQL i dalje u realnosti vidi prave DB konekcije.
+Sledeća lekcija nam se sada prirodno nameće: šta je tačno $pdo->query() i kako se razlikuje od prepare() + execute(), 
+jer će tu postati jasno kada statement ide direktno bazi, a kada imamo placeholder flow.

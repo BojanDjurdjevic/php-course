@@ -1,0 +1,126 @@
+Lekcija 4 — PDO attributes i error mode
+Kada pravimo PDO objekat, možemo mu zadati opcije ponašanja:
+$pdo = new PDO(
+    $dsn,
+    $username,
+    $password,
+    [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]
+);
+
+Ovo:
+PDO::ATTR_ERRMODE
+
+znači:
+Kako želim da se PDO ponaša kada nastane DB greška?
+
+A:
+PDO::ERRMODE_EXCEPTION
+
+znači:
+Baci exception.
+
+Mentalno:
+SQL problem
+   ↓
+PDO vidi grešku
+   ↓
+PDOException
+   ↓
+try/catch ili globalni exception handler
+
+Na primer:
+try {
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (email) VALUES (:email)'
+    );
+
+    $stmt->execute([
+        'email' => $email,
+    ]);
+} catch (PDOException $e) {
+    // DB operacija nije uspela
+}
+
+Ovo je mnogo zgodnije od logike tipa:
+if (!$something) {
+    // proveravaj error ručno...
+}
+
+jer se lepo uklapa u normalan exception flow aplikacije.
+Drugi attribute:
+PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+
+kaže:
+Kada kasnije radim fetch(), podrazumevano mi vrati associative array.
+
+Pa:
+$user = $stmt->fetch();
+
+može dati:
+[
+    'id' => 5,
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+]
+
+umesto da svaki put pišeš:
+$stmt->fetch(PDO::FETCH_ASSOC);
+
+Važna mentalna razlika:
+PDO attributes
+→ konfigurišu ponašanje PDO konekcije
+
+SQL
+→ govori MySQL-u šta da radi sa podacima
+
+Dakle:
+PDO::ATTR_ERRMODE
+
+nije MySQL opcija u samom SQL-u — to je podešavanje PDO sloja.
+Mini interview pitanje 4
+Šta znači:
+PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+
+i zašto je exception-based pristup praktičniji od toga da posle svake DB operacije ručno proveravamo da li je nešto vratilo false?
+
+---
+
+PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION kaze:
+
+U slucaju nekog problema, vrati mi gresku.
+
+
+I to je mnogo prakticnije jer odmah imamo spremnu gresku, nego da mi rucno posle proveravamo if(!$something)...
+
+---
+
+Tačno — 9.8/10.
+Samo bih terminološki zamenio:
+„vrati mi grešku“
+
+sa preciznijim:
+„baci exception“
+
+Dakle:
+PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+
+znači:
+Ako DB operacija prijavi grešku
+→ PDO baca PDOException
+
+To je praktičnije jer ne moramo posle svake operacije da radimo:
+if (!$result) {
+    // šta se desilo?
+}
+
+nego exception prirodno prekida normalan tok i može da ode do:
+try {
+    // DB operacije
+} catch (PDOException $e) {
+    // obrada greške
+}
+
+ili još češće u ozbiljnijoj aplikaciji do centralnog/globalnog exception handler-a.

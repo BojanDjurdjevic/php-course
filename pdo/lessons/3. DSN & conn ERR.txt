@@ -1,0 +1,182 @@
+Lekcija 2 — DSN i kreiranje konekcije
+
+Tipičan PDO connection izgleda ovako:
+
+$dsn = 'mysql:host=localhost;dbname=booking;charset=utf8mb4';
+
+$pdo = new PDO(
+    $dsn,
+    'root',
+    ''
+);
+
+DSN znači:
+Data Source Name
+
+i opisuje gde i kako želimo da se povežemo.
+Ovde:
+mysql:
+→ koristi MySQL PDO driver
+
+host=localhost
+→ MySQL server je na localhost-u
+
+dbname=booking
+→ želimo database booking
+
+charset=utf8mb4
+→ charset konekcije
+
+Credentials su odvojeni:
+username
+password
+
+Dakle mentalno:
+DSN
+→ gde idem i kojim driver-om
+
+username/password
+→ ko sam
+
+I ovo je važno: dbname nije MySQL server. Jedan MySQL server može imati više baza:
+MySQL Server
+├── booking
+├── automarket
+├── staycore
+└── test
+
+PDO se prvo povezuje na server, a DSN može odmah da kaže i koju bazu želimo da koristimo.
+Sledeće mini interview pitanje
+Šta je DSN u PDO-u i koja je razlika između:
+host
+
+i:
+dbname
+
+u ovom stringu?
+mysql:host=localhost;dbname=booking;charset=utf8mb4
+
+---
+
+DSN opisuje gde i kako zelimo da se konwktujemo.
+U stringu - primeru, host oznacava host baze, na kome moze biti vise baza, a dbname naravno ime baze na koju se konektujemo.
+
+---
+
+Tačno — 10/10.
+Samo bih izraz „host baze“ malo precizirao u:
+host
+→ host na kome radi DB server
+
+jer na jednom MySQL serveru možeš imati više baza:
+MySQL Server @ localhost
+├── booking
+├── automarket
+├── staycore
+└── test
+
+A:
+dbname=booking
+
+kaže koju od tih baza želiš da koristiš.
+Mentalno:
+mysql:
+→ koji PDO driver
+
+host=localhost
+→ gde je MySQL server
+
+dbname=booking
+→ koju bazu na tom serveru
+
+charset=utf8mb4
+→ kojim charset-om komuniciramo
+
+Lekcija 3 — šta se dešava kada konekcija ne uspe?
+Kad napišeš:
+$pdo = new PDO(
+    'mysql:host=localhost;dbname=booking;charset=utf8mb4',
+    'root',
+    'password'
+);
+
+PDO pokušava da uspostavi konekciju odmah.
+Ako je, recimo:
+pogrešan password
+pogrešan host
+MySQL server ugašen
+baza ne postoji
+
+konstruktor neće vratiti normalan $pdo objekat, nego baca:
+PDOException
+
+Zato često vidiš:
+try {
+    $pdo = new PDO($dsn, $username, $password);
+} catch (PDOException $e) {
+    // connection failed
+}
+
+Dakle:
+new PDO(...)
+→ pokušaj konekcije
+
+uspeh
+→ dobijaš PDO objekat
+
+neuspeh
+→ PDOException
+
+I ovo je lepa razlika u odnosu na kasniji SQL statement:
+connection error
+→ problem uspostavljanja DB konekcije
+
+query error
+→ konekcija postoji, ali SQL izvršenje ne uspe
+
+Na primer:
+$pdo = new PDO(...); // uspe
+
+$stmt = $pdo->prepare(
+    'SELECT * FROM nepostojeca_tabela'
+);
+
+$stmt->execute(); // ovde nastaje SQL problem
+
+Dakle ne mešamo:
+"ne mogu da dođem do baze"
+
+sa:
+"do baze sam došao, ali je SQL loš"
+
+Mini interview pitanje 3
+Ako new PDO(...) uspe, šta to znači?
+A ako pogrešimo password ili MySQL server nije dostupan — šta očekujemo da se dogodi i koja je razlika između takve greške i greške pri izvršavanju SQL statement-a?
+
+---
+
+To znaci da imamo error prilikom konekcije na bazu. Dakle, umesto normalnig pdo objekta, nazad dobujemo PDOException -> connectio error.
+
+Za razliku od toga, pri izvrsavanju sql statementa, ako je upit los, dobijamo query error.
+
+---
+
+Tačno — 10/10.
+Baš tako:
+new PDO(...) ne uspe
+→ nema validnog PDO objekta
+→ PDOException
+→ connection problem
+
+dok:
+PDO konekcija postoji
+→ statement se izvršava
+→ SQL je pogrešan / constraint pukne / tabela ne postoji
+→ query/statement error
+
+Drugim rečima:
+connection error
+→ problem pre nego što normalno počnemo da radimo sa bazom
+
+query error
+→ konekcija postoji, ali konkretna DB operacija nije uspela

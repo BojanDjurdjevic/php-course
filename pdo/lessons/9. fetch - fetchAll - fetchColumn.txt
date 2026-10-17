@@ -1,0 +1,158 @@
+Lekcija 9 — fetch(), fetchAll() i fetchColumn()
+Sada prelazimo na drugu stranu PDO toka.
+Do sada smo radili:
+PHP
+→ PDO
+→ MySQL
+
+Sada gledamo povratak:
+MySQL rezultat
+→ PDOStatement
+→ PHP
+
+Recimo:
+$stmt = $pdo->prepare(
+    'SELECT id, name, email
+     FROM users
+     WHERE id = :id'
+);
+
+$stmt->execute([
+    'id' => 5,
+]);
+
+Query je izvršen.
+Ali rezultat još nismo izvukli u PHP promenljivu.
+Tu dolazi:
+$stmt->fetch();
+
+fetch()
+fetch() uzima jedan sledeći red iz result set-a.
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+može vratiti:
+[
+    'id' => 5,
+    'name' => 'Bojan',
+    'email' => 'bojan@example.com',
+]
+
+Ako nema više redova:
+false
+
+Zato često vidiš:
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$user) {
+    // user not found
+}
+
+Mentalno:
+fetch()
+→ daj mi sledeći red
+
+Ako result ima 100 redova:
+$row1 = $stmt->fetch();
+$row2 = $stmt->fetch();
+$row3 = $stmt->fetch();
+
+svaki poziv pomera cursor na sledeći red.
+fetchAll()
+Ako želiš sve redove odjednom:
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+dobiješ:
+[
+    [
+        'id' => 1,
+        'name' => 'Ana',
+    ],
+    [
+        'id' => 2,
+        'name' => 'Marko',
+    ],
+    [
+        'id' => 3,
+        'name' => 'Bojan',
+    ],
+]
+
+Mentalno:
+fetchAll()
+→ učitaj sve preostale redove u PHP
+
+To je praktično, ali ima važnu cenu:
+veliki result set
+→ mnogo PHP memorije
+
+Ako query vrati 500.000 redova, fetchAll() može biti vrlo loša ideja.
+Tada je bolje:
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    // obrađuj red po red
+}
+
+To je mnogo štedljivije po memoriji.
+fetchColumn()
+Kad ti treba samo jedna vrednost:
+$stmt = $pdo->query(
+    'SELECT COUNT(*) FROM users'
+);
+
+$count = $stmt->fetchColumn();
+
+Ako query vrati:
+COUNT(*)
+--------
+153
+
+fetchColumn() ti direktno daje:
+153
+
+bez potrebe za:
+$row = $stmt->fetch();
+$count = $row['COUNT(*)'];
+
+Još lepše uz alias:
+$stmt = $pdo->query(
+    'SELECT COUNT(*) AS total FROM users'
+);
+
+$count = $stmt->fetchColumn();
+
+Ali fetchColumn() gleda kolonu po poziciji, najčešće prvu.
+PDO::FETCH_ASSOC
+Ako smo konekciju napravili sa:
+PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+
+onda možemo jednostavno:
+$user = $stmt->fetch();
+
+i dobićemo associative array.
+Bez tog default-a, PDO može imati drugi fetch mode, pa je dobro da znaš da fetch mode utiče na oblik rezultata.
+Najvažnije:
+fetch()
+→ jedan red
+
+fetchAll()
+→ svi redovi
+
+fetchColumn()
+→ jedna vrednost iz jedne kolone
+
+I još:
+fetchAll()
+→ praktično za mali/srednji rezultat
+
+fetch() u petlji
+→ bolje za veoma veliki result set
+
+Mini interview pitanje 9
+Koja je razlika između:
+fetch()
+fetchAll()
+fetchColumn()
+
+i zašto fetchAll() može biti loš izbor ako query vraća ogroman broj redova?
+
+---
+

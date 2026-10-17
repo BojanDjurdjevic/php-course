@@ -1,0 +1,132 @@
+Lekcija 5 — prepare() vs execute()
+Ovo je jedna od najvažnijih stvari u celom PDO modulu.
+Imamo:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+Šta je ovde urađeno?
+Napravili smo:
+PDOStatement
+
+koji predstavlja SQL šablon:
+SELECT *
+FROM users
+WHERE email = :email
+
+Ali još nemamo konkretnu vrednost za:
+:email
+
+i još nismo rekli:
+izvrši ovaj statement sa ovim podatkom.
+
+Tek onda radimo:
+$stmt->execute([
+    'email' => $email,
+]);
+
+Mentalno:
+prepare()
+→ pripremi SQL strukturu
+
+execute()
+→ izvrši statement sa konkretnim vrednostima
+
+To je veoma važna podela.
+Na primer:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE id = :id'
+);
+
+možemo isti statement koristiti više puta:
+$stmt->execute(['id' => 5]);
+$user5 = $stmt->fetch();
+
+$stmt->execute(['id' => 10]);
+$user10 = $stmt->fetch();
+
+SQL struktura je ista:
+WHERE id = :id
+
+samo menjamo podatak.
+I sada dolazimo do bezbednosti.
+Loš pristup:
+$sql = "
+    SELECT *
+    FROM users
+    WHERE email = '$email'
+";
+
+Ovde smo spojili:
+SQL sintaksu
++
+user-controlled podatak
+
+u jedan string.
+Kod prepared statement-a:
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+mentalno držimo odvojeno:
+SQL struktura
+→ SELECT ... WHERE email = :email
+
+podatak
+→ vrednost $email
+
+To je suština prepared statements-a.
+Mini interview pitanje 5
+Koja je razlika između:
+$pdo->prepare(...)
+
+i:
+$stmt->execute(...)
+
+i zašto je korisno što SQL struktura i korisničke vrednosti nisu spojene u jedan običan string?
+
+---
+
+$pdo->prepare(...) jeste priprema upita sa da kazemo placeholderom podatka, na primer =:email...
+
+$stmt->execute(...) vezuje podatak za taj 'placeholcder' i izvrsava upit.
+
+Ovo je korisno, jer kada bi sve bilo spojeno u jedan string, ne bi bilo bezbedno jer su podaci koji nam dolaze user controlled.
+
+---
+
+Tačno — 9.8/10.
+Suština ti je dobra:
+prepare()
+→ pravi/priprema SQL statement sa placeholder-ima
+
+execute()
+→ prosleđuje konkretne vrednosti i izvršava statement
+
+Samo mala preciznost: execute([...]) možemo praktično posmatrati kao prosleđivanje/bindovanje vrednosti za to izvršenje, ali kasnije ćemo razlikovati to od eksplicitnih metoda:
+bindValue()
+bindParam()
+
+Najvažniji deo odgovora ti je ovaj:
+SQL struktura i user-controlled podatak ne smeju biti slepljeni u jedan string.
+
+Mentalno:
+SQL
+WHERE email = :email
+        ↑
+placeholder
+
+DATA
+bojan@example.com
+
+Baza dobija jasnu razliku između:
+šta je SQL instrukcija
+
+i:
+šta je samo vrednost
+
+To je centralna ideja zaštite od SQL injection-a.
