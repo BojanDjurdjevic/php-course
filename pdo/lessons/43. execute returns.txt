@@ -1,0 +1,217 @@
+Lekcija 43 — Šta zapravo vraća execute()?
+
+Ovo je mala, ali veoma važna razlika.
+
+Kad napišemo:
+$result = $stmt->execute([
+    'id' => $id,
+]);
+
+$result nije SELECT rezultat.
+execute() nam konceptualno govori:
+Da li je statement uspešno izvršen?
+
+U odgovarajućem error mode-u uspešno izvršenje daje:
+true
+
+Ali podatke tek čitamo preko:
+$stmt->fetch();
+$stmt->fetchAll();
+$stmt->fetchColumn();
+
+Dakle:
+$executed = $stmt->execute([
+    'id' => 5,
+]);
+
+$user = $stmt->fetch();
+
+mentalno:
+execute()
+→ pokreni statement
+
+fetch()
+→ pročitaj rezultat statement-a
+
+Isto kod UPDATE:
+$stmt->execute([...]);
+
+ne znači:
+"promenjen je tačno jedan red"
+
+Za to posle gledamo:
+$stmt->rowCount();
+
+Dakle postoje tri različita pitanja:
+execute()
+→ da li je statement izvršen?
+
+fetch()
+→ koji podatak je SELECT vratio?
+
+rowCount()
+→ koliko je redova pogođeno odgovarajućim DML statement-om?
+
+A pošto smo uključili:
+PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+
+u praksi često ni ne pišemo:
+if (!$stmt->execute()) { ... }
+
+jer ozbiljna DB greška baca exception i normalan flow se prekida.
+Mini interview pitanje 44
+Zašto je pogrešno očekivati da:
+$user = $stmt->execute([
+    'id' => 5,
+]);
+
+u $user vrati podatke korisnika?
+Šta execute() predstavlja, a koju metodu bi zatim koristio da uzmeš stvarni SELECT rezultat?
+
+---
+
+execute() samo vraca true ili false kao odgovor da li je upit izvrsen a za povlacenje podataka koristimo ->fetch()
+
+---
+
+Tačno — 10/10.
+Precizno:
+execute()
+→ izvršava statement
+→ vraća true ako je izvršenje uspelo
+→ kod ERRMODE_EXCEPTION greška tipično prekida tok exception-om
+
+fetch()
+→ čita sledeći red SELECT rezultata
+
+Dakle ovo je pogrešno:
+$user = $stmt->execute([
+    'id' => 5,
+]);
+
+jer je $user ovde zapravo rezultat izvršenja statement-a, ne red iz baze.
+Pravilno:
+$stmt->execute([
+    'id' => 5,
+]);
+
+$user = $stmt->fetch();
+
+Lekcija 44 — fetchColumn() sa indeksom kolone
+Već znamo:
+$stmt->fetchColumn();
+
+uzima jednu vrednost iz sledećeg reda.
+Ali možemo navesti i koju kolonu po poziciji želimo.
+Recimo:
+SELECT id, name, email
+FROM users
+WHERE id = 5;
+
+Kolone su pozicionirane:
+0 → id
+1 → name
+2 → email
+
+Pa:
+$id = $stmt->fetchColumn(0);
+
+uzima:
+id
+
+Dok:
+$name = $stmt->fetchColumn(1);
+
+uzima:
+name
+
+Važno: indeksiranje kreće od 0.
+Najčešći slučaj ipak ostaje:
+$stmt = $pdo->query(
+    'SELECT COUNT(*) FROM users'
+);
+
+$count = $stmt->fetchColumn();
+
+što je isto kao:
+$count = $stmt->fetchColumn(0);
+
+jer nas zanima prva kolona prvog/sledećeg reda.
+Još jedna nijansa
+Ako ima više redova:
+id | name
+1  | Ana
+2  | Marko
+3  | Bojan
+
+onda:
+$stmt->fetchColumn(1);
+
+uzima name iz prvog reda:
+Ana
+
+sledeći:
+$stmt->fetchColumn(1);
+
+uzima:
+Marko
+
+Dakle fetchColumn() takođe pomera cursor na sledeći red.
+Mentalno:
+fetchColumn(0)
+→ vrednost prve kolone sledećeg reda
+
+fetchColumn(1)
+→ vrednost druge kolone sledećeg reda
+
+Mini interview pitanje 45
+Ako query vraća:
+id | name | email
+5  | Ana  | ana@test.com
+
+šta će vratiti:
+$stmt->fetchColumn(0);
+
+a šta:
+$stmt->fetchColumn(2);
+
+I od kog broja PDO računa poziciju kolone?
+
+---
+
+Pdo racuna od indexa 0.
+
+$stmt->fetchColumn(0); vraca 5
+
+$stmt->fetchColumn(2); - ana@test.com
+
+---
+
+Za poslednji odgovor: 10/10.
+$stmt->fetchColumn(0); // 5
+$stmt->fetchColumn(2); // ana@test.com
+
+i indeks kreće od 0.
+
+Mislim da je pravi trenutak da zatvorimo teorijski deo PDO modula. Jezgro smo pokrili dovoljno duboko:
+
+PDO mental model / connection / driver
+DSN i attributes
+PDO vs PDOStatement
+query / exec / prepare / execute
+named i positional placeholders
+bindValue / bindParam
+PARAM_* tipovi
+fetch / fetchAll / fetchColumn / fetch modes
+rowCount / lastInsertId
+native vs emulated prepares
+errors / PDOException / errorInfo
+transactions / commit / rollback / inTransaction
+SAVEPOINT
+FOR UPDATE
+autocommit
+dynamic IN / ORDER BY / filters
+pagination
+NULL
+DI + Repository + Service transaction boundary
+connection lifecycle

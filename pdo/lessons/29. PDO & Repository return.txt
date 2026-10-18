@@ -1,0 +1,115 @@
+Lekcija 29 — PDO i repository return values
+
+Sad dolazimo do jedne praktične arhitektonske teme: šta repository treba da vraća.
+
+Recimo:
+class UserRepository
+{
+    public function find(int $id): array|false
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id, name, email
+             FROM users
+             WHERE id = :id'
+        );
+
+        $stmt->execute([
+            'id' => $id,
+        ]);
+
+        return $stmt->fetch();
+    }
+}
+
+Ovde repository direktno vraća:
+array
+ili
+false
+
+To je najjednostavniji pristup.
+Ali možemo imati i model/DTO pristup:
+public function find(int $id): ?User
+
+pa:
+$row = $stmt->fetch();
+
+if (!$row) {
+    return null;
+}
+
+return new User(
+    id: (int) $row['id'],
+    name: $row['name'],
+    email: $row['email'],
+);
+
+Mentalno:
+PDO
+→ sirovi DB rezultat
+
+Repository
+→ može da ga pretvori u oblik koji aplikacija koristi
+
+To lepo odvaja:
+DB representation
+
+od:
+application/domain representation
+
+Na primer baza može vratiti:
+[
+    'id' => '15',
+    'is_active' => '1',
+]
+
+a repository može vratiti objekat:
+User {
+    id: 15,
+    isActive: true
+}
+
+Dakle repository nije samo mesto gde stoji SQL. Često je i granica između:
+DB sveta
+i
+application sveta
+
+Mini interview pitanje 30
+Zašto može biti korisno da repository ne vraća direktno svaki put sirovi PDO::FETCH_ASSOC rezultat, 
+nego da ga mapira u User, Booking, DTO ili neki drugi application-level objekat?
+
+---
+
+Zato sto onda Repository moze da pretvori DB rezultat u oblik koji app koristi.
+
+---
+
+Tačno — 9.7/10.
+Suština je upravo:
+PDO / DB
+→ sirovi rezultat
+
+Repository
+→ mapiranje
+
+Application
+→ dobija oblik koji razume i koristi
+
+Na primer baza može vratiti:
+[
+    'id' => '15',
+    'is_active' => '1',
+]
+
+a repository:
+return new User(
+    id: (int) $row['id'],
+    isActive: (bool) $row['is_active'],
+);
+
+Time ostatak aplikacije ne mora da zna detalje poput:
+kako PDO vraća podatke
+kako se zovu DB kolone
+da li je boolean stigao kao 0/1
+koji fetch mode koristimo
+
+To je dobra granica između persistence sloja i ostatka aplikacije.

@@ -1,0 +1,221 @@
+Lekcija 33 — commit() nije isto što i „query je uspeo“
+
+Ovo je veoma važna nijansa kod transakcija.
+
+Recimo:
+$pdo->beginTransaction();
+
+$stmt->execute(); // UPDATE uspe
+$stmt->execute(); // INSERT uspe
+
+$pdo->commit();
+
+Možemo imati situaciju gde su pojedinačni statement-i prošli, 
+ali transakcija još nije trajno završena dok ne dođe:
+$pdo->commit();
+
+Pre COMMIT:
+promene postoje unutar tvoje transakcije
+ali još nisu konačno potvrđene
+
+Tek:
+COMMIT
+→ potvrdi celu transakciju
+
+Slično:
+$stmt->execute();
+
+koji vrati uspeh ne znači:
+cela poslovna operacija je završena.
+
+Možda tek sledeći statement pukne:
+UPDATE inventory ✅
+INSERT booking ❌
+
+pa:
+ROLLBACK
+
+poništi i onaj prvi uspešan UPDATE.
+Zato razlikujemo:
+statement success
+≠
+transaction success
+
+Transakcija je uspešna tek kada:
+sve operacije prođu
++
+COMMIT uspe
+
+Mini interview pitanje 34
+Zašto nije dovoljno reći:
+„Prvi UPDATE je uspeo, znači inventory je sigurno sačuvan“
+
+ako smo još uvek unutar otvorene transakcije i commit() još nije pozvan?
+
+---
+
+Zato sto iza njega moze doci sledeci koji padne, pa rollback poništi i onaj koji je prethodno prošao
+
+---
+
+Tačno — 10/10.
+U transakciji moraš razmišljati na nivou cele operacije, ne pojedinačnog statement-a:
+UPDATE inventory ✅
+INSERT booking ❌
+ROLLBACK
+
+Rezultat:
+UPDATE inventory
+→ iako je prethodno uspeo
+→ poništava se
+
+Zato je prava mentalna podela:
+statement uspeo
+→ taj konkretan SQL se izvršio
+
+transaction uspela
+→ svi potrebni statement-i su prošli
+→ COMMIT je završen
+
+-------------------------------------------------
+
+Lekcija 34 — commit() i exception handling
+Ovde postoji još jedna fina stvar.
+Često vidiš:
+$pdo->beginTransaction();
+
+try {
+    // query 1
+    // query 2
+    // query 3
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Važno je da je i:
+$pdo->commit();
+
+unutar try bloka.
+Zašto?
+Zato što ni commit() ne treba mentalno tretirati kao nešto što „ne može da pukne“.
+Ako commit iz nekog razloga ne uspe, želimo da exception uđe u isti error flow.
+Dakle:
+BEGIN
+↓
+DB operacije
+↓
+COMMIT
+↓
+tek tada smatramo operaciju završenom
+
+Ne:
+DB query-ji prošli
+→ gotovo
+
+A šta ako se exception desi pre commit()?
+Onda:
+catch (Throwable $e)
+
+hvata problem i proveravamo:
+if ($pdo->inTransaction()) {
+    $pdo->rollBack();
+}
+
+Zašto proveravamo inTransaction()?
+Jer ne želimo slepo:
+$pdo->rollBack();
+
+ako više nema aktivne transakcije.
+Na primer, moglo je doći do situacije gde je transaction state već završen ili promenjen.
+Zato:
+inTransaction()
+→ "Da li trenutno postoji aktivna transakcija?"
+
+DA
+→ rollback
+
+NE
+→ ne pokušavaj rollback
+
+Još jedna važna stvar: external side effects
+Recimo booking flow:
+BEGIN
+
+UPDATE inventory
+INSERT booking
+
+send email
+
+COMMIT
+
+Ovo je loš raspored.
+Zašto?
+Jer email nije deo DB transakcije.
+Ako:
+email ode ✅
+COMMIT pukne ❌
+
+korisnik može dobiti:
+rezervacija potvrđena
+
+a u bazi rezervacija nije commitovana.
+Zato mnogo češće želiš:
+BEGIN
+UPDATE inventory
+INSERT booking
+COMMIT
+
+tek onda:
+→ email
+→ notification
+→ queue job
+
+Ili koristiš ozbiljnije obrasce poput outbox pattern-a, 
+ali to ćemo ostaviti za kasnije.
+To je direktno povezano sa tvojim Laravel iskustvom sa:
+afterCommit
+
+Poenta je ista:
+spoljne posledice ne treba pokretati kao da je transakcija 
+uspešna pre nego što je DB stvarno commitovan.
+
+Mini interview pitanje 35
+Zašto je loše uraditi:
+BEGIN
+INSERT booking
+send confirmation email
+COMMIT
+
+i zašto je bezbednije email/notification pokrenuti nakon uspešnog commit-a?
+
+---
+
+Zato sto se moze desiti da mail ode a commit pukne.
+
+Zato je bolje prvo commit pa ostale akcije: email, notification itd.
+
+---
+
+Tačno — 10/10.
+Baš to:
+email ✅
+COMMIT ❌
+
+bi napravio nekonzistentno stanje: korisnik je obavešten 
+o rezervaciji koja zapravo nije potvrđena u bazi.
+Zato je sigurniji tok:
+BEGIN
+↓
+INSERT / UPDATE
+↓
+COMMIT ✅
+↓
+email / notification / queue
+
+I to je ista ideja koju si već koristio u Laravelu sa afterCommit().

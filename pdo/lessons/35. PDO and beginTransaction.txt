@@ -1,0 +1,234 @@
+Lekcija 35 — Autocommit i zašto svaki query ne mora ručno imati COMMIT
+
+Ovo je važno za razumevanje šta se dešava kada nismo pozvali:
+
+$pdo->beginTransaction();
+
+MySQL tipično radi sa uključenim:
+autocommit
+
+To znači da običan samostalni statement poput:
+$stmt = $pdo->prepare(
+    'UPDATE users SET name = :name WHERE id = :id'
+);
+
+$stmt->execute([
+    'name' => $name,
+    'id' => $id,
+]);
+
+ne zahteva da posle pišeš:
+$pdo->commit();
+
+Ako nisi otvorio eksplicitnu transakciju, taj statement se 
+tretira kao sopstvena mala transakcija i nakon uspešnog izvršenja se automatski commit-uje.
+Mentalno, uprošćeno:
+autocommit ON
+
+UPDATE A
+→ izvrši
+→ COMMIT
+
+INSERT B
+→ izvrši
+→ COMMIT
+
+DELETE C
+→ izvrši
+→ COMMIT
+
+Zato ovo:
+$stmt->execute();
+
+van eksplicitne transakcije može odmah napraviti trajnu DB promenu.
+Ali čim uradimo:
+$pdo->beginTransaction();
+
+menjamo granicu:
+BEGIN
+
+UPDATE A
+INSERT B
+DELETE C
+
+COMMIT
+
+Sada sva tri statement-a želimo kao jednu celinu.
+Zašto je ovo bitno?
+Recimo:
+$inventoryRepository->decrease();
+$bookingRepository->create();
+
+Ako nema:
+$pdo->beginTransaction();
+
+onda praktično možeš dobiti:
+UPDATE inventory
+→ automatski commit ✅
+
+INSERT booking
+→ pukne ❌
+
+I sada si smanjio availability, ali booking ne postoji.
+Zato transakciju ne koristimo zato što SQL statement „inače neće biti sačuvan“, 
+nego zato što želimo:
+više statement-a da dele jednu atomic granicu.
+
+Mentalno:
+bez eksplicitne transakcije
+→ svaki write uglavnom stoji sam za sebe
+
+sa transakcijom
+→ više write-ova postaju jedna jedinica rada
+
+Još jedna važna MySQL zamka: DDL
+Nemoj pretpostaviti da baš svaki SQL statement možeš bezbrižno 
+staviti u transaction i očekivati:
+$pdo->rollBack();
+
+da ga vrati.
+Određene MySQL DDL operacije, poput nekih:
+CREATE TABLE
+ALTER TABLE
+DROP TABLE
+
+imaju posebnu transaction/implicit-commit semantiku.
+Dakle transaction mental model koji radimo prvenstveno primenjuj na poslovne DML operacije:
+INSERT
+UPDATE
+DELETE
+SELECT ... FOR UPDATE
+
+a za schema/DDL operacije treba proveriti ponašanje konkretnog DBMS-a.
+Mini interview pitanje 36
+Ako ne pozovemo:
+$pdo->beginTransaction();
+
+i izvršimo:
+UPDATE room_inventory
+SET available = available - 1
+WHERE id = 5;
+
+zašto nam uglavnom nije potreban ručni $pdo->commit()?
+I zašto nam ipak treba eksplicitna transakcija kada želimo da zajedno izvršimo:
+UPDATE inventory
++
+INSERT booking
+
+kao jednu nedeljivu poslovnu operaciju?
+
+---
+
+Zato sto je u SQL po default-u uključen autocommit, tako da se to odmah trajno čuva.
+Zato ako hocemo da nekoliko radnji se zajedno izvrse, otvaramo transakciju.
+
+---
+
+Tačno — 10/10.
+Najkraće:
+autocommit ON
+→ svaki samostalni write se po uspehu odmah potvrđuje
+
+explicit transaction
+→ više statement-a delimo u jednu atomic celinu
+
+Zato:
+UPDATE room_inventory ...
+
+van transakcije ne traži ručni commit().
+Ali:
+UPDATE inventory
++
+INSERT booking
+
+treba staviti u:
+BEGIN
+...
+COMMIT / ROLLBACK
+
+jer ne želimo stanje tipa:
+inventory smanjen ✅
+booking nije kreiran ❌
+
+---------------------------------------------------------
+
+Lekcija 36 — beginTransaction() i stanje PDO konekcije
+Sada jedna fina stvar: kada pozoveš:
+$pdo->beginTransaction();
+
+PDO menja stanje te konkretne konekcije.
+Zato:
+$pdo->inTransaction();
+
+može vratiti:
+true
+
+dok transakcija traje.
+Nakon:
+$pdo->commit();
+
+ili:
+$pdo->rollBack();
+
+više nismo u toj transakciji.
+Mentalno:
+new PDO(...)
+→ connection postoji
+
+beginTransaction()
+→ connection ulazi u transaction state
+
+commit() / rollBack()
+→ transaction state se završava
+
+I zato ne treba raditi:
+$pdo->beginTransaction();
+$pdo->beginTransaction();
+
+očekujući da PDO automatski pravi pravu nested transakciju.
+Za parcijalni rollback koristimo:
+SAVEPOINT
+
+kao što smo već radili.
+Mini interview pitanje 37
+Šta znači kada:
+$pdo->inTransaction()
+
+vrati true, a šta kada vrati false?
+I zašto to pitanje ima smisla samo u kontekstu te konkretne PDO konekcije?
+
+---
+
+True - transakcija u toku, false - zavrsena.
+
+Ima smisla u kontekstu jedne pdo konelcije jer pdo ne podrzava nested transactions.
+
+---
+
+Tačno za prvi deo, a drugi bih malo precizirao — 9.2/10.
+$pdo->inTransaction() === true
+→ ta konkretna PDO konekcija trenutno je unutar aktivne transakcije
+
+$pdo->inTransaction() === false
+→ trenutno nema aktivne transakcije
+→ ili nije ni započeta, ili je već commit/rollback završio
+
+Dakle false ne znači nužno samo „završena“, već jednostavno nema aktivne transakcije.
+A razlog što govorimo o konkretnoj PDO konekciji nije prvenstveno to što PDO nema nested transactions, nego zato što je transaction state vezan za connection/session.
+Na primer:
+$pdoA->beginTransaction();
+
+$pdoA->inTransaction(); // true
+$pdoB->inTransaction(); // false
+
+Iako oba možda rade nad istom MySQL bazom, to su dve različite DB sesije.
+Mentalno:
+PDO A
+→ connection A
+→ transaction A
+
+PDO B
+→ connection B
+→ nema veze sa transaction A
+
+To je ista stvar zbog koje dva repository-ja sa različitim PDO objektima ne mogu spontano učestvovati u istoj transakciji.

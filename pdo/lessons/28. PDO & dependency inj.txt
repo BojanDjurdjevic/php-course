@@ -1,0 +1,84 @@
+Lekcija 28 — PDO i dependency injection
+
+Sad možemo da imenujemo ono što si već radio u StayCore-u.
+
+Umesto da repository sam kreira svoju zavisnost:
+class BookingRepository
+{
+    private PDO $pdo;
+
+    public function __construct()
+    {
+        $this->pdo = new PDO(...);
+    }
+}
+
+bolje je:
+class BookingRepository
+{
+    public function __construct(
+        private PDO $pdo
+    ) {}
+}
+
+To je dependency injection:
+klasa dobija ono što joj treba spolja, umesto da sama pravi tu zavisnost.
+
+Bootstrap može da uradi:
+$pdo = new PDO(...);
+
+$bookingRepository = new BookingRepository($pdo);
+$inventoryRepository = new InventoryRepository($pdo);
+
+Prednosti su praktične:
+1. ista DB konekcija
+2. iste transakcije
+3. nema credentials po klasama
+4. lakše menjamo konfiguraciju
+5. lakše testiramo
+6. repository ima jednu odgovornost
+
+Repository treba da zna:
+Kako da učitam/snimim booking?
+
+a ne:
+Kako se pravi DB konekcija?
+Odakle dolazi password?
+Koji je host?
+
+To je separation of concerns.
+Mini interview pitanje 29
+Zašto je ovo:
+public function __construct(
+    private PDO $pdo
+) {}
+
+bolji dizajn nego da repository u svom konstruktoru sam radi:
+$this->pdo = new PDO(...);
+
+?
+Navedi mi 2–3 praktične prednosti.
+
+---
+
+1. ista DB konekcija
+2. iste transakcije
+3. nema credentials po klasama
+4. lakše menjamo konfiguraciju
+5. lakše testiramo
+6. repository ima jednu odgovornost
+
+---
+
+Tačno — 10/10.
+Ovo je baš kompletan odgovor. Posebno su bitne ove tri stvari:
+ista konekcija
+→ iste transakcije
+
+credentials van repository-ja
+→ čistija konfiguracija
+
+repository ima jednu odgovornost
+→ persistence logika, ne connection setup
+
+I lakše testiramo je takođe važna posledica dependency injection-a.

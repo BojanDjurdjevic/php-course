@@ -1,0 +1,126 @@
+Lekcija 39 — LIMIT, pagination i PDO
+
+Pošto smo u SQL modulu već radili pagination, sada gledamo PDO deo.
+
+Recimo:
+$page = 3;
+$perPage = 20;
+
+$offset = ($page - 1) * $perPage;
+
+Query:
+SELECT id, name, city
+FROM hotels
+ORDER BY id
+LIMIT :limit
+OFFSET :offset
+
+Ovde su LIMIT i OFFSET numeričke vrednosti, pa je vrlo čist pristup:
+$stmt = $pdo->prepare(
+    'SELECT id, name, city
+     FROM hotels
+     ORDER BY id
+     LIMIT :limit
+     OFFSET :offset'
+);
+
+$stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+$stmt->execute();
+
+$hotels = $stmt->fetchAll();
+
+Ali pagination obično ima još jedan query:
+SELECT COUNT(*)
+FROM hotels;
+
+jer aplikaciji možda treba:
+current page
+total rows
+per page
+total pages
+
+Pa:
+$total = (int) $pdo
+    ->query('SELECT COUNT(*) FROM hotels')
+    ->fetchColumn();
+
+$totalPages = (int) ceil($total / $perPage);
+
+Mentalno:
+COUNT(*)
+→ koliko ukupno rezultata postoji
+
+LIMIT
+→ koliko vrati
+
+OFFSET
+→ koliko preskoči
+
+Ako imamo filtere, vrlo je važno da COUNT(*) query koristi iste filtere kao data query.
+Na primer nije dobro:
+data query:
+city = Novi Sad
+
+count query:
+svi hoteli
+
+jer bi pagination metadata bila pogrešna.
+Treba:
+SELECT COUNT(*)
+FROM hotels
+WHERE city = :city;
+
+i data query:
+SELECT ...
+FROM hotels
+WHERE city = :city
+ORDER BY id
+LIMIT :limit OFFSET :offset;
+
+Dakle SQL uslovi moraju biti logički usklađeni.
+Mini interview pitanje 40
+Zašto kod klasične page-based pagination često imamo dva query-ja:
+SELECT COUNT(*)
+...
+
+i:
+SELECT ...
+LIMIT :limit OFFSET :offset
+
+i šta bi se desilo ako COUNT(*) query nema iste 
+WHERE filtere kao query koji vraća stvarne rezultate?
+
+---
+
+Prvo: zato sto nam je potrebna tacna info o broju redova.
+Drugo: SQL uslovi ne bi bili logicki usklađeni
+
+---
+
+Tačno — 9.7/10.
+Prvi query:
+SELECT COUNT(*)
+...
+
+služi da saznamo koliko ukupno redova odgovara filterima, 
+jer LIMIT/OFFSET vraća samo isečak rezultata.
+Drugi:
+SELECT ...
+LIMIT :limit OFFSET :offset
+
+vraća stvarne podatke za trenutnu stranicu.
+Ako filteri nisu isti, dobijaš pogrešnu pagination matematiku. Na primer:
+data query:
+city = Novi Sad
+→ 37 hotela
+
+COUNT query:
+bez city filtera
+→ 850 hotela
+
+Pa UI možda kaže:
+43 stranice
+
+iako za Novi Sad realno postoje samo dve.

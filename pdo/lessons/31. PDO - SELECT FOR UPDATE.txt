@@ -1,0 +1,122 @@
+Lekcija 31 — SELECT ... FOR UPDATE kroz PDO
+
+Ovo već znaš iz SQL modula. Sada samo povezujemo ceo lanac sa PDO-om.
+
+Recimo da imamo poslednju dostupnu sobu:
+
+$pdo->beginTransaction();
+
+try {
+    $stmt = $pdo->prepare(
+        'SELECT available
+         FROM room_inventory
+         WHERE room_id = :room_id
+           AND date = :date
+         FOR UPDATE'
+    );
+
+    $stmt->execute([
+        'room_id' => $roomId,
+        'date' => $date,
+    ]);
+
+    $inventory = $stmt->fetch();
+
+    if (!$inventory || $inventory['available'] < 1) {
+        throw new RuntimeException('No availability');
+    }
+
+    $stmt = $pdo->prepare(
+        'UPDATE room_inventory
+         SET available = available - 1
+         WHERE room_id = :room_id
+           AND date = :date'
+    );
+
+    $stmt->execute([
+        'room_id' => $roomId,
+        'date' => $date,
+    ]);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Ovde je vrlo važno da razdvojimo odgovornosti:
+PDO
+→ otvara/kontroliše transakciju
+→ šalje statement-e
+
+FOR UPDATE
+→ MySQL locking semantika
+
+MySQL/InnoDB
+→ stvarno zaključava odgovarajući red
+
+Dakle PDO sam po sebi ne zaključava red.
+On samo preko konekcije pošalje:
+SELECT ... FOR UPDATE
+
+MySQL-u, a MySQL radi locking.
+I FOR UPDATE ima smisla zato što smo prethodno uradili:
+$pdo->beginTransaction();
+
+Lock zatim traje do:
+$pdo->commit();
+
+ili:
+$pdo->rollBack();
+
+Zato smo ranije naglašavali:
+transakciju drži kratkom.
+
+Ne želimo između FOR UPDATE i COMMIT da radimo:
+slanje email-a
+HTTP API poziv
+generisanje PDF-a
+čekanje korisnika
+
+jer za to vreme možemo nepotrebno držati DB lock.
+Mini interview pitanje 32
+Ako u PDO kodu izvršimo:
+SELECT ... FOR UPDATE
+
+ko zapravo zaključava red — PDO ili MySQL?
+I zašto je bitno da takav query bude unutar transakcije koju 
+završavamo sa commit() ili rollBack()?
+
+---
+
+MySql zakljucava red za vreme transakcije.
+
+Drugo: bitno je zato sto za vreme te transakcije citamo dostupnost, 
+pa mora ostati zakljucano za vreme iste.
+
+---
+
+Tačno — 10/10.
+Najkraće:
+PDO
+→ samo šalje SQL i upravlja transakcijom
+
+MySQL/InnoDB
+→ stvarno postavlja lock
+
+I lock nam treba baš tokom celog kritičnog dela:
+BEGIN
+↓
+SELECT ... FOR UPDATE
+↓
+provera availability
+↓
+UPDATE inventory
+↓
+COMMIT / ROLLBACK
+
+Dok transakcija traje, drugi konkurentni FOR UPDATE nad istim redom mora da čeka. 
+Kada uradimo COMMIT ili ROLLBACK, lock se oslobađa.

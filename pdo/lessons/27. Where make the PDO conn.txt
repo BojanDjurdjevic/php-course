@@ -1,0 +1,194 @@
+Lekcija 27 — Gde treba praviti PDO konekciju?
+
+Sada prelazimo sa pojedinačnih metoda na arhitekturu PDO-a u aplikaciji.
+
+Loš pristup bi bio da svaka funkcija ili repository pravi sopstvenu konekciju:
+
+function findUser(int $id): array|false
+{
+    $pdo = new PDO(...);
+
+    // query...
+}
+
+pa onda:
+function createBooking(array $data): void
+{
+    $pdo = new PDO(...);
+
+    // query...
+}
+
+i opet:
+function updateInventory(...): void
+{
+    $pdo = new PDO(...);
+
+    // query...
+}
+
+Za jedan HTTP request mogao bi nepotrebno da napraviš više DB konekcija:
+Request
+├── UserRepository → new PDO()
+├── BookingRepository → new PDO()
+└── InventoryRepository → new PDO()
+
+A još veći problem nastaje kod transakcija.
+Seti se:
+transakcija pripada konkretnoj konekciji.
+
+Ako imamo:
+$pdoA->beginTransaction();
+
+a onda repository uradi update preko nekog svog:
+$pdoB
+
+taj update nije deo transakcije na $pdoA.
+To je veoma bitno.
+Umesto toga, aplikacija obično napravi PDO konekciju na jednom centralnom mestu:
+$pdo = new PDO(
+    $dsn,
+    $username,
+    $password,
+    [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]
+);
+
+i onda istu instancu prosleđuje klasama kojima je potrebna.
+Na primer:
+$userRepository = new UserRepository($pdo);
+$bookingRepository = new BookingRepository($pdo);
+$inventoryRepository = new InventoryRepository($pdo);
+
+Pa repository:
+class UserRepository
+{
+    public function __construct(
+        private PDO $pdo
+    ) {}
+
+    public function find(int $id): array|false
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM users WHERE id = :id'
+        );
+
+        $stmt->execute([
+            'id' => $id,
+        ]);
+
+        return $stmt->fetch();
+    }
+}
+
+Sada imamo:
+HTTP request
+       ↓
+    PDO object
+       ↓
+ ┌─────┼───────────┐
+ ↓     ↓           ↓
+User  Booking   Inventory
+Repo   Repo        Repo
+
+Svi rade preko iste DB connection/session.
+To je posebno lepo za booking transakciju:
+$pdo->beginTransaction();
+
+try {
+    $inventoryRepository->decrease(...);
+    $bookingRepository->create(...);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Ako oba repository-ja koriste isti $pdo, onda:
+decrease inventory
++
+create booking
+
+pripadaju istoj transakciji.
+Credentials takođe ne držimo po klasama
+Ne želimo:
+new PDO(
+    'mysql:...',
+    'root',
+    'secret123'
+);
+
+razbacano po kontrolerima i repository-jima.
+Konfiguracija ide centralno, najčešće kroz environment/config:
+DB_HOST
+DB_DATABASE
+DB_USERNAME
+DB_PASSWORD
+
+pa bootstrap/config sloj od toga napravi PDO.
+Ovo ti je vrlo slično Laravelu. Ti napišeš:
+DB::transaction(function () {
+    // ...
+});
+
+a ispod framework centralno upravlja connection objektom. Ne pravi svaki 
+Eloquent model nasumično novu DB konekciju svaki put kada pozoveš save().
+Mentalno:
+Configuration
+      ↓
+PDO connection
+      ↓
+Repository / Service
+      ↓
+prepare / execute
+      ↓
+MySQL
+
+I ovde se već vidi zašto je dependency injection koristan čak i u vanilla PHP-u:
+new BookingRepository($pdo)
+
+Repository ne mora da zna:
+Kako se konektujem? Koji je password? Gde je server?
+
+On samo dobije već spreman alat za DB rad.
+Mini interview pitanje 28
+Zašto je problematično ako BookingRepository i InventoryRepository svaki unutar sebe rade svoj:
+new PDO(...)
+
+posebno ako Service želi da napravi jednu transakciju koja obuhvata:
+INSERT booking
++
+UPDATE inventory
+
+?
+
+---
+
+Pa zato sto onda imamo dve razlicite konekcije, koje nece zavrsiti u istoj transakciji.
+
+---
+
+Tačno — 10/10.
+To je suština:
+BookingRepository → $pdoA
+InventoryRepository → $pdoB
+
+pa ako uradiš:
+$pdoA->beginTransaction();
+
+onda samo operacije preko $pdoA pripadaju toj transakciji. UPDATE inventory preko $pdoB je van nje.
+Zato je mnogo bolji model:
+jedan PDO connection/session za request
+        ↓
+prosleđen repository-jima
+        ↓
+sve DB operacije mogu učestvovati
+u istoj transakciji
+
+Plus, izbegavaš nepotrebno otvaranje više konekcija prema MySQL-u.

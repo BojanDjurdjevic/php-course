@@ -1,0 +1,123 @@
+Lekcija 38 — Dinamički filteri sa PDO
+
+Ovo je veoma praktično za stvari koje si već radio u BookYourHotel-u i Automarket-u.
+
+Recimo korisnik može opciono poslati:
+city
+min_price
+max_price
+status
+
+Ne želimo da pravimo deset različitih SQL query-ja.
+Krećemo od:
+$sql = 'SELECT * FROM hotels WHERE 1 = 1';
+
+$params = [];
+
+Pa dodajemo samo filtere koji postoje:
+if ($city !== null) {
+    $sql .= ' AND city = :city';
+    $params['city'] = $city;
+}
+
+if ($minPrice !== null) {
+    $sql .= ' AND base_price >= :min_price';
+    $params['min_price'] = $minPrice;
+}
+
+if ($maxPrice !== null) {
+    $sql .= ' AND base_price <= :max_price';
+    $params['max_price'] = $maxPrice;
+}
+
+Na kraju:
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+
+Ako korisnik pošalje samo:
+city = Novi Sad
+min_price = 50
+
+finalni SQL template praktično bude:
+SELECT *
+FROM hotels
+WHERE 1 = 1
+  AND city = :city
+  AND base_price >= :min_price
+
+a parametri:
+[
+    'city' => 'Novi Sad',
+    'min_price' => 50,
+]
+
+Zašto je ovo bezbedno?
+Dinamički menjamo samo SQL strukturu koju određuje naš PHP kod:
+$sql .= ' AND city = :city';
+
+Korisnička vrednost i dalje ne ulazi direktno u SQL:
+Novi Sad
+→ execute parameter
+
+Dakle opet ista podela:
+kontrolisana SQL struktura
+→ PHP gradi query
+
+user-controlled values
+→ placeholders
+
+Ovo je zapravo low-level verzija onoga što 
+Laravel Query Builder radi kada napišeš nešto poput:
+
+Hotel::query()
+    ->when($city, fn ($q) =>
+        $q->where('city', $city)
+    )
+    ->when($minPrice, fn ($q) =>
+        $q->where('base_price', '>=', $minPrice)
+    );
+
+Ispod toga opet mora da nastane SQL + bindings.
+Jedna zamka
+Ne radimo:
+$sql .= " AND city = '$city'";
+
+samo zato što SQL već dinamički gradimo.
+Dinamički query je sasvim normalan; bitno je šta je dinamičko:
+AND city = :city       ✅
+AND base_price >= :min ✅
+
+AND city = '$city'     ❌
+
+Mini interview pitanje 39
+Zašto je bezbedno da PHP uslovno doda:
+$sql .= ' AND city = :city';
+
+a nije bezbedno da uradi:
+$sql .= " AND city = '$city'";
+
+iako su oba primera „dinamičko građenje SQL-a“?
+
+---
+
+Ovo drugo nije bezbedno jer korisnicki unos direktno lepimo u upit. Treba slati kroz parametre
+
+---
+
+Tačno — 10/10.
+Ključna razlika je:
+dinamički SQL fragment koji kontroliše aplikacija
+→ bezbedno
+
+user-controlled vrednost direktno ulepljena u SQL
+→ nije bezbedno
+
+Dakle ovo je okej:
+$sql .= ' AND city = :city';
+$params['city'] = $city;
+
+jer aplikacija bira SQL strukturu, a korisnički podatak ide odvojeno kroz parameter binding.
+Dok je ovo problem:
+$sql .= " AND city = '$city'";
+
+jer user input postaje deo SQL stringa.

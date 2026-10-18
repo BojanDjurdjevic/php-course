@@ -95,3 +95,29 @@ i zašto to nema nikakve veze sa tim da li query vraća 5 ili 50.000 user-a?
 
 ---
 
+$stmt->columnCount(); će vratiti 4:
+
+id,
+name,
+email, 
+created_at
+
+A to nema nikakve veze rows, jer moze biti 5 ili 5000 redova, 
+ova metoda samo broji kolone, ne redove.
+
+---
+
+Tačno — 10/10.
+columnCount()
+→ broj kolona koje result set sadrži
+→ ovde 4
+
+broj vraćenih redova
+→ potpuno druga stvar
+
+Dakle čak i ako:
+SELECT id, name, email, created_at
+FROM users;
+
+vrati milion user-a:
+$stmt->columnCount(); // 4

@@ -1,0 +1,108 @@
+Lekcija 37 — prepare() ne znači automatski da je query izvršen
+
+Ovo smo dotakli na početku, ali sada možemo preciznije.
+
+Kad uradiš:
+$stmt = $pdo->prepare(
+    'SELECT *
+     FROM users
+     WHERE email = :email'
+);
+
+dobijaš:
+PDOStatement
+
+ali još nemaš rezultat query-ja.
+Nema:
+user rows
+affected rows
+SELECT rezultat
+
+dok ne uradiš:
+$stmt->execute([
+    'email' => $email,
+]);
+
+Tek tada statement ulazi u execution fazu.
+Mentalno:
+prepare()
+→ napravi/pripremi statement
+
+execute()
+→ izvrši ga
+
+fetch()
+→ izvuci rezultat
+
+Dakle tri potpuno različita koraka:
+SQL definition
+↓
+execution
+↓
+result consumption
+
+Primer:
+$stmt = $pdo->prepare(
+    'SELECT id, name
+     FROM users
+     WHERE id = :id'
+);
+
+// još nema user-a
+
+$stmt->execute([
+    'id' => 5,
+]);
+
+// query je izvršen, rezultat postoji
+
+$user = $stmt->fetch();
+
+// sada je rezultat prenet u PHP vrednost
+
+Ovo je korisno i za debugging.
+Ako:
+$pdo->prepare(...)
+
+prođe, to ne garantuje da će:
+$stmt->execute(...)
+
+proći.
+Na primer constraint problem, određene SQL greške 
+ili vrednosti mogu se manifestovati tek pri execution fazi.
+
+Mini interview pitanje 38
+Objasni razliku između ova tri koraka:
+$stmt = $pdo->prepare(...);
+
+$stmt->execute(...);
+
+$row = $stmt->fetch();
+
+Šta se konceptualno dešava u svakom od njih?
+
+---
+
+prepare()
+→ napravi/pripremi statement
+
+execute()
+→ izvrši ga
+
+fetch()
+→ izvuci rezultat
+
+
+---
+
+Tačno — 10/10. To je upravo cela mentalna mapa:
+prepare()
+→ definiši/pripremi SQL statement
+
+execute()
+→ izvrši statement sa konkretnim parametrima
+
+fetch()
+→ pročitaj jedan red iz dobijenog result set-a
+
+I važno: fetch() nema smisla kao „izvršenje query-ja“ — query je već izvršen u execute() fazi.

@@ -1,0 +1,164 @@
+Lekcija 25 — PDO transakcije i SAVEPOINT
+
+Pošto smo u SQL modulu već detaljno radili savepoint-e, sada samo povezujemo to sa PDO-om.
+
+PDO ima direktne metode za:
+$pdo->beginTransaction();
+$pdo->commit();
+$pdo->rollBack();
+
+Ali nema klasičnu PDO metodu tipa:
+$pdo->savepoint(); // ❌
+
+Za savepoint koristimo običan SQL kroz istu konekciju:
+$pdo->beginTransaction();
+
+try {
+    // operacija 1
+
+    $pdo->exec('SAVEPOINT before_optional_part');
+
+    // operacija 2
+    // operacija 3
+
+    $pdo->exec(
+        'ROLLBACK TO SAVEPOINT before_optional_part'
+    );
+
+    // operacije pre savepoint-a i dalje ostaju u transakciji
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Mentalno:
+beginTransaction()
+│
+├── A
+├── B
+│
+├── SAVEPOINT x
+│
+├── C
+├── D
+│
+├── ROLLBACK TO x
+│     ↓
+│   C i D poništeni
+│   A i B i dalje pending
+│
+└── COMMIT
+
+Dakle ROLLBACK TO SAVEPOINT ne završava celu transakciju.
+Posle njega i dalje možemo:
+nastaviti SQL operacije
+↓
+COMMIT
+
+A šta je sa nested transactions?
+Ovo je bitno.
+Ne treba zamišljati:
+$pdo->beginTransaction();
+
+// nešto
+
+$pdo->beginTransaction(); // "unutrašnja transakcija"
+
+kao da PDO automatski pravi pravu transakciju unutar transakcije.
+PDO standardni transaction API nije zamišljen kao automatski nested-transaction sistem.
+Ako nam treba nešto nalik:
+outer transaction
+    ↓
+partial rollback point
+
+onda je pravi DB koncept upravo:
+SAVEPOINT
+
+Framework-i ponekad nude lepšu apstrakciju nad nested transaction pozivima, 
+ali ispod toga mogu koristiti transaction counter-e i savepoint-e kada ih DB podržava.
+To ti je opet lep Laravel mentalni model:
+Laravel transaction abstraction
+        ↓
+PDO transaction
+        ↓
+DB transaction / SAVEPOINT
+
+Još jedna važna stvar
+Savepoint pripada istoj konekciji i istoj aktivnoj transakciji.
+Ne možeš:
+$pdoA
+→ START TRANSACTION
+→ SAVEPOINT x
+
+$pdoB
+→ ROLLBACK TO x   ❌
+
+jer $pdoB ima potpuno drugu DB session/konekciju.
+Mini interview pitanje 26
+Ako smo uradili:
+BEGIN
+
+INSERT A
+
+SAVEPOINT x
+
+INSERT B
+INSERT C
+
+ROLLBACK TO x
+
+INSERT D
+
+COMMIT
+
+koje promene će na kraju ostati u bazi?
+I zašto ROLLBACK TO SAVEPOINT nije isto što i:
+$pdo->rollBack();
+
+---
+
+Prvo: u bazi ce ostati A i D.
+
+Drugo: pdo nema klasicni savepoint, pa je -> rollBack redovni rollback.
+
+Za SAVEPOINT, koristimo klasican uput ->exec("SABEPOINT x')
+
+---
+
+Tačno — 9.8/10. Samo typo SABEPOINT → SAVEPOINT. 🙂
+U prvom primeru na kraju ostaju:
+A ✅
+
+B ❌
+C ❌
+
+D ✅
+
+jer:
+INSERT A
+SAVEPOINT x
+INSERT B
+INSERT C
+ROLLBACK TO x   → poništava B i C
+INSERT D
+COMMIT          → potvrđuje A i D
+
+A druga razlika ti je potpuno tačna:
+$pdo->rollBack();
+
+znači:
+rollback cele trenutno aktivne transakcije.
+
+Dok savepoint operacije šaljemo kao SQL:
+$pdo->exec('SAVEPOINT x');
+
+$pdo->exec('ROLLBACK TO SAVEPOINT x');
+
+$pdo->exec('RELEASE SAVEPOINT x');
+
+RELEASE SAVEPOINT samo uklanja marker; ne radi COMMIT.

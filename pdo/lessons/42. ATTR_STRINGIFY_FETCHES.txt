@@ -1,0 +1,108 @@
+Lekcija 42 — PDO::ATTR_STRINGIFY_FETCHES
+
+Ovo je jedna manje poznata PDO opcija, ali korisna 
+za razumevanje tipova koje dobijaš iz baze.
+
+PDO ima attribute:
+PDO::ATTR_STRINGIFY_FETCHES
+
+Ideja je:
+Da li numeričke vrednosti koje dolaze iz baze treba 
+pretvarati u stringove pri fetch-u?
+
+Na primer baza ima:
+id        INT
+price     DECIMAL
+quantity  INT
+
+A rezultat može izgledati ovako:
+[
+    'id' => 15,
+    'price' => '129.99',
+    'quantity' => 3,
+]
+
+Bitna stvar: ne možeš pretpostaviti da svaki 
+SQL numeric type automatski postaje odgovarajući PHP numeric type.
+Posebno DECIMAL se često vraća kao string, 
+i to ima smisla zbog preciznosti.
+
+Recimo:
+DECIMAL(10,2)
+
+je napravljen za precizne decimalne vrednosti, dok PHP float ima floating-point ograničenja.
+Zato nešto poput:
+$row['price']
+
+može biti:
+"129.99"
+
+a ne:
+129.99
+
+kao float.
+To se lepo povezuje sa našim Numbers modulom:
+money
+→ DECIMAL u bazi
+→ često string iz PDO-a
+→ ne treba slepo pretvarati u float i očekivati savršenu preciznost
+
+Za ID-jeve i obične integer-e često želiš eksplicitno mapiranje u repository-ju:
+return new Booking(
+    id: (int) $row['id'],
+    userId: (int) $row['user_id'],
+    totalPrice: $row['total_price'],
+);
+
+Drugim rečima:
+DB tip
+≠ nužno identičan PHP runtime tip
+
+PDO + driver utiču na to kako vrednosti stižu.
+Zato je repository mapping još korisniji:
+raw DB result
+→ normalization/casting
+→ application object
+
+Mini interview pitanje 43
+Zašto nije dobra ideja da pretpostavimo da:
+DECIMAL(10,2)
+
+iz MySQL-a mora obavezno stići u PHP kao float?
+
+I zašto repository može biti dobro mesto da kontrolišemo 
+kako DB vrednosti pretvaramo u application-level tipove?
+
+---
+
+Zato sto nije sigurno da ce se sql tipovi poklopiti sa php run tipovima.
+
+Zato je bolje mapirati u Repositories kako vracamo tipove.
+
+---
+
+Tačno — 9.7/10.
+Posebno kod:
+DECIMAL(10,2)
+
+ne treba očekivati automatski PHP float. Driver može vratiti vrednost kao string, npr:
+'129.99'
+
+i to je često čak poželjno jer DECIMAL čuva preciznu decimalnu vrednost, dok float nosi floating-point ograničenja.
+Zato je dobar tok:
+MySQL tip
+↓
+PDO/driver raw vrednost
+↓
+Repository mapping
+↓
+application/domain tip
+
+Repository može eksplicitno odlučiti:
+return new Booking(
+    id: (int) $row['id'],
+    userId: (int) $row['user_id'],
+    totalPrice: $row['total_price'],
+);
+
+umesto da ostatak aplikacije nagađa šta je PDO vratio.

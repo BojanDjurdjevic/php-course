@@ -1,0 +1,140 @@
+Lekcija 32 — PDO, exceptions i transakcioni try/catch
+
+Sada povezujemo više stvari koje smo već prošli:
+
+$pdo->beginTransaction();
+
+try {
+    // DB operacije
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Zašto ovde često hvatamo:
+Throwable
+
+a ne samo:
+PDOException
+
+Zato što unutar transakcije ne mora da pukne samo PDO.
+Možeš imati:
+if ($available < 1) {
+    throw new RuntimeException('No availability');
+}
+
+ili neku drugu application grešku.
+Ako bismo hvatali samo:
+catch (PDOException $e)
+
+onda RuntimeException može izaći napolje, a naš rollback blok se ne bi izvršio.
+Zato kod transakcione granice često želimo:
+catch (Throwable $e)
+
+što pokriva i:
+PDOException
+RuntimeException
+Error
+ostale throwable greške
+
+pa prvo zaštitimo DB stanje:
+if ($pdo->inTransaction()) {
+    $pdo->rollBack();
+}
+
+a onda:
+throw $e;
+
+ponovo propagiramo originalnu grešku.
+To je bitno: ne želimo da je progutamo.
+Loše:
+catch (Throwable $e) {
+    $pdo->rollBack();
+}
+
+jer tada ostatak aplikacije možda misli da je sve prošlo normalno.
+Bolje:
+catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+
+Mentalno:
+greška
+↓
+rollback baze
+↓
+ne skrivaj grešku
+↓
+prosledi je dalje
+
+Mini interview pitanje 33
+Zašto u transakcionom kodu često ima više smisla:
+catch (Throwable $e)
+
+nego:
+catch (PDOException $e)
+
+i zašto posle rollback-a obično opet radimo:
+throw $e;
+
+---
+
+Jer Throwable pokriva vise gresaka dok PDOException samo transakcionu gresku, 
+pa se ne bi uhvatile druge.
+
+Drugo: Da bismo propagirali gresku na kraju, da ne bi ostala skrivena.
+
+---
+
+Dobro — 9.4/10.
+Samo jedna važna terminološka korekcija: PDOException nije „samo transakciona greška“. 
+
+Preciznije:
+PDOException
+→ greške koje dolaze iz PDO/DB sloja
+
+Na primer:
+loš SQL
+constraint violation
+problem sa statement-om
+problem sa konekcijom
+...
+
+Dok:
+Throwable
+
+hvata šire:
+PDOException
+RuntimeException
+Error
+i druge throwable greške
+
+Zato je u transaction boundary kodu često zgodnije:
+catch (Throwable $e)
+
+jer hoćemo rollback za bilo koji problem koji prekine poslovnu operaciju, 
+ne samo za DB exception.
+
+A drugi deo ti je potpuno tačan:
+throw $e;
+
+radimo da se greška ne proguta.
+Mentalno:
+problem
+↓
+rollback
+↓
+DB stanje vraćeno
+↓
+throw $e
+↓
+greška nastavlja do višeg sloja / global handler-a
