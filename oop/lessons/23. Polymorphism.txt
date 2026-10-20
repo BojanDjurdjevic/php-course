@@ -1,0 +1,193 @@
+Lekcija 23 — Polymorphism
+
+Mi smo polymorphism zapravo već koristili nekoliko puta, samo ga još nismo imenovali.
+
+Najkraće:
+Polymorphism znači da isti contract možemo 
+koristiti sa različitim konkretnim objektima, a svaki izvršava svoje ponašanje.
+
+Imamo:
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+Implementacija 1:
+final class StripeGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        echo "Charging {$amount} through Stripe";
+    }
+}
+
+Implementacija 2:
+final class PayPalGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        echo "Charging {$amount} through PayPal";
+    }
+}
+
+A Service:
+final class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment
+    ) {}
+
+    public function pay(int $amount): void
+    {
+        $this->payment->charge($amount);
+    }
+}
+
+Service poziva u oba slučaja potpuno isto:
+$this->payment->charge($amount);
+
+Ali stvarno ponašanje zavisi od objekta koji smo mu dali.
+Sa:
+$service = new BookingService(
+    new StripeGateway()
+);
+
+pozvaće se:
+StripeGateway::charge()
+
+A sa:
+$service = new BookingService(
+    new PayPalGateway()
+);
+
+pozvaće se:
+PayPalGateway::charge()
+
+BookingService ne mora da radi:
+if ($gateway === 'stripe') {
+    // ...
+}
+
+if ($gateway === 'paypal') {
+    // ...
+}
+
+To je velika vrednost polymorphism-a.
+Jedan tip, više oblika
+Otud i naziv:
+poly
+→ mnogo
+
+morph
+→ oblika
+
+Za Service oba objekta su:
+PaymentGateway
+
+ali konkretno mogu biti:
+StripeGateway
+PayPalGateway
+AdyenGateway
+FakePaymentGateway
+
+Dakle:
+jedan contract
+↓
+više konkretnih ponašanja
+
+Polymorphism nije samo interface
+Može se pojaviti i kroz inheritance.
+Na primer:
+abstract class Notification
+{
+    abstract public function send(): void;
+}
+
+pa:
+class EmailNotification extends Notification
+{
+    public function send(): void
+    {
+        echo 'Email';
+    }
+}
+
+class SmsNotification extends Notification
+{
+    public function send(): void
+    {
+        echo 'SMS';
+    }
+}
+
+Možemo:
+function notify(Notification $notification): void
+{
+    $notification->send();
+}
+
+i pozvati:
+notify(new EmailNotification());
+notify(new SmsNotification());
+
+Ista funkcija:
+notify(...)
+
+isti poziv:
+$notification->send();
+
+ali različita konkretna implementacija.
+To je polymorphism.
+Zašto je važan?
+Jer nam omogućava da ovo:
+if ($type === 'email') {
+    ...
+} elseif ($type === 'sms') {
+    ...
+} elseif ($type === 'slack') {
+    ...
+}
+
+često zamenimo objektima koji sami znaju svoje ponašanje.
+Time se lepo povezuje sa:
+Interface
+→ contract
+
+Polymorphism
+→ različite implementacije tog contract-a
+
+DI
+→ ubacujemo željenu implementaciju
+
+OCP
+→ dodajemo novu implementaciju bez menjanja consumer-a
+
+LSP
+→ svaka implementacija mora stvarno biti validna zamena
+
+Sad vidiš da SOLID, DI i interfaces nisu odvojene lekcije — svi rade zajedno.
+Mini interview pitanje 23
+Imamo:
+interface NotificationChannel
+{
+    public function send(string $message): void;
+}
+
+i klase:
+EmailChannel
+SmsChannel
+SlackChannel
+
+koje ga implementiraju.
+Zašto je mogućnost da napišemo:
+function notify(
+    NotificationChannel $channel,
+    string $message
+): void {
+    $channel->send($message);
+}
+
+primer polymorphism-a?
+Šta ta funkcija zna, a šta ne mora da zna o konkretnom objektu koji dobije?
+
+---

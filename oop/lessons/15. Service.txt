@@ -1,0 +1,231 @@
+Lekcija 15 — Service class
+
+Service klasa obično predstavlja use-case / poslovnu operaciju aplikacije.
+
+Na primer:
+final class BookingService
+{
+    public function __construct(
+        private BookingRepository $bookings,
+        private InventoryRepository $inventory,
+        private PaymentGateway $payment,
+    ) {}
+
+    public function create(CreateBookingData $data): Booking
+    {
+        // orchestration business use-case-a
+    }
+}
+
+Najvažniji mentalni model:
+Controller
+→ primi zahtev
+
+Service
+→ odlučuje šta treba da se desi
+
+Repository
+→ radi sa persistence slojem
+
+DTO
+→ prenosi podatke
+
+Service zato često orkestrira više drugih komponenti.
+Na primer:
+public function create(CreateBookingData $data): Booking
+{
+    if (!$this->inventory->isAvailable(
+        $data->roomId,
+        $data->checkIn,
+        $data->checkOut
+    )) {
+        throw new RoomUnavailableException();
+    }
+
+    $booking = $this->bookings->create($data);
+
+    $this->payment->charge($booking->total());
+
+    return $booking;
+}
+
+Service ovde ne mora da zna:
+kakav SQL koristi repository
+kako Stripe šalje HTTP zahtev
+kako je inventory fizički sačuvan
+
+On zna workflow.
+Service nije samo "folder za velike metode"
+Ovo je bitno.
+Loš service:
+class BookingService
+{
+    public function create(array $data)
+    {
+        // validation
+        // 15 SQL queries
+        // render HTML
+        // read $_SESSION
+        // send headers
+        // Stripe HTTP calls
+        // upload image
+        // email HTML
+    }
+}
+
+To nije dobar service samo zato što se zove BookingService.
+Service bi trebalo da bude fokusiran na use-case:
+Create booking
+Cancel booking
+Confirm booking
+Calculate booking price
+
+i da delegira specijalizovane poslove drugim objektima.
+Thin controller, meaningful service
+Controller:
+final class BookingController
+{
+    public function __construct(
+        private BookingService $service
+    ) {}
+
+    public function store(Request $request): Response
+    {
+        $data = new CreateBookingData(
+            userId: $request->user()->id,
+            roomId: $request->integer('room_id'),
+            checkIn: new DateTimeImmutable($request->input('check_in')),
+            checkOut: new DateTimeImmutable($request->input('check_out')),
+        );
+
+        $booking = $this->service->create($data);
+
+        return response()->json($booking);
+    }
+}
+
+Controller radi uglavnom:
+HTTP input
+→ DTO
+→ Service
+→ HTTP response
+
+A Service:
+business workflow
+
+To lepo razdvaja odgovornosti.
+Gde ide transakcija?
+Ovo direktno povezujemo sa PDO modulom.
+Ako use-case zahteva više DB operacija koje moraju biti atomske:
+create booking
++
+decrease inventory
++
+insert booking items
+
+transaction boundary često pripada service/use-case sloju.
+Zašto?
+Jer repository obično ne zna ceo poslovni workflow.
+Na primer:
+public function create(CreateBookingData $data): Booking
+{
+    $this->pdo->beginTransaction();
+
+    try {
+        $this->inventory->reserve(...);
+
+        $booking = $this->bookings->create($data);
+
+        $this->pdo->commit();
+
+        return $booking;
+    } catch (Throwable $e) {
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+
+        throw $e;
+    }
+}
+
+Service zna:
+Ove operacije zajedno predstavljaju jedan use-case i moraju uspeti ili pasti zajedno.
+
+Repository samo zna:
+Kako da izvršim svoju DB operaciju.
+
+To je baš ono što smo ranije pričali kod PDO-a.
+Service vs Model
+Ovo je često zbunjujuće.
+Ako ponašanje prirodno pripada jednom objektu:
+$booking->cancel();
+
+može imati smisla da bude na Booking entitetu.
+Ali ako operacija uključuje više sistema:
+booking
+inventory
+payment
+email
+repository
+transaction
+
+onda je Service mnogo prirodnije mesto za orkestraciju.
+Dakle:
+Entity / Model
+→ ponašanje jednog business objekta
+
+Service
+→ use-case koji koordinira više objekata
+
+Laravel paralela
+U Laravel aplikaciji često vidiš:
+BookingController
+    ↓
+BookingService
+    ↓
+BookingRepository
+    ↓
+Eloquent / DB
+
+plus:
+Policy
+Notification
+PaymentGateway
+InventoryService
+
+I zato ti Service sloj u BookYourHotel 
+već nije stran — sada samo preciziramo zašto postoji i gde mu je granica.
+
+Mini interview pitanje 15
+
+Zašto bi bilo bolje da BookingController samo primi zahtev, napravi DTO i pozove:
+$this->bookingService->create($data);
+
+nego da controller sam radi availability proveru, SQL, payment i transakciju?
+Šta time dobijamo u pogledu odgovornosti, testiranja i održavanja?
+
+---
+
+Prvo, ako bi Controller sve radio, bio bi "predebeo" odnosno imao bi previše odgovornosti na jednom mestu.
+
+Drugo, kada sve lepo razdvojimo, kod je čitljiviji, lak za testiranje i održavanje.
+
+Zato je bolje da kontroler primi BookingService koji će a orkestrira booking flow.
+
+---
+
+Tačno — 10/10.
+
+To si lepo sažeo:
+Controller
+→ HTTP ulaz/izlaz
+
+BookingService
+→ orkestrira use-case
+
+Repository
+→ persistence / DB pristup
+
+Ako controller radi sve, dobiješ fat controller, 
+a to obično znači previše odgovornosti, 
+teže testove i lošiju ponovnu upotrebu business logike.

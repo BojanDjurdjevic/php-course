@@ -1,0 +1,179 @@
+Lekcija 20 — L: Liskov Substitution Principle
+
+LSP je verovatno najapstraktniji SOLID princip, ali ideja je jednostavna:
+
+Ako klasa B nasleđuje ili implementira tip A, 
+objekat klase B treba da može da se koristi svuda gde se očekuje A, bez razbijanja očekivanog ponašanja.
+
+Mentalno:
+Ako B IS-A A
+onda B mora da se ponaša kao validan A
+
+Recimo:
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+Imamo:
+final class StripeGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // charge payment
+    }
+}
+
+i:
+final class PayPalGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // charge payment
+    }
+}
+
+Ako Service očekuje:
+public function __construct(
+    private PaymentGateway $payment
+) {}
+
+onda bi trebalo da možemo da damo bilo koju validnu implementaciju:
+new BookingService(new StripeGateway());
+new BookingService(new PayPalGateway());
+
+bez toga da Service mora da zna koju je dobio.
+To je LSP u praksi.
+
+Problem nastaje ako napravimo implementaciju koja formalno poštuje interface, 
+ali semantički krši očekivanje.
+
+Na primer:
+final class FakeBrokenGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        throw new RuntimeException('I never support payments');
+    }
+}
+
+Sintaksno:
+implements PaymentGateway ✅
+
+ali ponašanjem:
+nije stvarna zamena za PaymentGateway ❌
+
+jer charge() praktično nikad ne može da uradi ono što contract očekuje.
+Još bolji primer sa inheritance-om:
+class Bird
+{
+    public function fly(): void
+    {
+    }
+}
+
+pa:
+class Penguin extends Bird
+{
+    public function fly(): void
+    {
+        throw new RuntimeException('Penguins cannot fly');
+    }
+}
+
+Ovo je loš model.
+Zašto?
+Jer kažemo:
+Penguin IS-A Bird
+
+što jeste tačno biološki, ali naš Bird contract implicitno znači:
+svaki Bird može da leti
+
+a Penguin to ne može.
+Zato inheritance hijerarhija ne odgovara pravom ponašanju.
+Bolje:
+interface Bird
+{
+}
+
+i posebno:
+interface Flyable
+{
+    public function fly(): void;
+}
+
+pa:
+class Sparrow implements Bird, Flyable
+{
+    public function fly(): void
+    {
+    }
+}
+
+class Penguin implements Bird
+{
+}
+
+Sada model ne laže.
+Najvažnija poenta:
+LSP nije:
+"child ima iste metode"
+
+LSP jeste:
+"child može stvarno da zameni parent/type bez iznenađenja"
+
+To uključuje ponašanje, ne samo sintaksu.
+U realnom backend primeru, ako imamo:
+interface Storage
+{
+    public function put(string $path, string $contents): void;
+}
+
+onda LocalStorage, S3Storage i FakeStorage treba da budu upotrebljive kao Storage.
+Ako jedna implementacija kaže:
+public function put(...): void
+{
+    // silently do nothing
+}
+
+i to krši očekivani contract, onda imamo LSP problem.
+Mini interview pitanje 20
+Zašto je ovo potencijalni LSP problem?
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+final class DisabledGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        throw new RuntimeException('Payments are never supported');
+    }
+}
+
+Ako BookingService očekuje bilo koji PaymentGateway, 
+zašto DisabledGateway možda nije prava zamena iako formalno implementira interface?
+
+---
+
+Nije prava zamena ner tiho bojkotuje tj urušava servis na neočekivani način.
+
+Servis očekuje charge() i ovaj fake daje charge ali rezultat charge je error
+
+---
+
+Da — 9.6/10.
+Suština ti je tačna: DisabledGateway formalno ima charge(), 
+ali semantički ne ispunjava očekivanje koje BookingService ima od PaymentGateway implementacije.
+Jedina sitna korekcija: nije baš „tiho“, jer baca exception. 
+Problem je što svaki poziv:
+$gateway->charge($amount);
+
+garantovano završava greškom, pa objekat nije prava zamena za validan PaymentGateway.
+Mentalno:
+interface zadovoljen sintaksno ✅
+
+očekivano ponašanje contract-a ❌
+
+To je LSP: zamena mora da radi ne samo po potpisu metode, nego i po očekivanom ponašanju.

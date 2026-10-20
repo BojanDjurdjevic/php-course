@@ -274,3 +274,28 @@ obijamo time u testiranju i održavanju?
 
 ---
 
+Drugi primer je DI zato sto ovde klasa ne kreira svoje zavisnosti nego ih dobija spolja.
+
+Dobijamo lakocu testiranja i odrzavanja jer ne moramo 
+da izmenjujemo klasu svaki put kada zelimo odredjeni deo da promenimo.
+
+---
+
+Tačno — 10/10.
+U prvom primeru BookingService je čvrsto vezan za konkretni StripeGateway. 
+Ako sutra želiš PayPalGateway, moraš da menjaš samu klasu.
+
+U drugom:
+public function __construct(
+    private PaymentGateway $payment
+) {}
+
+BookingService samo kaže:
+Treba mi nešto što ispunjava PaymentGateway contract.
+
+Zato možeš bez menjanja servisa ubaciti:
+new StripeGateway()
+new PayPalGateway()
+new FakePaymentGateway()
+
+To je upravo ono što želimo od DI-ja.
