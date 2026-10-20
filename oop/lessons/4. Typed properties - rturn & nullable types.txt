@@ -1,0 +1,160 @@
+Lekcija 4 — Typed properties, return types i nullable types
+
+Pošto već koristiš moderan PHP, ovo ti je poznato praktično, 
+ali hajde da složimo mentalni model.
+
+class User
+{
+    private int $id;
+    private string $name;
+    private ?string $phone = null;
+}
+
+Ovde kažemo:
+$id
+→ mora biti int
+
+$name
+→ mora biti string
+
+$phone
+→ može biti string ili null
+
+To je mnogo jače od:
+private $id;
+private $name;
+private $phone;
+
+jer tipovi dokumentuju i ograničavaju stanje objekta.
+Isto važi za metode:
+public function id(): int
+{
+    return $this->id;
+}
+
+public function phone(): ?string
+{
+    return $this->phone;
+}
+
+public function changeName(string $name): void
+{
+    $this->name = $name;
+}
+
+Mentalno:
+parameter type
+→ šta metoda prihvata
+
+return type
+→ šta metoda vraća
+
+property type
+→ kakvo stanje objekat sme da čuva
+
+Nullable tip:
+?string
+
+je skraćeno:
+string|null
+
+odnosno:
+public function phone(): string|null
+
+U modernom PHP-u možeš imati i union types:
+int|string
+
+na primer:
+public function find(int|string $id): User|null
+
+ali ne treba ih koristiti samo zato što možemo. Ako jedan parametar “može biti svašta”, 
+često je to znak da API nije dovoljno precizno dizajniran.
+
+Typed property i inicijalizacija
+Ovo:
+class User
+{
+    private string $name;
+}
+
+ne znači:
+$name = null
+
+nego:
+property postoji, ali još nije inicijalizovan.
+
+Zato:
+$user->name();
+
+ako metoda pokuša da čita $this->name pre nego što je dobio vrednost, 
+može dobiti runtime error.
+
+Ako želimo da je null validno početno stanje:
+private ?string $name = null;
+
+To su dve različite stvari:
+uninitialized
+≠
+null
+
+Ovo je važna PHP nijansa.
+Veza sa Laravelom
+Laravel često prikrije tipove kroz arrays i model attributes:
+$user->email
+$user->created_at
+
+ali kada praviš Service/DTO/domain klase, 
+typed properties postaju mnogo važnije:
+
+final class CreateBookingData
+{
+    public function __construct(
+        public int $userId,
+        public int $roomId,
+        public DateTimeImmutable $checkIn,
+        public DateTimeImmutable $checkOut,
+    ) {}
+}
+
+Odmah vidiš kakve podatke objekat očekuje.
+Mini interview pitanje 4
+Koja je razlika između:
+private string $name;
+
+i:
+private ?string $name = null;
+
+?
+Posebno: da li je prvi automatski null dok mu ne dodelimo vrednost?
+
+---
+
+Prvi nije automatski null, on je string samo sto nije jos inicijalizovan, 
+tj nije mu dodeljena vrednost.
+
+Ako zelimo koristiti po defaultu null ako mu nije dodeljena string vrednost, 
+bolje je koristiti drugi primer
+
+---
+
+Tačno — 10/10.
+Baš ovako:
+private string $name;
+→ property postoji
+→ mora biti string kada dobije vrednost
+→ ali još nije inicijalizovan
+→ nije automatski null
+
+Dok:
+private ?string $name = null;
+→ property je inicijalizovan
+→ početna vrednost je null
+→ kasnije može biti string ili null
+
+To je važna razlika jer:
+private string $name;
+
+pa čitanje pre dodele može izazvati grešku, dok je:
+private ?string $name = null;
+
+potpuno validno stanje objekta.

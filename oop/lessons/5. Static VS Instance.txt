@@ -1,0 +1,221 @@
+Lekcija 5 — static vs instance članovi
+
+Ovo je jedan od najvažnijih OOP koncepata jer se često koristi pogrešno.
+
+Do sada smo imali instance properties:
+class Booking
+{
+    public string $status = 'pending';
+}
+
+Svaki objekat ima svoje stanje:
+$a = new Booking();
+$b = new Booking();
+
+$a->status = 'confirmed';
+
+echo $b->status; // pending
+
+Dakle:
+instance property
+→ pripada konkretnom objektu
+
+Ali možemo imati i static:
+class Booking
+{
+    public static int $count = 0;
+}
+
+Tome ne pristupamo preko konkretnog objekta:
+Booking::$count;
+
+nego preko klase.
+Mentalno:
+instance member
+→ pripada objektu
+
+static member
+→ pripada klasi
+
+Na primer:
+class Booking
+{
+    public static int $count = 0;
+
+    public function __construct()
+    {
+        self::$count++;
+    }
+}
+
+Pa:
+new Booking();
+new Booking();
+new Booking();
+
+echo Booking::$count; // 3
+
+Ovde sva tri objekta dele isti static property.
+self::
+Unutar klase:
+self::$count
+
+znači:
+static član ove klase.
+
+Slično:
+self::someMethod();
+
+za static metodu.
+Dok:
+$this->status
+
+znači:
+član konkretne instance.
+
+Dakle:
+$this
+→ object context
+
+self::
+→ class/static context
+
+Static method
+Možemo imati:
+class PriceCalculator
+{
+    public static function addTax(float $price): float
+    {
+        return $price * 1.2;
+    }
+}
+
+Poziv:
+$total = PriceCalculator::addTax(100);
+
+Ne pravimo:
+new PriceCalculator();
+
+jer metoda ne koristi nikakvo stanje objekta.
+Ali ovde dolazi važna arhitektonska nijansa:
+Samo zato što metoda može biti static, ne znači da treba sve pretvarati u static.
+
+Ako klasa ima dependencies:
+class BookingService
+{
+    public function __construct(
+        private BookingRepository $repository,
+    ) {}
+}
+
+onda instance pristup ima mnogo više smisla nego:
+BookingService::create();
+
+jer objekat može nositi svoje dependencies i lepo raditi sa dependency injection-om.
+Kada static ima smisla?
+Dobar kandidat:
+final class MathHelper
+{
+    public static function percentage(
+        float $amount,
+        float $percent
+    ): float {
+        return $amount * $percent / 100;
+    }
+}
+
+Jer:
+nema object state
+nema dependency
+čista operacija
+
+Ali čak i tu se često može koristiti obična funkcija.
+Static češće ima smisla za:
+factory metode
+utility metode
+shared class state
+named constructors
+
+Na primer:
+class BookingStatus
+{
+    public static function confirmed(): string
+    {
+        return 'confirmed';
+    }
+}
+
+Iako ćemo kasnije videti da je za ovakav slučaj enum često bolji alat.
+Laravel veza
+Ti već stalno vidiš:
+User::find(5);
+Booking::query();
+Cache::get('key');
+DB::transaction(...);
+
+Ali ovde postoji važna stvar: u Laravelu stvari poput:
+DB::
+Cache::
+Auth::
+
+često izgledaju kao običan static poziv, 
+ali Laravel Facades ispod haube nisu isto što i 
+jednostavna statička klasa sa čistim static metodama.
+
+To ćemo kasnije povezati sa Service Container-om.
+Za sada:
+pravi static
+→ pripada klasi
+
+Laravel Facade syntax
+→ izgleda static
+→ ali iza toga često stoji objekat iz containera
+
+To je veoma bitna razlika.
+Mini interview pitanje 5
+Koja je razlika između:
+$this->status
+
+i:
+self::$count
+
+i zašto bi BookingService sa BookingRepository 
+dependency-jem uglavnom bio bolji kao običan 
+objekat preko dependency injection-a nego kao potpuno static servis?
+
+---
+
+$this->status je instance property dok je
+self::$count static member klase
+
+Klase jako lepo nose i rade sa DI tako da je to često bolje rešenje od static
+
+---
+
+Tačno — 9.8/10.
+Suština:
+$this->status
+→ property konkretne instance
+→ svaki objekat može imati svoju vrednost
+
+self::$count
+→ static property klase
+→ deli se na nivou klase
+
+A za BookingService si pogodio najvažniju stvar: 
+običan objekat lepo nosi dependency-je kroz constructor:
+
+class BookingService
+{
+    public function __construct(
+        private BookingRepository $repository
+    ) {}
+}
+
+To znači:
+lakši DI
+lakše testiranje
+lakše menjanje implementacije
+jasnije dependencies
+
+Dok static servis često sakrije zavisnosti i oteža testiranje.

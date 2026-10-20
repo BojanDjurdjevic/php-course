@@ -1,0 +1,190 @@
+Lekcija 8 — Abstract classes
+Sada idemo korak dalje.
+Nekad želimo parent klasu koja definiše zajedničku osnovu, ali nema smisla da pravimo njen objekat direktno.
+Na primer:
+abstract class Notification
+{
+    public function __construct(
+        protected string $message
+    ) {}
+
+    abstract public function send(): void;
+}
+
+Ne možemo:
+$notification = new Notification(); // ❌
+
+jer je klasa:
+abstract
+
+Ona kaže:
+Ja predstavljam zajednički koncept, ali konkretan način slanja mora definisati child klasa.
+
+Na primer:
+class EmailNotification extends Notification
+{
+    public function send(): void
+    {
+        echo "Sending email: {$this->message}";
+    }
+}
+
+i:
+class SmsNotification extends Notification
+{
+    public function send(): void
+    {
+        echo "Sending SMS: {$this->message}";
+    }
+}
+
+Sada:
+$email = new EmailNotification('Booking confirmed');
+$sms = new SmsNotification('Booking confirmed');
+
+$email->send();
+$sms->send();
+
+Abstract method
+Ovo:
+abstract public function send(): void;
+
+nema implementaciju.
+Parent kaže:
+Svaka konkretna child klasa mora da implementira send().
+
+Dakle abstract class može da nametne contract.
+Mentalno:
+abstract class
+→ zajednička osnova
+
+abstract method
+→ zahtev child klasama
+
+concrete child
+→ mora dati implementaciju
+
+Ako child ne implementira abstract method:
+class EmailNotification extends Notification
+{
+}
+
+onda ni EmailNotification ne može biti concrete klasa; morala bi i sama biti abstract.
+Abstract class može imati i normalne metode
+Ovo je vrlo bitna razlika.
+abstract class Notification
+{
+    public function __construct(
+        protected string $message
+    ) {}
+
+    public function message(): string
+    {
+        return $this->message;
+    }
+
+    abstract public function send(): void;
+}
+
+Dakle abstract class može imati:
+properties
+constructor
+concrete methods
+abstract methods
+
+Nije samo „lista metoda koje child mora imati“.
+Zašto koristiti abstract class?
+Kad imaš više klasa koje zaista dele:
+zajedničko stanje
++
+zajedničko ponašanje
++
+zajednički contract
+
+Na primer:
+Notification
+├── message
+├── createdAt
+├── log()
+└── send() → mora child
+
+pa:
+EmailNotification
+SmsNotification
+PushNotification
+
+sve predstavljaju vrstu Notification-a.
+Ovde:
+EmailNotification IS-A Notification
+
+ima smisla.
+Abstract vs obična parent klasa
+Obična klasa:
+class Notification
+{
+}
+
+može se instancirati.
+Abstract:
+abstract class Notification
+{
+}
+
+ne može.
+Time arhitektura jasno kaže:
+Nemoj praviti generički Notification. Koristi konkretnu vrstu.
+
+To je često veoma korisno.
+Veza sa Laravelom
+Laravel koristi abstract classes na mnogo mesta.
+Mentalno možeš videti obrasce poput:
+base framework class
+→ daje zajedničku infrastrukturu
+
+tvoja child klasa
+→ popunjava konkretno ponašanje
+
+I mnogo češće ćeš naleteti na abstract bazne klase u framework/library kodu nego u prostom CRUD kodu.
+Abstract class vs interface — još ne mešamo
+Sledeća lekcija će biti interface, i tu ćemo napraviti baš jasnu razliku.
+Za sada zapamti:
+abstract class
+→ može da deli state + implementation + contract
+
+Mini interview pitanje 8
+Šta znači:
+abstract class Notification
+
+i šta znači:
+abstract public function send(): void;
+
+Zašto ne možemo da uradimo:
+new Notification();
+
+i šta child klasa mora da uradi da bi mogla da bude konkretno instancirana?
+
+---
+
+new Notification(); ne moze da se uradi jer je ovo abstraktna klasa 
+i ona ne moze da se instancira nego sluzi kao parent klasa za mnoge d
+ruge koje je nasledjuju a koje ce imati zajednicko ponasanje.
+
+abstract public function send(): void; znaci da je ova metoda contract 
+koji child klasa mora implementirati s tom sto ako je ovako ostavljena, 
+child moze da je implementira kako on hove.
+
+Da bi child klasa bila instancirana, mora da nasledi abstract i implementira njene metode.
+
+PS. Bas sam hteo da te pitam a koja je razlika sa Interface i kada koristimo jedno a kada drugo?
+
+---
+
+Odgovor ti je praktično tačan — 9.8/10.
+
+Jedina važna nijansa: child ne mora da implementira abstract metode ako je i sam označen kao abstract. 
+Ali ako želiš da child bude konkretan i da možeš da uradiš:
+
+new EmailNotification();
+
+onda mora implementirati sve nasleđene abstract metode.
+I da — sledeće pitanje ti je tačno ono koje prirodno dolazi.

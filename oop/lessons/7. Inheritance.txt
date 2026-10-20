@@ -1,0 +1,196 @@
+Lekcija 7 — Inheritance
+
+Sada dolazimo do:
+parent class
+↓
+child class
+
+Na primer:
+class User
+{
+    public function __construct(
+        protected string $name
+    ) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+}
+
+Pa:
+class Admin extends User
+{
+    public function canManageUsers(): bool
+    {
+        return true;
+    }
+}
+
+Admin nasleđuje ono što User ima:
+User
+├── name
+└── name()
+
+Admin extends User
+├── nasleđuje name
+├── nasleđuje name()
+└── dodaje canManageUsers()
+
+Pa:
+$admin = new Admin('Bojan');
+
+echo $admin->name();
+$admin->canManageUsers();
+
+Ovde važi odnos:
+Admin IS-A User
+
+To je važan test za inheritance.
+Ako nema smisla reći:
+X je vrsta Y
+
+inheritance je često pogrešan izbor.
+protected
+Sad konačno dobija puni smisao:
+protected string $name;
+
+private bi bio dostupan samo u User.
+protected je dostupan:
+User klasi
++
+klasama koje je nasleđuju
+
+Na primer:
+class Admin extends User
+{
+    public function greeting(): string
+    {
+        return "Hello {$this->name}";
+    }
+}
+
+radi jer je $name protected.
+Method overriding
+Child može redefinisati behavior parent klase:
+class User
+{
+    public function role(): string
+    {
+        return 'user';
+    }
+}
+
+class Admin extends User
+{
+    public function role(): string
+    {
+        return 'admin';
+    }
+}
+
+Pa:
+$user = new User();
+$admin = new Admin();
+
+echo $user->role();  // user
+echo $admin->role(); // admin
+
+To je method overriding.
+Child kaže:
+Za mene ova metoda ima drugačiju implementaciju.
+
+parent::
+Ako želiš da child pozove ponašanje parent klase:
+class User
+{
+    public function greeting(): string
+    {
+        return 'Hello';
+    }
+}
+
+class Admin extends User
+{
+    public function greeting(): string
+    {
+        return parent::greeting() . ' Admin';
+    }
+}
+
+parent:: znači:
+pozovi implementaciju iz parent klase
+
+Važna arhitektonska stvar
+Inheritance jeste moćan, ali ga je lako zloupotrebiti.
+Loš mentalni model:
+Imam dve klase koje dele neki kod
+→ odmah extends
+
+To nije dovoljno.
+Bolje pitanje je:
+Da li child zaista predstavlja specijalizovan oblik parent-a?
+
+Na primer:
+Admin IS-A User
+
+ima smisla.
+Ali:
+BookingService IS-A Database
+
+nema smisla.
+Tu je composition bolji:
+class BookingService
+{
+    public function __construct(
+        private BookingRepository $repository
+    ) {}
+}
+
+To je:
+BookingService HAS-A BookingRepository
+
+i to ćemo kasnije detaljno uporediti.
+Mini interview pitanje 7
+Šta znači kada napišemo:
+class Admin extends User
+
+?
+Objasni mi šta Admin dobija od User klase, šta znači method overriding, 
+i zašto inheritance ne treba koristiti samo zato što dve klase dele neki kod.
+
+---
+
+Admin od User nasledjuje sve njegove vrednosti i metode, 
+s tim sto ako su private u parent-u ne moze da ih koristi, 
+jedino moze protected i public.
+
+Takodje Admin moze da override metode is parent klase tj User. 
+To znaci da moze da kaze: "za mene, implementacija ove metode je ovako...".
+
+Medjutim, ako 2 klase dele isti kod, ne znaci automatski da treba da imamo nasledjivanje. 
+Treba uvek da pitamo da li je klasa B ujedno i klasa A, 
+tj da li potencijalni child zaista predstavlja specijalizovani oblik parent-a?
+
+---
+
+Tačno — 9.8/10.
+Odgovor ti je baš dobar. Jedina nijansa je formulacija „nasleđuje sve vrednosti i metode“. Preciznije:
+public
+→ child može da koristi
+
+protected
+→ child može da koristi
+
+private
+→ pripada parent klasi i child mu ne može direktno pristupiti
+
+Dakle private deo parent-a i dalje može postojati kao deo objekta, ali child nema direktan pristup njemu.
+Ovo si posebno dobro rekao:
+child može da kaže: „za mene, implementacija ove metode je ovako...“
+
+To je upravo method overriding.
+I najvažniji test za inheritance si pogodio:
+Child IS-A Parent?
+
+Ako odgovor nije prirodno „da“, extends je sumnjiv izbor.

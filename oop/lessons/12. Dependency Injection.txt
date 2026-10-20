@@ -1,0 +1,276 @@
+Lekcija 12 — Dependency Injection
+
+Sad dolazimo do koncepta koji već praktično koristiš u Laravelu, 
+ali hoću da ga potpuno ogolimo.
+
+Najkraće:
+Dependency Injection znači da objekat ne pravi sam svoje dependencies, 
+nego ih dobija spolja.
+
+Lošije:
+class BookingService
+{
+    private BookingRepository $repository;
+
+    public function __construct()
+    {
+        $this->repository = new BookingRepository();
+    }
+}
+
+Ovde BookingService sam odlučuje:
+Treba mi repository
+↓
+sam ću ga napraviti
+↓
+čvrsto sam vezan za BookingRepository
+
+Bolje:
+class BookingService
+{
+    public function __construct(
+        private BookingRepository $repository
+    ) {}
+}
+
+Pa spolja:
+$repository = new BookingRepository();
+
+$service = new BookingService($repository);
+
+Sada:
+BookingService
+→ zna šta mu treba
+
+spoljašnji kod
+→ odlučuje šta će mu dati
+
+To je Dependency Injection.
+Šta je dependency?
+
+Vrlo jednostavno:
+Ako klasa ne može da radi svoj posao bez nekog drugog objekta, 
+taj objekat joj je dependency.
+
+class BookingService
+{
+    public function __construct(
+        private BookingRepository $bookings,
+        private PaymentGateway $payment,
+        private Mailer $mailer,
+    ) {}
+}
+
+Dependencies su:
+BookingRepository
+PaymentGateway
+Mailer
+
+BookingService zavisi od njih.
+Constructor Injection
+Ovo je najčešći i uglavnom najbolji oblik DI-ja:
+public function __construct(
+    private PaymentGateway $payment
+) {}
+
+Zašto?
+Jer objekat ne može ni da nastane bez dependency-ja koji mu je potreban.
+To se lepo nadovezuje na ono što smo pričali o constructor-u:
+constructor
+→ garantuje validno početno stanje objekta
+
+Ako BookingService bez PaymentGateway ne može da radi:
+new BookingService();
+
+ne bi ni trebalo da bude dozvoljeno.
+DI nije isto što i Service Container
+Ovo je veoma važno.
+Dependency Injection je princip/tehnika.
+Možeš ga raditi ručno:
+$payment = new StripeGateway();
+
+$service = new BookingService($payment);
+
+To je već DI.
+Ne treba ti Laravel.
+Service Container samo automatizuje sastavljanje objekata.
+Mentalno:
+Dependency Injection
+→ "daj dependency spolja"
+
+Service Container
+→ "ja ću automatski pronaći i dati dependency"
+
+Bez containera
+$repository = new BookingRepository($pdo);
+$payment = new StripeGateway();
+$mailer = new Mailer();
+
+$service = new BookingService(
+    $repository,
+    $payment,
+    $mailer
+);
+
+Ti ručno sastavljaš object graph.
+Sa Laravel containerom
+Napišeš:
+class BookingController
+{
+    public function __construct(
+        private BookingService $service
+    ) {}
+}
+
+A Laravel kaže otprilike:
+BookingController treba BookingService
+↓
+BookingService treba BookingRepository
+↓
+BookingRepository treba ...
+↓
+napravi sve
+↓
+ubaci ih gde treba
+
+Zato ti Laravel omogućava da samo type-hintuješ klasu i dependency „magično“ stigne.
+Ali ispod te magije je upravo DI.
+Još bolje sa interface-om
+class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment
+    ) {}
+}
+
+Ovde PaymentGateway je interface.
+Onda spolja možemo dati:
+new BookingService(
+    new StripeGateway()
+);
+
+ili:
+new BookingService(
+    new FakePaymentGateway()
+);
+
+BookingService ne menjaš.
+To daje:
+DI
++
+interface
++
+composition
+=
+vrlo loose coupling
+
+Zašto je new unutar klase često signal za razmišljanje?
+Nije svaki new loš.
+Ali ako vidiš:
+class BookingService
+{
+    public function create(): void
+    {
+        $mailer = new Mailer();
+        $payment = new StripeGateway();
+        $repository = new BookingRepository();
+    }
+}
+
+treba da ti se upali lampica.
+Jer servis sada:
+koristi dependency
++
+zna kako da ga kreira
++
+zna njegovu konkretnu implementaciju
+
+To su dodatne odgovornosti.
+Sa DI:
+class BookingService
+{
+    public function __construct(
+        private Mailer $mailer,
+        private PaymentGateway $payment,
+        private BookingRepository $repository,
+    ) {}
+}
+
+servis samo kaže:
+Ovo mi treba.
+
+A neko drugi sastavlja sistem.
+Testiranje
+Ovo je jedna od najvećih praktičnih koristi.
+Produkcija:
+$service = new BookingService(
+    new StripeGateway()
+);
+
+Test:
+$service = new BookingService(
+    new FakePaymentGateway()
+);
+
+Možeš čak napraviti:
+class FakePaymentGateway implements PaymentGateway
+{
+    public array $charges = [];
+
+    public function charge(int $amount): void
+    {
+        $this->charges[] = $amount;
+    }
+}
+
+Pa proveriti:
+$service->book();
+
+var_dump($fakePayment->charges);
+
+bez pravog Stripe API-ja.
+To je ogroman dobitak.
+Mentalna mapa
+DEPENDENCY
+→ objekat koji mi je potreban
+
+DEPENDENCY INJECTION
+→ dependency dobijam spolja
+
+CONSTRUCTOR INJECTION
+→ dependency dobijam kroz __construct()
+
+SERVICE CONTAINER
+→ automatizuje pravljenje i injection dependencies
+
+INTERFACE
+→ omogućava više implementacija istog contract-a
+
+I jedna rečenica koju vredi zapamtiti za intervju:
+
+Dependency Injection smanjuje coupling tako što 
+klasa ne kreira svoje zavisnosti sama, već ih dobija spolja.
+
+Mini interview pitanje 12
+Koja je razlika između ova dva pristupa:
+class BookingService
+{
+    public function __construct()
+    {
+        $this->payment = new StripeGateway();
+    }
+}
+
+i:
+class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment
+    ) {}
+}
+
+Zašto je drugi primer dependency injection i šta konkretno d
+obijamo time u testiranju i održavanju?
+
+---
+

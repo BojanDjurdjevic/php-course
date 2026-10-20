@@ -1,0 +1,122 @@
+Lekcija 3 — Visibility: public, protected, private
+
+Sada dolazimo do jedne od najvažnijih OOP ideja: enkapsulacije.
+
+Ako imamo:
+class User
+{
+    public string $email;
+}
+
+onda bilo ko spolja može:
+$user->email = 'bilo-sta';
+
+To znači da objekat nema kontrolu nad sopstvenim stanjem.
+Sa visibility modifier-ima određujemo ko sme da pristupi čemu.
+
+public
+→ dostupno svuda
+
+protected
+→ dostupno unutar klase i child klasa
+
+private
+→ dostupno samo unutar same klase
+
+Na primer:
+class User
+{
+    private string $email;
+
+    public function __construct(string $email)
+    {
+        $this->email = $email;
+    }
+
+    public function email(): string
+    {
+        return $this->email;
+    }
+}
+
+Spolja ne možeš:
+$user->email = 'test@test.com'; // greška
+
+ali možeš:
+echo $user->email();
+
+Zašto je to dobro?
+Jer klasa kontroliše kako se stanje čita i menja.
+Na primer:
+class User
+{
+    private string $email;
+
+    public function __construct(string $email)
+    {
+        $this->changeEmail($email);
+    }
+
+    public function changeEmail(string $email): void
+    {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Invalid email.');
+        }
+
+        $this->email = $email;
+    }
+
+    public function email(): string
+    {
+        return $this->email;
+    }
+}
+
+Sada ne može neko spolja tek tako da ubaci nevalidan email.
+Mentalno:
+private property
+→ objekat čuva svoje stanje
+
+public method
+→ kontrolisana vrata za pristup/promenu
+
+To je enkapsulacija.
+protected ćemo detaljnije kad stignemo do inheritance-a, jer tada ima najviše smisla.
+Mini interview pitanje 3
+Zašto bi često bilo bolje imati:
+private string $email;
+
+plus:
+public function changeEmail(string $email): void
+
+nego jednostavno:
+public string $email;
+
+?
+Šta time dobijamo sa stanovišta kontrole nad stanjem objekta?
+
+---
+
+Tako mozemo kontrolisano da pristupamo podatku a da ne moze tek tako spolja da se menja
+
+---
+
+Tačno — 10/10.
+To je srž enkapsulacije:
+public property
+→ bilo ko spolja može direktno menjati stanje
+
+private property + public method
+→ objekat sam kontroliše kako se stanje menja
+
+Time možemo da uvedemo pravila:
+public function changeEmail(string $email): void
+{
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new InvalidArgumentException('Invalid email');
+    }
+
+    $this->email = $email;
+}
+
+Dakle ne štitimo property samo “da ga sakrijemo”, nego zato da objekat može da garantuje svoje invariants.

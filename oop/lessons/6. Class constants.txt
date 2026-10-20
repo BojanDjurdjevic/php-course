@@ -1,0 +1,110 @@
+Lekcija 6 — Class constants
+
+Pored instance i static članova, klasa može imati i konstante.
+
+Na primer:
+class Booking
+{
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_CONFIRMED = 'confirmed';
+    public const STATUS_CANCELLED = 'cancelled';
+}
+
+Koristiš ih:
+$status = Booking::STATUS_CONFIRMED;
+
+Za razliku od:
+public static string $status = 'confirmed';
+
+konstanta nije zamišljena kao promenljivo stanje.
+Mentalno:
+static property
+→ shared state
+→ može da se menja
+
+class constant
+→ fiksna vrednost vezana za klasu
+
+Na primer:
+class Pagination
+{
+    public const DEFAULT_PER_PAGE = 20;
+    public const MAX_PER_PAGE = 100;
+}
+
+pa:
+$perPage = Pagination::DEFAULT_PER_PAGE;
+
+Zašto constants umesto magic strings?
+Loše:
+if ($booking->status === 'confirmed') {
+    // ...
+}
+
+pa na deset mesta:
+'confirmed'
+'confirmed'
+'confirmed'
+
+Jedan typo:
+'confrimed'
+
+i dobiješ bug.
+Sa konstantom:
+if ($booking->status === Booking::STATUS_CONFIRMED) {
+    // ...
+}
+
+imaš jedno centralno mesto za vrednost.
+Ali danas, za zatvoren skup vrednosti poput statusa, često je još bolje koristiti enum:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+}
+
+To ćemo obraditi kada dođemo do naprednijih tipova, ali za sada zapamti:
+const
+→ fiksna vrednost klase
+
+static property
+→ shared promenljivo stanje klase
+
+Mini interview pitanje 6
+Koja je razlika između:
+public const MAX_PER_PAGE = 100;
+
+i:
+public static int $maxPerPage = 100;
+
+i koji bi od ta dva izbora bio bolji ako želimo da vrednost 100 predstavlja pravilo aplikacije koje ne treba menjati tokom runtime-a?
+
+---
+
+Const je fiksna vrednost klase
+
+Dok je static shared promenljivo stanje klase i zato da bi izbegli bugs, bolje koristiti konstante nego magic strings
+
+---
+
+Tačno — 10/10.
+Za ovaj slučaj:
+public const MAX_PER_PAGE = 100;
+
+je bolji izbor jer vrednost predstavlja pravilo koje ne treba menjati tokom runtime-a.
+Dok:
+public static int $maxPerPage = 100;
+
+predstavlja shared mutable state i neko bi mogao kasnije da uradi:
+Pagination::$maxPerPage = 500;
+
+što možda uopšte ne želimo.
+Dakle:
+const
+→ fiksno pravilo / invariant klase
+
+static property
+→ zajedničko promenljivo stanje
+
+I da, izbegavanje magic strings/numbers je dodatna prednost konstanti.

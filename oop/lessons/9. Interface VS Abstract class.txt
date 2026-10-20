@@ -1,0 +1,363 @@
+Lekcija 9 — Interface vs Abstract Class
+
+Najkraći mentalni model:
+
+abstract class
+→ "šta ova porodica objekata JESTE i šta već deli"
+
+interface
+→ "šta objekat MORA DA UME"
+
+To je možda najvažnija razlika.
+Recimo:
+interface Sendable
+{
+    public function send(): void;
+}
+
+Interface kaže:
+Ne zanima me kako izgledaš iznutra. Ako kažeš da si Sendable, moraš imati send().
+
+Onda:
+class EmailNotification implements Sendable
+{
+    public function send(): void
+    {
+        echo 'Sending email';
+    }
+}
+
+i:
+class SmsNotification implements Sendable
+{
+    public function send(): void
+    {
+        echo 'Sending SMS';
+    }
+}
+
+Obe klase imaju isti contract, ali ne moraju biti u istoj inheritance hijerarhiji.
+Abstract class može da deli stanje
+Recimo:
+abstract class Notification
+{
+    public function __construct(
+        protected string $message
+    ) {}
+
+    public function message(): string
+    {
+        return $this->message;
+    }
+
+    abstract public function send(): void;
+}
+
+Ovde abstract class već daje:
+state:
+$message
+
+implementation:
+message()
+
+contract:
+send()
+
+Child samo popunjava ono što nedostaje.
+Interface nema tu ulogu shared instance state-a.
+interface Sendable
+{
+    public function send(): void;
+}
+
+On prvenstveno definiše ponašanje koje klasa obećava.
+Velika razlika: inheritance limit
+PHP klasa može da:
+extends samo jednu klasu
+
+ali može da:
+implements više interface-a
+
+Na primer:
+class EmailNotification
+    extends Notification
+    implements Sendable, Loggable, Queueable
+{
+}
+
+Mentalno:
+extends
+→ jedan parent
+
+implements
+→ više contracts
+
+To je ogroman razlog zašto su interface-i toliko korisni.
+"IS-A" ima dve nijanse
+Kod abstract inheritance-a:
+EmailNotification extends Notification
+
+kažemo:
+EmailNotification je vrsta Notification-a.
+
+Kod interface-a:
+EmailNotification implements Sendable
+
+kažemo više:
+EmailNotification ima sposobnost da bude poslata.
+
+Dakle:
+abstract class
+→ identity / family
+
+interface
+→ capability / contract
+
+To nije matematički savršeno pravilo, ali je odličan mentalni model.
+Kada bih koristio abstract class?
+Kad više klasa zaista deli zajedničku osnovu.
+Na primer:
+abstract class PaymentMethod
+{
+    public function __construct(
+        protected string $currency
+    ) {}
+
+    public function currency(): string
+    {
+        return $this->currency;
+    }
+
+    abstract public function pay(int $amount): void;
+}
+
+Pa:
+class CardPayment extends PaymentMethod
+{
+    public function pay(int $amount): void
+    {
+        // card implementation
+    }
+}
+
+class BankTransfer extends PaymentMethod
+{
+    public function pay(int $amount): void
+    {
+        // bank implementation
+    }
+}
+
+Ovde svi dele:
+currency
+currency()
+
+i svi su:
+PaymentMethod
+
+Abstract class ima smisla.
+Kada bih koristio interface?
+Kad me zanima samo:
+Šta objekat može da uradi?
+
+Recimo:
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+Možemo imati:
+class StripeGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // Stripe
+    }
+}
+
+i:
+class FakePaymentGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // test implementation
+    }
+}
+
+Sad Service ne mora da zna konkretan gateway:
+class BookingService
+{
+    public function __construct(
+        private PaymentGateway $gateway
+    ) {}
+}
+
+Ovo je već ogromna stvar za Dependency Injection.
+Service kaže:
+Ne treba mi Stripe. Treba mi bilo šta što poštuje PaymentGateway contract.
+
+To omogućava:
+production
+→ StripeGateway
+
+test
+→ FakePaymentGateway
+
+bez menjanja BookingService.
+Tu interface postaje mnogo više od OOP sintakse — postaje alat za loose coupling.
+Ovo će ti biti jako važno za Laravel
+Laravel Service Container obožava ovu ideju.
+Možeš imati:
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+pa konkretno:
+class StripeGateway implements PaymentGateway
+{
+}
+
+a container-u kažeš:
+Kad neko traži PaymentGateway
+→ daj mu StripeGateway
+
+Onda:
+public function __construct(
+    private PaymentGateway $gateway
+) {}
+
+ne zavisi od konkretne implementacije.
+To je jedan od temelja SOLID-a koji ćemo kasnije zvati Dependency Inversion Principle.
+Možemo koristiti oba zajedno
+Ovo je važno.
+Nije:
+abstract class ILI interface
+
+uvek izbor jednog protiv drugog.
+Možeš:
+interface Sendable
+{
+    public function send(): void;
+}
+
+i:
+abstract class Notification implements Sendable
+{
+    public function __construct(
+        protected string $message
+    ) {}
+
+    public function message(): string
+    {
+        return $this->message;
+    }
+}
+
+pa:
+class EmailNotification extends Notification
+{
+    public function send(): void
+    {
+        // ...
+    }
+}
+
+Sada:
+Sendable
+→ contract
+
+Notification
+→ zajednička baza
+
+EmailNotification
+→ konkretna implementacija
+
+Vrlo čist dizajn.
+Najkraća mapa za intervju
+ABSTRACT CLASS
+→ može imati properties/state
+→ može imati constructor
+→ može imati concrete metode
+→ može imati abstract metode
+→ klasa može extends samo jednu klasu
+→ dobra za shared base behavior/state
+
+INTERFACE
+→ definiše contract
+→ kaže koje metode implementacija mora ponuditi
+→ klasa može implementirati više interface-a
+→ odličan za loose coupling i DI
+
+I moje praktično pravilo:
+Ako pitaš:
+"Šta ova klasa JESTE?"
+→ razmisli o abstract/base class
+
+Ako pitaš:
+"Šta ova klasa MORA DA UME?"
+→ razmisli o interface-u
+
+Mini interview pitanje 9
+Imamo:
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+i:
+class StripeGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // Stripe API
+    }
+}
+
+Zašto je ovo:
+class BookingService
+{
+    public function __construct(
+        private PaymentGateway $gateway
+    ) {}
+}
+
+bolje vezivanje nego:
+class BookingService
+{
+    public function __construct(
+        private StripeGateway $gateway
+    ) {}
+}
+
+?
+Posebno me zanima šta time dobijamo za dependency injection i testiranje.
+
+---
+
+Bolje je jer onda BookingService ne zanima koji ce gateway realno biti, nego samo da bude implementiran.
+
+Tako mozemo u jednom objektu koristiti realan a u drugom fake payment radi testiranja.
+
+---
+
+Tačno — 10/10.
+To je upravo poenta interface-a:
+BookingService
+→ ne zavisi od StripeGateway konkretno
+→ zavisi od PaymentGateway contract-a
+
+Pa u produkciji možeš imati:
+new BookingService(
+    new StripeGateway()
+);
+
+a u testu:
+new BookingService(
+    new FakePaymentGateway()
+);
+
+BookingService se ne menja. Bitno mu je samo:
+"Objekat koji dobijem mora imati charge()."
+
+To je loose coupling i odlična osnova za dependency injection i testiranje.

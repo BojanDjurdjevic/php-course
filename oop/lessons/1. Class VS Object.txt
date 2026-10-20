@@ -1,0 +1,365 @@
+Module 8 — OOP PHP
+
+Lekcija 1: Class vs Object — šta objekat zapravo predstavlja?
+
+Najvažnija mentalna razlika:
+class
+→ definicija / blueprint / tip
+
+object
+→ konkretna instanca te klase
+→ ima svoje stanje u runtime-u
+
+Na primer:
+class User
+{
+    public int $id;
+    public string $name;
+}
+
+Ovo još nije korisnik.
+Ovo je samo definicija:
+Svaki objekat tipa User može imati id i name.
+
+Tek kada uradimo:
+$user = new User();
+
+nastaje objekat.
+Možemo napraviti više objekata iste klase:
+$user1 = new User();
+$user1->id = 1;
+$user1->name = 'Ana';
+
+$user2 = new User();
+$user2->id = 2;
+$user2->name = 'Marko';
+
+Imamo:
+User class
+   │
+   ├── object #1
+   │   id = 1
+   │   name = Ana
+   │
+   └── object #2
+       id = 2
+       name = Marko
+
+Iako oba objekta koriste istu definiciju klase, imaju sopstveno stanje.
+Objekat = State + Behavior
+Ovo je korisniji OOP mentalni model od „class je šablon“.
+Objekat obično objedinjuje:
+STATE
+→ šta objekat trenutno zna / sadrži
+
+BEHAVIOR
+→ šta objekat može da radi
+
+Recimo:
+class Booking
+{
+    public string $status = 'pending';
+
+    public function confirm(): void
+    {
+        $this->status = 'confirmed';
+    }
+}
+
+Ovde:
+status
+→ state
+
+confirm()
+→ behavior
+
+Kad napravimo:
+$booking = new Booking();
+
+imamo:
+Booking object
+├── state:
+│   status = pending
+│
+└── behavior:
+    confirm()
+
+pa:
+$booking->confirm();
+
+menja stanje baš tog objekta:
+pending
+↓
+confirmed
+
+$this
+Ovo je jedna od centralnih OOP stvari.
+U:
+public function confirm(): void
+{
+    $this->status = 'confirmed';
+}
+
+$this znači:
+trenutni objekat nad kojim je metoda pozvana.
+
+Ako imamo:
+$booking1 = new Booking();
+$booking2 = new Booking();
+
+$booking1->confirm();
+
+onda:
+$booking1->status
+→ confirmed
+
+$booking2->status
+→ pending
+
+Iako oba koriste istu metodu confirm(), 
+$this se odnosi na objekat koji je metodu pozvao.
+Mentalno:
+$booking1->confirm();
+
+otprilike znači:
+"Pozovi confirm() nad booking1 objektom."
+
+pa unutar metode:
+$this
+
+znači:
+$booking1
+
+Zašto uopšte OOP?
+Proceduralno bismo možda imali:
+$bookingStatus = 'pending';
+
+function confirmBooking(&$status)
+{
+    $status = 'confirmed';
+}
+
+OOP kaže:
+Ako status pripada booking-u, a confirm() menja booking, 
+zašto ih ne bismo držali zajedno?
+
+Dakle:
+class Booking
+{
+    public string $status = 'pending';
+
+    public function confirm(): void
+    {
+        $this->status = 'confirmed';
+    }
+}
+
+Time povezujemo podatke i operacije koje njima pripadaju.
+Ali važno: OOP nije samo:
+„stavi sve funkcije u klase“.
+
+Dobar OOP pokušava da modeluje odgovornosti i granice.
+Kasnije ćemo zato razlikovati:
+Booking
+→ predstavlja booking
+
+BookingRepository
+→ zna kako da booking učita/snima
+
+BookingService
+→ vodi booking use-case
+
+BookingController
+→ prima HTTP zahtev
+
+To je već mnogo bliže onome što radiš u Laravelu.
+Objekti imaju identitet
+Ovo je malo dublja stvar i vrlo je bitna u PHP-u.
+$user1 = new User();
+$user1->name = 'Ana';
+
+$user2 = $user1;
+
+Sada ovo:
+$user2->name = 'Marija';
+
+šta misliš da će biti:
+echo $user1->name;
+
+Rezultat:
+Marija
+
+Zašto?
+Zato što kod PHP objekata:
+$user2 = $user1;
+
+ne pravi automatski novu potpuno nezavisnu kopiju objekta.
+Obe promenljive se odnose na isti objekat.
+Mentalno:
+$user1 ──────┐
+             ↓
+          User object
+          name = Marija
+             ↑
+$user2 ──────┘
+
+Ovo je potpuno drugačije od običnih scalar vrednosti:
+$a = 5;
+$b = $a;
+
+$b = 10;
+
+echo $a; // 5
+
+Kod objekata obe promenljive mogu pokazivati na isti object identity.
+Ako želimo pravi drugi objekat
+Možemo:
+$user2 = clone $user1;
+
+Tada dobijamo drugu instancu:
+$user1 → User object A
+$user2 → User object B
+
+pa promena jednog ne menja automatski drugi.
+clone ćemo kasnije detaljnije kada dođemo do magic metoda poput:
+__clone()
+
+Za sada je dovoljno da zapamtiš:
+assignment object-a
+→ još jedna promenljiva ka istom objektu
+
+clone
+→ nova instanca
+
+Class vs object vs variable
+Još jedna važna razlika:
+$user = new User();
+
+Ovde imamo tri različite stvari:
+User
+→ klasa
+
+new User()
+→ kreiranje objekta
+
+$user
+→ PHP promenljiva koja drži pristup/reference-like handle ka objektu
+
+Nemoj mentalno izjednačiti:
+$user = objekat
+
+sa:
+promenljiva i objekat su ista stvar
+
+Praktično pričamo „$user je User objekat“, 
+ali tehnički promenljiva je način na koji pristupamo toj instanci.
+Veza sa Laravelom
+Kad napišeš:
+$user = User::find(5);
+
+ako je user pronađen, Eloquent ti daje:
+User class
+↓
+konkretna User model instanca
+↓
+$user
+
+I zato:
+$user->name
+$user->email
+$user->save()
+
+ima smisla.
+Tu već koristiš OOP svakodnevno:
+properties / attributes
+methods
+object state
+object behavior
+
+Samo Laravel dosta stvari sakrije iza ORM-a.
+Današnja mapa
+CLASS
+→ definicija tipa
+
+OBJECT
+→ konkretna instanca klase
+
+PROPERTY
+→ stanje objekta
+
+METHOD
+→ ponašanje objekta
+
+$this
+→ trenutna instanca
+
+new
+→ kreira objekat
+
+$user2 = $user1
+→ obe promenljive mogu referisati isti objekat
+
+clone
+→ pravi novu instancu
+
+Mini interview pitanje 1
+Šta će ovaj kod ispisati i zašto?
+class Booking
+{
+    public string $status = 'pending';
+
+    public function confirm(): void
+    {
+        $this->status = 'confirmed';
+    }
+}
+
+$a = new Booking();
+$b = $a;
+
+$b->confirm();
+
+echo $a->status;
+
+Ne zanima me samo rezultat — objasni mi šta se desilo između $a i $b.
+
+---
+
+Ispisaće 'confirmed'
+Zato sto nije isto kao kod varijabli, 
+nego b takodje nosi isti objekat kao $a i samim tim utiče na objekat
+
+Tačno — 9.8/10.
+
+Suština je:
+
+$a = new Booking();
+$b = $a;
+
+ne pravi drugi nezavisan Booking objekat.
+
+Obe promenljive pristupaju istoj instanci, pa:
+
+$b->confirm();
+
+menja stanje tog jednog objekta:
+
+Booking object
+status = confirmed
+↑             ↑
+$a            $b
+Zato:
+
+echo $a->status;
+
+ispisuje:
+
+confirmed
+Mala terminološka nijansa: često kažemo da obe „pokazuju na isti objekat“. 
+To je bolji mentalni model nego da kažemo da $b „kopira ceo objekat“.
+
+Ako bismo uradili:
+
+$b = clone $a;
+
+onda bismo dobili dve različite instance.
