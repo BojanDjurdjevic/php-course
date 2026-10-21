@@ -114,7 +114,13 @@ interface
 → capability / contract
 
 To nije matematički savršeno pravilo, ali je odličan mentalni model.
+
+---
+
 Kada bih koristio abstract class?
+
+---
+
 Kad više klasa zaista deli zajedničku osnovu.
 Na primer:
 abstract class PaymentMethod
@@ -156,7 +162,11 @@ i svi su:
 PaymentMethod
 
 Abstract class ima smisla.
+
+---
 Kada bih koristio interface?
+---
+
 Kad me zanima samo:
 Šta objekat može da uradi?
 

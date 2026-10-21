@@ -22,6 +22,7 @@ Ovde kažemo:
 BookingService HAS-A BookingRepository
 
 BookingService nije repository.
+
 On ga samo koristi kao saradnika.
 Zašto se zove composition?
 Zato što veći objekat sastavljamo od drugih objekata.

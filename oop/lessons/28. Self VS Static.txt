@@ -209,13 +209,14 @@ Objasni mi posebno zašto self:: i static:: ovde daju različit rezultat.
 
 ---
 
-first() će datu 'user'
+first() će dati 'user'
 zato što self:: određuje da se poziv
 izvrsi samo unutar klase kojoj pripada.
 
 second() daje 'admin' jer
 static:: kaže PHP-u da obrati pažnju,
-kroz koju klasu je pozvana metoda.
+kroz koju klasu je pozvana metoda, 
+tj kroz koju klasu je poziv izvršen.
 
 ---
 

@@ -1,0 +1,443 @@
+Lekcija 31 — Enums u PHP-u
+
+Enum = enumeration.
+
+Koristimo ga kada neka vrednost može pripadati konačnom, unapred poznatom skupu opcija.
+
+Tipičan booking primer:
+pending
+confirmed
+cancelled
+completed
+
+Bez enum-a možda imamo:
+$status = 'confirmed';
+
+Problem je što možemo slučajno napisati:
+$status = 'confrimed';
+
+PHP kaže:
+String je string. Meni je ovo sasvim legalno.
+
+Enum uvodi pravi tip.
+enum BookingStatus
+{
+    case Pending;
+    case Confirmed;
+    case Cancelled;
+    case Completed;
+}
+
+Sada:
+$status = BookingStatus::Confirmed;
+
+više nemamo proizvoljan string.
+Mentalno:
+string
+→ praktično beskonačno mogućih vrednosti
+
+BookingStatus
+→ samo 4 dozvoljene vrednosti
+
+To je najveća vrednost enum-a.
+Enum case je objekat
+Ovo je bitno.
+$status = BookingStatus::Confirmed;
+
+$status nije string "Confirmed".
+To je enum objekat/case tipa:
+BookingStatus
+
+Zato možeš:
+var_dump($status instanceof BookingStatus);
+// true
+
+I poređenje radi elegantno:
+if ($status === BookingStatus::Confirmed) {
+    // ...
+}
+
+Ovde je === potpuno prirodan izbor.
+Backed enums
+Ovo će ti za Laravel biti još važnije.
+Možemo enum povezati sa stvarnom scalar vrednošću:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+    case Completed = 'completed';
+}
+
+Ovo se zove backed enum.
+Može biti backed sa:
+string
+ili
+int
+
+Na primer:
+enum UserRole: int
+{
+    case Admin = 1;
+    case Supplier = 2;
+    case Customer = 3;
+}
+
+Ali za statuse je string često čitljiviji.
+->value
+Kod backed enum-a:
+$status = BookingStatus::Confirmed;
+
+echo $status->value;
+
+dobijaš:
+confirmed
+
+Dakle:
+BookingStatus::Confirmed
+→ enum case
+
+BookingStatus::Confirmed->value
+→ 'confirmed'
+
+Ovo je veoma bitna razlika.
+from() i tryFrom()
+Ako iz baze ili HTTP input-a dobiješ:
+$status = 'confirmed';
+
+možeš ga pretvoriti u enum:
+$status = BookingStatus::from('confirmed');
+
+dobiješ:
+BookingStatus::Confirmed
+
+Ali ako uradiš:
+BookingStatus::from('banana');
+
+dobićeš grešku:
+ValueError
+
+Ako ne želiš exception:
+$status = BookingStatus::tryFrom('banana');
+
+dobiješ:
+null
+
+Mentalno:
+from()
+→ mora postojati
+→ inače exception
+
+tryFrom()
+→ pokušaj
+→ ako ne postoji, null
+
+Ovo je dobro interview pitanje.
+cases()
+Možeš dobiti sve moguće enum vrednosti:
+$statuses = BookingStatus::cases();
+
+To daje array enum case-ova.
+Na primer:
+foreach (BookingStatus::cases() as $status) {
+    echo $status->value;
+}
+
+Možeš time lako praviti <select>:
+<select>
+    <?php foreach (BookingStatus::cases() as $status): ?>
+        <option value="<?= $status->value ?>">
+            <?= $status->name ?>
+        </option>
+    <?php endforeach; ?>
+</select>
+
+name vs value
+Kod:
+BookingStatus::Confirmed
+
+imaš:
+BookingStatus::Confirmed->name
+
+rezultat:
+Confirmed
+
+i:
+BookingStatus::Confirmed->value
+
+rezultat:
+confirmed
+
+Dakle:
+name
+→ PHP naziv case-a
+
+value
+→ backed vrednost
+
+Enum može imati metode
+Ovo je deo zbog kog enum nije samo lepša konstanta.
+Na primer:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+    case Completed = 'completed';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Pending => 'Pending',
+            self::Confirmed => 'Confirmed',
+            self::Cancelled => 'Cancelled',
+            self::Completed => 'Completed',
+        };
+    }
+}
+
+Pa:
+echo BookingStatus::Confirmed->label();
+
+Dakle enum može da nosi ponašanje vezano za svoj zatvoren skup vrednosti.
+Još korisnije:
+public function canBeCancelled(): bool
+{
+    return match ($this) {
+        self::Pending,
+        self::Confirmed => true,
+
+        self::Cancelled,
+        self::Completed => false,
+    };
+}
+
+Pa:
+if ($booking->status->canBeCancelled()) {
+    // ...
+}
+
+To već izgleda kao ozbiljan domain model.
+Enum vs constants
+Pre enum-a često bismo imali:
+class Booking
+{
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_CONFIRMED = 'confirmed';
+    public const STATUS_CANCELLED = 'cancelled';
+}
+
+To je bolje od magic strings, ali i dalje:
+function changeStatus(string $status)
+
+prima bilo koji string.
+Sa enum-om:
+function changeStatus(BookingStatus $status)
+
+PHP sada garantuje:
+Moraš mi dati validan BookingStatus.
+
+To je mnogo jači contract.
+Dakle:
+constants
+→ centralizuju vrednosti
+
+enum
+→ centralizuje vrednosti + pravi type + može imati behavior
+
+Zato je enum obično bolji kada imamo pravi zatvoren skup dozvoljenih stanja.
+Laravel veza — Eloquent cast
+Ovo ti je verovatno najpoznatija upotreba.
+Model:
+use App\Enums\BookingStatus;
+
+class Booking extends Model
+{
+    protected function casts(): array
+    {
+        return [
+            'status' => BookingStatus::class,
+        ];
+    }
+}
+
+U bazi imaš:
+confirmed
+
+ali Laravel ti može dati:
+$booking->status
+
+kao:
+BookingStatus::Confirmed
+
+Onda možeš:
+if ($booking->status === BookingStatus::Confirmed) {
+    // ...
+}
+
+i:
+$booking->status = BookingStatus::Cancelled;
+
+$booking->save();
+
+Eloquent odradi konverziju između enum-a i DB vrednosti.
+To je mnogo čistije od:
+if ($booking->status === 'confirmed') {
+
+na 30 mesta.
+Enum + validation u Laravelu
+Možeš čak validirati enum:
+use Illuminate\Validation\Rule;
+
+'status' => [
+    'required',
+    Rule::enum(BookingStatus::class),
+],
+
+Dakle request layer može garantovati da je input validan enum case.
+Kada enum ima smisla?
+Odličan je za:
+BookingStatus
+UserRole
+PaymentStatus
+PaymentMethod
+OrderStatus
+RoomType
+NotificationChannel
+
+ako je skup:
+mali
+poznat
+zatvoren
+semantički važan
+
+Kada enum nije dobar izbor?
+Ako se vrednosti često dodaju iz baze od strane admina.
+Recimo:
+hotel categories
+amenities
+cities
+countries
+product categories
+
+Ako admin treba da može da doda novu kategoriju 
+bez deploy-a, enum je pogrešan alat.
+
+Enum je compile/code-level zatvoren skup.
+Dakle:
+STATUS
+→ često enum
+
+DINAMIČKI DB PODACI
+→ tabela/model
+
+Enum može implementirati interface
+Može čak i:
+interface HasLabel
+{
+    public function label(): string;
+}
+
+pa:
+enum BookingStatus: string implements HasLabel
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Pending => 'Pending',
+            self::Confirmed => 'Confirmed',
+        };
+    }
+}
+
+Dakle enum je prilično ozbiljan OOP element, ne samo fancy constant.
+Jedna važna stvar: enum ne može da extends klasu
+Enum nije regularna inheritance baza.
+Ne može:
+enum BookingStatus extends Something
+
+Ali može:
+implements SomeInterface
+
+i može koristiti trait, uz odgovarajuća ograničenja.
+Najvažnija mapa
+enum
+→ zatvoren skup mogućih vrednosti
+
+pure enum
+→ samo case-ovi
+
+backed enum
+→ case ima string/int value
+
+->name
+→ ime case-a
+
+->value
+→ backed vrednost
+
+from()
+→ value → enum ili exception
+
+tryFrom()
+→ value → enum ili null
+
+cases()
+→ svi case-ovi
+
+Laravel:
+DB string
+↓
+Eloquent enum cast
+↓
+BookingStatus::Confirmed
+
+Mini provera za enum
+Ako imamo:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+}
+
+koja je razlika između:
+BookingStatus::Confirmed
+
+BookingStatus::Confirmed->name
+
+i:
+BookingStatus::Confirmed->value
+
+?
+Posle ovog odgovora vraćamo se tačno gde smo stali: OOP Interview pitanje #2.
+
+---
+
+name -> naziv case-a,
+u ovom slučaju Confirmed.
+
+value -> backend vrednost case-a
+u ovom slučaju: confirmed.
+
+---
+
+Tačno — 10/10.
+Još kompletno:
+BookingStatus::Confirmed
+
+je sam enum case objekat tipa BookingStatus.
+BookingStatus::Confirmed->name
+// 'Confirmed'
+
+je naziv case-a.
+BookingStatus::Confirmed->value
+// 'confirmed'
+
+je njegova backed vrednost.
+Dakle:
+case object → BookingStatus::Confirmed
+name        → Confirmed
+value       → confirmed
