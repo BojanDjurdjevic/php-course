@@ -1,0 +1,218 @@
+Lekcija 26 — Poređenje objekata: == vs === i clone
+
+Ovo je vrlo PHP-specifična OOP tema i dobra interview zamka.
+
+Imamo:
+class User
+{
+    public function __construct(
+        public string $name
+    ) {}
+}
+
+Napravimo dva objekta:
+$a = new User('Bojan');
+$b = new User('Bojan');
+
+Na prvi pogled izgledaju isto.
+Ali:
+var_dump($a == $b);
+var_dump($a === $b);
+
+ne proveravaju istu stvar.
+== kod objekata
+$a == $b
+
+proverava da li su objekti iste klase i imaju odgovarajuće jednake property vrednosti.
+U našem primeru:
+$a == $b; // true
+
+jer oba predstavljaju:
+User
+name = Bojan
+
+=== kod objekata
+$a === $b
+
+pita nešto mnogo strože:
+Da li su ovo baš ista instanca objekta?
+
+Ovde:
+$a === $b; // false
+
+jer smo uradili:
+$a = new User('Bojan');
+$b = new User('Bojan');
+
+Dva puta new:
+$a → User object #1
+
+$b → User object #2
+
+Iako imaju isto stanje, nisu isti objekat.
+A sada ovo
+$a = new User('Bojan');
+$b = $a;
+
+Sada:
+$a == $b;  // true
+$a === $b; // true
+
+jer oba pristupaju istoj instanci:
+$a ──┐
+     ↓
+   User #1
+     ↑
+$b ──┘
+
+To se direktno nadovezuje na našu prvu OOP lekciju.
+clone
+Ako imamo:
+$a = new User('Bojan');
+
+$b = clone $a;
+
+dobijamo:
+$a → User object #1
+
+$b → User object #2
+
+Početno stanje im je isto.
+Zato:
+$a == $b;  // true
+$a === $b; // false
+
+A sada možemo:
+$b->name = 'Marko';
+
+bez menjanja:
+$a->name; // Bojan
+
+jer su to različite instance.
+Ali clone je po defaultu shallow copy
+Ovo je bitna nijansa.
+Recimo:
+class User
+{
+    public function __construct(
+        public Address $address
+    ) {}
+}
+
+pa:
+$address = new Address();
+
+$a = new User($address);
+$b = clone $a;
+
+Dobili smo dva User objekta:
+$a → User #1
+$b → User #2
+
+ali njihov address može i dalje biti isti nested objekat:
+User #1 ──┐
+          ↓
+       Address #1
+          ↑
+User #2 ──┘
+
+Zato se clone naziva shallow copy po defaultu.
+Ako želiš i nested object da kloniraš, možeš kontrolisati ponašanje kroz magic metodu:
+public function __clone(): void
+{
+    $this->address = clone $this->address;
+}
+
+O __clone() i ostalim magic metodama ćemo odmah posle.
+Praktična razlika
+Kod scalar-a:
+$a = 5;
+$b = 5;
+
+$a === $b; // true
+
+jer porediš vrednost i tip.
+Kod objekata:
+$a === $b;
+
+ima dodatno veoma važnu ideju:
+object identity
+
+Dva booking-a mogu imati potpuno iste podatke, ali i dalje biti dva različita objekta.
+Mentalna mapa
+$a == $b
+→ jednaka struktura/vrednosti objekata
+
+$a === $b
+→ ista konkretna instanca
+
+$b = $a
+→ isti objekat
+
+$b = clone $a
+→ nova instanca sa kopiranim početnim stanjem
+
+Mini interview pitanje 26
+Šta očekuješ za sva četiri rezultata i zašto?
+class Booking
+{
+    public function __construct(
+        public string $status
+    ) {}
+}
+
+$a = new Booking('pending');
+$b = new Booking('pending');
+$c = $a;
+
+var_dump($a == $b);
+var_dump($a === $b);
+
+var_dump($a == $c);
+var_dump($a === $c);
+
+Objasni posebno razliku između $b i $c.
+
+---
+
+var_dump($a == $b); // true - jer poredimo trenutno 
+stanje oba objekta
+
+var_dump($a === $b); // false 
+-> jer poredimo 2 različita objekta
+iako im je trenutno stanje identično.
+
+var_dump($a == $c); // true
+isto stanje
+
+var_dump($a === $c); // true
+Isto ppčetno stanje, isti identitet.
+
+Razlika je u tome sto je $b potpuno 
+drugi identitet iako mu je isto stanje kao $a,
+dok je $c nastao od $a i 
+samim tim je isti 
+identitet + nije klon pa utice na stanje $a.
+
+---
+
+Tačno — 10/10.
+Jedina terminološka nijansa kod $c:
+$c = $a;
+
+nije napravio novi objekat „od $a“, nego je $c samo dobio pristup istoj postojećoj instanci.
+Zato:
+$a ──┐
+     ↓
+ Booking #1
+     ↑
+$c ──┘
+
+$b ───→ Booking #2
+
+I posledica koju si naveo je potpuno tačna:
+$c->status = 'confirmed';
+
+echo $a->status; // confirmed
+
+Dok promena $b ne bi uticala na $a.

@@ -1,0 +1,191 @@
+Lekcija 24 — final class i final method
+
+final u PHP-u kaže:
+Ovde više ne dozvoljavam inheritance/override.
+
+Ako napišemo:
+final class BookingService
+{
+}
+
+ne možemo:
+class SpecialBookingService extends BookingService
+{
+}
+
+PHP će prijaviti grešku.
+Dakle:
+final class
+→ klasa se ne može naslediti
+
+Zašto bismo to želeli?
+Zato što inheritance nije nešto što treba automatski dozvoliti.
+Ako napravimo:
+class BookingService
+{
+}
+
+mi tehnički dozvoljavamo drugim klasama da kažu:
+Ja sam specijalizovana vrsta BookingService-a.
+
+Ali možda dizajn klase uopšte nije napravljen da bude baza za inheritance.
+Zato je sasvim razumno imati:
+final class BookingService
+{
+}
+
+ako očekujemo da se ponašanje menja kroz composition + DI, a ne kroz nasleđivanje.
+Na primer:
+final class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment,
+        private BookingRepository $bookings,
+    ) {}
+}
+
+Ako želimo drugi payment:
+ne pravimo:
+SpecialStripeBookingService extends BookingService
+
+nego samo injectujemo:
+new BookingService(
+    new PayPalGateway(),
+    $repository
+);
+
+To se lepo vezuje za ono što smo već učili:
+inheritance
+→ čvršći odnos
+
+composition
+→ lakša promena collaborators-a
+
+final method
+Možemo dozvoliti da se klasa nasleđuje, ali zabraniti override konkretne metode:
+class Booking
+{
+    final public function id(): int
+    {
+        return $this->id;
+    }
+}
+
+Child može naslediti Booking, ali ne može:
+public function id(): int
+{
+    return 999;
+}
+
+Jer parent kaže:
+Ovo ponašanje je deo mog contract-a i ne želim da ga child menja.
+
+Dakle:
+final class
+→ nema child klasa
+
+final method
+→ child postoji, ali ovu metodu ne sme override
+
+final nije isto što i private
+Ovo je dobra interview zamka.
+private function calculate(): void
+
+znači:
+metoda je dostupna samo ovoj klasi.
+
+Dok:
+final public function calculate(): void
+
+znači:
+metoda može biti public i child je može koristiti, ali ne sme da joj promeni implementaciju.
+
+Dakle visibility i inheritance restriction su dve različite stvari.
+Zašto često vidiš final na Service/DTO klasama?
+Na primer:
+final readonly class CreateBookingData
+{
+    // ...
+}
+
+ili:
+final class BookingService
+{
+    // ...
+}
+
+Time autor praktično kaže:
+Ova klasa je kompletna konkretna implementacija. Ako želiš drugačije ponašanje, 
+sastavi sistem drugačije umesto da praviš child koji menja njene delove.
+
+To može arhitekturu učiniti predvidljivijom.
+Ali opet — nije pravilo da svaka klasa mora biti final.
+Mini interview pitanje 24
+Koja je razlika između:
+final class BookingService
+
+i:
+class BookingService
+{
+    final public function create(): Booking
+    {
+        // ...
+    }
+}
+
+I zašto bi kod servisa koji već koristi DI/composition final class često mogao imati smisla?
+
+---
+
+Final zeli da zastiti klasu od nasledjivana i override-a.
+
+To znaci da bas tako mora da se implementira i to je odlicno u kombinacijo sa DI. 
+Jer klasa ne moze da se menja ali su dependencies vrlo fleksibilne
+
+---
+
+Tačno — 9.7/10.
+Samo da preciziramo jednu stvar iz pitanja:
+final class BookingService
+
+znači:
+→ cela klasa ne može da se nasledi
+
+Dok:
+class BookingService
+{
+    final public function create(): Booking
+    {
+        // ...
+    }
+}
+
+znači:
+→ BookingService može da se nasledi
+→ ali create() ne može da se override-uje
+
+A ovo što si rekao za DI je baš suština:
+BookingService
+→ struktura ostaje stabilna
+
+dependencies
+→ mogu da se menjaju
+
+Recimo:
+final class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment
+    ) {}
+}
+
+Ne treba nam:
+StripeBookingService extends BookingService
+PayPalBookingService extends BookingService
+
+nego:
+new BookingService(new StripeGateway());
+
+new BookingService(new PayPalGateway());
+
+Dakle stabilan objekat + fleksibilni saradnici. Vrlo lep dizajn.

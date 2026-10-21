@@ -1,0 +1,309 @@
+Lekcija 27 — Magic methods
+
+Magic methods su posebne PHP metode čija imena počinju sa:
+
+__
+
+PHP ih automatski poziva kada se dogodi određena situacija.
+Već jednu vrlo dobro poznaješ:
+__construct()
+
+Ti ne radiš:
+$user->__construct(...);
+
+nego:
+new User(...);
+
+a PHP automatski pozove constructor.
+Isti princip važi i za druge magic methods.
+Najčešće koje treba da znaš su:
+__construct()
+__destruct()
+__get()
+__set()
+__isset()
+__unset()
+__call()
+__callStatic()
+__toString()
+__invoke()
+__clone()
+__serialize()
+__unserialize()
+
+Nećemo ih učiti kao telefonski imenik. Fokusiramo se na one koje stvarno treba razumeti.
+__toString()
+Recimo:
+class User
+{
+    public function __construct(
+        private string $name
+    ) {}
+
+    public function __toString(): string
+    {
+        return $this->name;
+    }
+}
+
+Sada:
+$user = new User('Bojan');
+
+echo $user;
+
+PHP vidi da pokušavamo da tretiramo objekat kao string i automatski pozove:
+$user->__toString();
+
+Rezultat:
+Bojan
+
+Dakle:
+echo $object
+↓
+PHP traži __toString()
+↓
+string
+
+__invoke()
+Ovo je zanimljivo.
+Možemo napraviti objekat koji se ponaša kao funkcija:
+class PriceCalculator
+{
+    public function __invoke(int $price, int $quantity): int
+    {
+        return $price * $quantity;
+    }
+}
+
+Pa:
+$calculator = new PriceCalculator();
+
+$total = $calculator(1000, 3);
+
+echo $total; // 3000
+
+Naizgled pozivamo:
+$calculator(...)
+
+kao funkciju.
+PHP zapravo radi:
+$calculator->__invoke(...);
+
+Ovakav objekat se često naziva invokable object.
+Koristan je kada klasa praktično predstavlja jednu konkretnu operaciju.
+Na primer:
+final class CalculateBookingTotal
+{
+    public function __invoke(Booking $booking): int
+    {
+        // ...
+    }
+}
+
+__get() i __set()
+Oni se aktiviraju kada pokušavaš da pristupiš nedostupnom ili nepostojećem property-ju.
+Na primer:
+class User
+{
+    private array $attributes = [
+        'name' => 'Bojan',
+        'email' => 'bojan@test.com',
+    ];
+
+    public function __get(string $name): mixed
+    {
+        return $this->attributes[$name] ?? null;
+    }
+}
+
+Iako klasa nema pravi:
+public string $name;
+
+možeš:
+echo $user->name;
+
+PHP vidi:
+name nije dostupan property.
+
+Pa automatski poziva:
+$user->__get('name');
+
+I ovo ti treba da zazvuči veoma poznato.
+Eloquent
+Kada radiš:
+$user->email
+
+Eloquent iza scene koristi mnogo magic behavior-a oko model attributes.
+Zato deluje kao da svaki DB column postoji kao običan PHP property, iako stvari ispod haube nisu tako jednostavne.
+Magic methods su jedan od razloga zbog kojih framework API može izgledati vrlo elegantno.
+__set()
+Slično:
+public function __set(string $name, mixed $value): void
+{
+    $this->attributes[$name] = $value;
+}
+
+pa:
+$user->email = 'new@test.com';
+
+može završiti u:
+__set('email', 'new@test.com');
+
+Ali magic nije uvek dobar
+Ovo je veoma važna stvar.
+Na prvi pogled:
+$user->whatever;
+
+izgleda lepo.
+Ali sa previše magic ponašanja:
+nije očigledno odakle property dolazi
+IDE teže zaključuje tip
+refactor može biti teži
+greške mogu biti skrivene
+kod postaje manje eksplicitan
+
+Zato framework poput Laravel-a ima dobar razlog da koristi magic API.
+Ali u svojim običnim domain klasama nemoj automatski praviti:
+__get()
+__set()
+__call()
+
+samo zato što možeš.
+Često je ovo jasnije:
+$user->email();
+
+nego magični property sistem koji si sam napravio.
+__call()
+Poziva se kada pokušamo da pozovemo nedostupnu/nepostojeću instance metodu.
+class Example
+{
+    public function __call(
+        string $name,
+        array $arguments
+    ): mixed {
+        echo "Called: {$name}";
+        return null;
+    }
+}
+
+Pa:
+$example->something();
+
+može izazvati:
+__call('something', []);
+
+Postoji i:
+__callStatic()
+
+za nedostupne static pozive.
+Framework-i i biblioteke mogu da koriste ovo za dinamičke API-je.
+Ali opet — magic povećava implicitnost.
+__clone()
+Ovo smo već dotakli.
+$b = clone $a;
+
+PHP napravi shallow kopiju, a zatim, ako postoji:
+public function __clone(): void
+{
+    // custom clone logic
+}
+
+PHP je automatski pozove.
+Na primer:
+class User
+{
+    public function __construct(
+        public Address $address
+    ) {}
+
+    public function __clone(): void
+    {
+        $this->address = clone $this->address;
+    }
+}
+
+Tako možemo kontrolisati kopiranje nested objekata.
+__destruct()
+Poziva se kada objekat bude uništen / kada PHP čisti objekat.
+class Example
+{
+    public function __destruct()
+    {
+        echo 'Object destroyed';
+    }
+}
+
+Ali za normalan application kod retko treba da pišeš destructor.
+Ne bih ga koristio za važne business stvari tipa:
+"kad objekat nestane, sačuvaj booking"
+
+To bi bilo vrlo nepredvidljivo.
+Najvažniji mentalni model
+Magic method:
+PHP runtime automatski poziva specijalnu metodu kao odgovor na određenu operaciju nad objektom.
+
+Na primer:
+new Object()
+→ __construct()
+
+echo $object
+→ __toString()
+
+$object(...)
+→ __invoke()
+
+$object->unknownProperty
+→ __get()
+
+$object->unknownMethod()
+→ __call()
+
+clone $object
+→ __clone()
+
+I možda najvažnija arhitektonska poruka:
+Magic methods su moćni, ali eksplicitni kod je često lakši za razumevanje i održavanje.
+
+Mini interview pitanje 27
+Šta se dešava ovde:
+class TotalCalculator
+{
+    public function __invoke(
+        int $price,
+        int $quantity
+    ): int {
+        return $price * $quantity;
+    }
+}
+
+$calculator = new TotalCalculator();
+
+echo $calculator(500, 3);
+
+Kako je moguće da objekat $calculator pozivamo kao funkciju i koja magic metoda se zapravo izvršava?
+
+---
+
+Ovo nam obezbedjuje magicna metoda __invoke()
+Zato se kaze za ovakav objekat da je invokable.
+Php prepozna operaciju, pozove invoke 
+a nama izgleda kao $calculator(1, 2)
+
+---
+
+Tačno — 10/10. 👌
+Upravo tako:
+$calculator(500, 3);
+
+PHP prepoznaje da je $calculator objekat koji ima:
+__invoke()
+
+i praktično izvršava:
+$calculator->__invoke(500, 3);
+
+Zato kažemo da je objekat invokable.
+Rezultat je:
+1500
+
+I lepo si uhvatio glavnu ideju magic metoda: mi izvršimo neku PHP operaciju, 
+a runtime automatski aktivira odgovarajuću __magicMethod().

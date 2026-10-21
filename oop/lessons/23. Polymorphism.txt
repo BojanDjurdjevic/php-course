@@ -191,3 +191,33 @@ primer polymorphism-a?
 Šta ta funkcija zna, a šta ne mora da zna o konkretnom objektu koji dobije?
 
 ---
+
+Funkcija samo zna kakav joj objekat treba, 
+ali ona ne mora da zna kako ce da uradi ono sto se od njega ocekuje.
+
+Polymorphisam je zato sto vise klasa mogu 
+implementirati ovaj jedan interfejs i samim tim, 
+svaka od tih klasa je dobar kandidat za ovu funkciju
+
+---
+
+Tačno — 10/10.
+Odlično si ga objasnio. Funkcija zna samo contract:
+NotificationChannel
+
+i zna da bezbedno može da pozove:
+$channel->send($message);
+
+Ne mora da zna da li je unutra:
+EmailChannel
+SmsChannel
+SlackChannel
+
+niti kako svaki od njih šalje poruku.
+To je polymorphism:
+isti contract
++ isti poziv metode
++ različito konkretno ponašanje
+
+I vrlo lepo si ga povezao sa LSP-om: svaka od tih implementacija 
+treba da bude validan kandidat gde god se očekuje NotificationChannel.

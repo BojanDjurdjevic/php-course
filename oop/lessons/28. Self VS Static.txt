@@ -1,0 +1,240 @@
+Lekcija 28 — self vs static i Late Static Binding
+
+Ovo je malo naprednija PHP OOP tema i vrlo dobra interview stvar.
+
+Već znamo:
+self::
+
+ali postoji i:
+static::
+
+I nisu uvek isto.
+Pogledaj:
+class User
+{
+    public static function type(): string
+    {
+        return 'user';
+    }
+
+    public static function describe(): string
+    {
+        return self::type();
+    }
+}
+
+class Admin extends User
+{
+    public static function type(): string
+    {
+        return 'admin';
+    }
+}
+
+Ako uradimo:
+echo Admin::describe();
+
+šta će se desiti?
+describe() je nasleđen od User.
+Unutar njega imamo:
+self::type();
+
+self znači:
+klasa u kojoj je ova metoda definisana
+
+A describe() je definisan u:
+User
+
+Zato rezultat bude:
+user
+
+Čak iako smo pozvali:
+Admin::describe()
+
+A sada static::
+Promenimo samo:
+public static function describe(): string
+{
+    return static::type();
+}
+
+I ponovo:
+echo Admin::describe();
+
+Sada dobijamo:
+admin
+
+Zašto?
+static:: uzima u obzir klasu preko koje je poziv napravljen.
+To se zove:
+Late Static Binding
+Mentalno:
+self::
+→ veži se za klasu gde je kod DEFINISAN
+
+static::
+→ uzmi u obzir klasu preko koje je poziv IZVRŠEN
+
+Dakle:
+Admin::describe();
+
+sa:
+static::type();
+
+kaže otprilike:
+Poziv je došao kroz Admin, pa pogledaj Admin::type().
+
+Zašto ovo postoji?
+Zbog inheritance-a.
+Recimo:
+class Model
+{
+    public static function create(): static
+    {
+        return new static();
+    }
+}
+
+pa:
+class User extends Model {}
+class Booking extends Model {}
+
+Sada:
+$user = User::create();
+$booking = Booking::create();
+
+new static() omogućava:
+User::create()
+→ novi User
+
+Booking::create()
+→ novi Booking
+
+Da smo napisali:
+return new self();
+
+vezali bismo se za klasu gde je metoda definisana.
+static kao return type
+Moderni PHP omogućava:
+public static function create(): static
+
+što znači:
+vraćam instancu konkretne klase kroz koju je poziv izvršen.
+
+To je veoma zgodno za fluent API-je, factories i inheritance hijerarhije.
+I verovatno ti već zvuči poznato iz framework sveta.
+parent::
+Sad možemo lepo razlikovati sva tri:
+self::
+→ trenutna klasa u kojoj je kod definisan
+
+parent::
+→ direktni parent
+
+static::
+→ late-static-bound klasa, tj. konkretna klasa poziva
+
+Primer:
+class User
+{
+    public static function role(): string
+    {
+        return 'user';
+    }
+}
+
+class Admin extends User
+{
+    public static function role(): string
+    {
+        return parent::role() . '-admin';
+    }
+}
+
+Ovde parent:: eksplicitno kaže:
+pozovi parent implementaciju.
+
+Nemoj mešati $this i static::
+$this
+
+radi sa konkretnom instancom:
+$user->name
+
+Dok:
+static::
+
+i dalje pripada static/class kontekstu, samo podržava polymorphic inheritance ponašanje.
+Mentalno:
+$this
+→ koji OBJEKAT?
+
+self::
+→ u kojoj KLASI je kod definisan?
+
+static::
+→ kroz koju KLASU je poziv došao?
+
+Mini interview pitanje 28
+Šta će ovo ispisati i zašto?
+class User
+{
+    public static function role(): string
+    {
+        return 'user';
+    }
+
+    public static function first(): string
+    {
+        return self::role();
+    }
+
+    public static function second(): string
+    {
+        return static::role();
+    }
+}
+
+class Admin extends User
+{
+    public static function role(): string
+    {
+        return 'admin';
+    }
+}
+
+echo Admin::first();
+echo Admin::second();
+
+Objasni mi posebno zašto self:: i static:: ovde daju različit rezultat.
+
+---
+
+first() će datu 'user'
+zato što self:: određuje da se poziv
+izvrsi samo unutar klase kojoj pripada.
+
+second() daje 'admin' jer
+static:: kaže PHP-u da obrati pažnju,
+kroz koju klasu je pozvana metoda.
+
+---
+
+Tačno — 10/10.
+Samo bih self:: formulisao još preciznije:
+self::
+→ vezuje se za klasu u kojoj je metoda DEFINISANA
+
+static::
+→ uzima u obzir klasu kroz koju je poziv IZVRŠEN
+
+Zato:
+Admin::first();
+
+ulazi u metodu definisanu u User, a:
+self::role();
+
+ostaje vezan za User → user.
+Dok:
+static::role();
+
+koristi Late Static Binding i vidi da je poziv došao kroz Admin → admin.

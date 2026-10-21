@@ -1,0 +1,231 @@
+Lekcija 29 — Overriding, method signatures i variance
+Method overriding smo već koristili:
+class User
+{
+    public function role(): string
+    {
+        return 'user';
+    }
+}
+
+class Admin extends User
+{
+    public function role(): string
+    {
+        return 'admin';
+    }
+}
+
+Ali child ne može proizvoljno da promeni contract metode.
+Recimo:
+class PaymentProcessor
+{
+    public function process(int $amount): void
+    {
+    }
+}
+
+Ne možemo u child-u tek tako napraviti contract restriktivnijim:
+class StripeProcessor extends PaymentProcessor
+{
+    public function process(string $amount): void
+    {
+    }
+}
+
+To bi razbilo substitutability.
+Jer kod koji zna:
+PaymentProcessor
+
+očekuje da može da uradi:
+$processor->process(1000);
+
+Child mora i dalje da bude validan PaymentProcessor.
+To se direktno vezuje za LSP.
+Visibility takođe ne smeš suziti
+Ako parent ima:
+public function process(): void
+
+child ne može da kaže:
+protected function process(): void
+
+jer bi nešto što je bilo dostupno korisnicima parent contract-a odjednom nestalo.
+Dakle:
+parent public
+→ child mora ostati public
+
+Možeš ići u širem smeru, recimo:
+protected → public
+
+ali ne obrnuto.
+Covariance — return type
+Ovde PHP dopušta nešto veoma korisno.
+Imamo:
+class Animal
+{
+}
+
+class Dog extends Animal
+{
+}
+
+Parent:
+class AnimalFactory
+{
+    public function create(): Animal
+    {
+        return new Animal();
+    }
+}
+
+Child može vratiti specifičniji tip:
+class DogFactory extends AnimalFactory
+{
+    public function create(): Dog
+    {
+        return new Dog();
+    }
+}
+
+To se zove covariance.
+Zašto je bezbedno?
+Ako neko očekuje:
+Animal
+
+a dobije:
+Dog
+
+nema problema jer:
+Dog IS-A Animal
+
+Mentalno:
+return type
+Animal → Dog
+
+šire → specifičnije
+
+je dozvoljeno.
+Contravariance — parameter type
+Kod parametara ide logika u drugom smeru.
+Recimo:
+class Animal
+{
+}
+
+class Dog extends Animal
+{
+}
+
+Parent contract:
+class DogHandler
+{
+    public function handle(Dog $animal): void
+    {
+    }
+}
+
+Child može prihvatiti širi tip:
+class AnimalHandler extends DogHandler
+{
+    public function handle(Animal $animal): void
+    {
+    }
+}
+
+Zašto?
+Parent je obećao:
+Mogu da obradim Dog.
+
+Child kaže:
+Ja mogu čak i bilo koji Animal.
+
+Dakle sigurno može i Dog.
+To se zove contravariance.
+Mentalno:
+parameter type
+Dog → Animal
+
+specifičnije → šire
+
+može biti dozvoljeno.
+Najlakši način da zapamtiš
+Za overriding:
+PARAMETAR
+→ child ne sme da bude zahtevniji
+
+RETURN
+→ child može da bude precizniji
+
+I ovo zapravo ima savršenu LSP logiku.
+Ako parent obeća:
+function process(Dog $dog): Animal
+
+child može reći:
+Mogu da primim čak i bilo koji Animal, a garantujem da ću vratiti baš Dog.
+
+To je bezbednije, ne restriktivnije.
+Interface primer
+Isto važi kada implementiraš interface.
+interface UserFinder
+{
+    public function find(int $id): ?User;
+}
+
+Implementacija mora poštovati taj contract.
+Ne može proizvoljno vratiti:
+string
+
+jer caller očekuje:
+User|null
+
+To je važna stvar: type declarations nisu samo pomoć IDE-u — oni predstavljaju deo OOP contract-a.
+Mini interview pitanje 29
+Imamo:
+class Animal {}
+
+class Dog extends Animal {}
+
+class Factory
+{
+    public function create(): Animal
+    {
+        return new Animal();
+    }
+}
+
+Da li child sme da uradi:
+class DogFactory extends Factory
+{
+    public function create(): Dog
+    {
+        return new Dog();
+    }
+}
+
+Ako sme — zašto je bezbedno da parent obećava Animal, 
+a child vraća specifičniji Dog? I kako se zove taj princip kod return type-a?
+
+---
+
+Ovaj pristup se zove Covariance.
+
+Tako da ovde moze child da vrati Dog iz prostog razloga sto
+Dog IS - A Animal.
+Tako moze da suzi i da vrati specifičniji type
+ali samo pod uslovom da vraćeni tip
+jeste naslednik, child očekivanog.
+
+---
+
+Tačno — 10/10.
+Baš precizno:
+covariance
+→ return type može da ide ka specifičnijem tipu
+
+Animal
+  ↑
+ Dog
+
+Animal → Dog ✅
+
+Jer ako caller očekuje Animal, a dobije Dog, contract nije prekršen — Dog jeste Animal.
