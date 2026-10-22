@@ -1,0 +1,471 @@
+Lekcija 6/15 — Version constraints: ^, ~, exact, ranges i wildcards
+
+Najvažnija stvar:
+Ono što pišeš uz package u composer.json 
+najčešće nije konkretna verzija, 
+nego version constraint — skup verzija koje Composer sme da izabere. 
+
+
+Na primer:
+"monolog/monolog": "^3.5"
+
+ne znači:
+instaliraj 3.5
+
+nego:
+dozvoljavam određeni skup kompatibilnih verzija
+
+1. Exact version
+Najstroži mogući zahtev:
+"vendor/package": "2.4.3"
+
+znači:
+samo 2.4.3
+
+Ne:
+2.4.4
+2.5.0
+3.0.0
+
+Samo:
+2.4.3
+
+Mentalno:
+2.4.3
+→ = 2.4.3
+
+Ovo daje maksimalnu kontrolu, ali vrlo malo fleksibilnosti.
+Ako drugi dependency traži:
+>=2.4.4
+
+a ti zahtevaš tačno:
+2.4.3
+
+Composer može reći:
+dependency conflict
+
+2. Comparison operators
+Možeš eksplicitno definisati range:
+>=2.4
+
+znači:
+2.4+
+
+Problem: nema gornje granice.
+Dakle može potencijalno dozvoliti i:
+3.0
+4.0
+10.0
+
+što može uključiti breaking changes.
+Zato Composer dokumentacija upozorava na neograničene constraint-e poput:
+*
+>=3.4
+
+i preporučuje gornju granicu, često kroz ^.
+
+Možeš napisati:
+>=2.4 <3.0
+
+što znači:
+najmanje 2.4
+ali manje od 3.0
+
+Dakle:
+2.4 ✅
+2.7 ✅
+2.99 ✅
+
+3.0 ❌
+
+Composer podržava:
+>
+>=
+<
+<=
+!=
+
+A više constraint-a razdvojenih razmakom 
+ili zarezom predstavljaju logički AND; || predstavlja OR.
+
+Na primer:
+>=2.0 <3.0
+
+znači:
+>=2.0 AND <3.0
+
+3. Wildcard *
+Primer:
+2.4.*
+
+znači:
+>=2.4.0 <2.5.0
+
+Dakle:
+2.4.0 ✅
+2.4.1 ✅
+2.4.99 ✅
+
+2.5.0 ❌
+3.0.0 ❌
+
+Wildcard kaže:
+Ovaj deo verzije može biti bilo koji.
+
+Na primer:
+2.*
+
+konceptualno znači:
+>=2.0.0 <3.0.0
+
+Ali nemoj koristiti običan:
+*
+
+bez dobrog razloga.
+To praktično znači:
+Prihvatam sve buduće verzije.
+
+To uključuje i breaking major releases. 
+
+4. Tilde ~
+Ovo ume da zbuni.
+Primer:
+~2.4.3
+
+znači:
+>=2.4.3 <2.5.0
+
+Dakle:
+2.4.3 ✅
+2.4.4 ✅
+2.4.99 ✅
+
+2.5.0 ❌
+
+Mentalno:
+~2.4.3
+→ dozvoli patch update
+→ ne idi u novi minor
+
+Ali:
+~2.4
+
+znači:
+>=2.4.0 <3.0.0
+
+Dakle:
+2.4 ✅
+2.5 ✅
+2.9 ✅
+
+3.0 ❌
+
+Ovo je važna razlika:
+~2.4.3
+→ <2.5.0
+
+~2.4
+→ <3.0.0
+
+Composer tilde objašnjava kao: minimalna verzija je zadana, 
+a poslednja eksplicitno navedena cifra može da raste, 
+uz posebnu zaštitu major granice. 
+
+5. Caret ^
+Ovo je constraint koji ćeš verovatno najčešće viđati.
+Primer:
+^2.4.3
+
+znači:
+>=2.4.3 <3.0.0
+
+Dakle dozvoljava:
+2.4.4 ✅
+2.5.0 ✅
+2.9.9 ✅
+
+3.0.0 ❌
+
+Zašto?
+Jer po SemVer-u:
+2.x
+→ trebalo bi da ostane backward compatible
+
+3.0
+→ sme da bude breaking
+
+Zato ^ praktično kaže:
+Daj mi kompatibilne non-breaking update-e.
+
+Composer upravo ^ opisuje kao operator 
+koji prati SemVer i dozvoljava non-breaking update-e; 
+dokumentacija ga preporučuje za interoperabilnost biblioteka. 
+
+6. Najvažnija razlika ^ vs ~
+Pogledaj:
+^2.4.3
+→ >=2.4.3 <3.0.0
+
+dok:
+~2.4.3
+→ >=2.4.3 <2.5.0
+
+Dakle:
+^2.4.3
+→ dozvoljava minor + patch
+→ ne dozvoljava sledeći major
+
+~2.4.3
+→ dozvoljava samo patch
+→ ne dozvoljava sledeći minor
+
+Primer ako postoje:
+2.4.3
+2.4.8
+2.5.0
+2.9.1
+3.0.0
+
+onda:
+^2.4.3
+→ 2.4.3
+→ 2.4.8
+→ 2.5.0
+→ 2.9.1
+
+~2.4.3
+→ 2.4.3
+→ 2.4.8
+
+To je verovatno najvažniji deo cele lekcije.
+
+7. ^ i verzije pre 1.0
+
+Ovde moraš biti oprezan.
+
+Ako imamo:
+^0.3
+
+to ne znači:
+>=0.3 <1.0
+
+nego:
+>=0.3.0 <0.4.0
+
+A:
+^0.0.3
+
+znači:
+>=0.0.3 <0.0.4
+
+Zašto?
+Jer 0.x projekti još nemaju stabilnu 1.0 API garanciju, 
+pa Composer ^ tretira konzervativnije. 
+
+Mentalno:
+^2.3
+→ može do <3.0
+
+^0.3
+→ može do <0.4
+
+^0.0.3
+→ može do <0.0.4
+
+8. Hyphen range
+Možeš napisati:
+1.0 - 2.0
+
+Composer to tretira kao inclusive range, 
+ali ako je desna strana parcijalna verzija, 
+ona se proširuje kao wildcard. Konkretno, 1.0 - 2.0 je ekvivalent otprilike:
+
+>=1.0.0 <2.1
+
+dok:
+1.0.0 - 2.1.0
+
+znači:
+>=1.0.0 <=2.1.0
+
+To postoji i treba da znaš da ga pročitaš, 
+ali u svakodnevnom composer.json kodu verovatno ćeš mnogo češće viđati ^. 
+
+9. OR constraint
+Možeš napisati:
+^2.0 || ^3.0
+
+što znači:
+Podržavam ili kompatibilne 2.x verzije ili kompatibilne 3.x verzije.
+
+Na primer biblioteka možda podržava:
+Symfony 6
+ILI
+Symfony 7
+
+pa dependency može izgledati konceptualno:
+^6.0 || ^7.0
+
+To je korisno posebno autorima biblioteka koje žele da podrže više major verzija dependency-ja.
+10. Šta će Composer zapravo instalirati?
+Recimo:
+"vendor/package": "^2.4"
+
+a dostupno je:
+2.4.0
+2.4.7
+2.5.0
+2.9.3
+3.0.0
+
+Constraint dozvoljava:
+>=2.4 <3.0
+
+Composer će prilikom resolution-a pokušati da izabere 
+odgovarajuću verziju koja zadovoljava sve constraint-e 
+u dependency graph-u; često je to najviša moguća verzija, 
+ali drugi dependencies mogu dodatno ograničiti izbor. 
+
+Dakle nije dovoljno:
+moj composer.json dozvoljava 2.9.3
+
+Ako neki drugi dependency zahteva:
+<2.7
+
+Composer mora rešiti zajednički problem.
+11. Constraint nije isto što i lock
+Ovo je baš važno pred sledeće lekcije.
+Recimo:
+"vendor/package": "^2.4"
+
+dozvoljava mnogo verzija:
+2.4
+2.5
+2.6
+...
+2.9
+
+Ali composer.lock može trenutno reći:
+konkretno instalirano: 2.7.4
+
+Dakle:
+composer.json
+→ koje verzije SMEJU
+
+composer.lock
+→ koju verziju SMO IZABRALI
+
+To je centralna razlika.
+12. Zašto ^ toliko često vidiš u Laravel projektima?
+Jer daje dobar balans:
+ne želim da budem zaleđen na jednom patch-u
+
+ali:
+ne želim da mi Composer automatski uskoči u breaking major
+
+Na primer:
+"some/package": "^3.2"
+
+kaže:
+3.2+
+ali manje od 4.0
+
+To omogućava bugfix i feature update-e unutar kompatibilne major serije.
+13. Primer sa PHP verzijom
+I PHP je dependency constraint:
+"php": "^8.3"
+
+To znači:
+>=8.3.0 <9.0.0
+
+Dakle:
+8.3 ✅
+8.4 ✅
+8.5 ✅
+8.x ✅
+
+9.0 ❌
+
+Ako bi napisao:
+"php": "~8.3.0"
+
+to bi bilo mnogo strože:
+>=8.3.0 <8.4.0
+
+Dakle PHP 8.4 ne bi zadovoljavao requirement.
+Ovo vrlo lepo pokazuje praktičnu razliku između ^ i ~.
+14. Jedna Composer zamka
+Nemoj pisati nešto poput:
+>=2.*
+
+To kombinuje comparison operator i wildcard na nejasan način; 
+Composer dokumentacija navodi takve constraint-e kao pogrešne/invalidne. Ako želiš:
+
+bilo šta u 2.x
+
+napiši:
+2.*
+
+ili još češće nešto smislenije poput:
+^2.0
+
+Ako želiš:
+2.3 i više, ali ne 3
+
+onda:
+^2.3
+
+je čist izraz. getcomposer.org
+15. Kako bih ovo zapamtio bez bubanja?
+Ovo je dovoljno:
+2.4.3
+→ samo 2.4.3
+
+2.4.*
+→ >=2.4 <2.5
+
+~2.4.3
+→ >=2.4.3 <2.5
+
+~2.4
+→ >=2.4 <3.0
+
+^2.4.3
+→ >=2.4.3 <3.0
+
+^0.4
+→ >=0.4 <0.5
+
+>=2.4 <3.0
+→ ručno definisan range
+
+A najvažniji kontrast:
+~2.4.3
+→ patch updates
+
+^2.4.3
+→ minor + patch updates
+→ ne sledeći major
+
+za stabilne 1.0+ pakete.
+Mentalni model cele lekcije
+Version constraint
+↓
+definiše skup dozvoljenih verzija
+↓
+Composer rešava sve dependency constraint-e
+↓
+izabere konkretnu kompatibilnu verziju
+↓
+composer.lock je zapamti
+
+Ako sada vidiš:
+"package/a": "^2.4"
+
+više ne treba da razmišljaš:
+„Aha, verzija 2.4.“
+
+nego:
+„Aha — minimum 2.4, dozvoljeni non-breaking update-i kroz 2.x, ali ne 3.0.“
+
+To je pravi mentalni model.

@@ -1,0 +1,435 @@
+Lekcija 5/15 — Semantic Versioning: major.minor.patch
+
+Najkraće:
+Semantic Versioning je konvencija po kojoj broj 
+verzije govori kakvu vrstu promene paket donosi.
+
+Najčešći format:
+MAJOR.MINOR.PATCH
+
+Na primer:
+3.7.2
+│ │ │
+│ │ └── PATCH
+│ └──── MINOR
+└────── MAJOR
+
+Composer intenzivno koristi ovu ideju kada odlučuje koje verzije 
+dependency-ja mogu biti međusobno kompatibilne.
+
+1. PATCH — bugfix bez lomljenja API-ja
+Recimo:
+2.4.0
+↓
+2.4.1
+
+To bi po SemVer logici trebalo da znači:
+Ispravili smo nešto, ali postojeći javni API ostaje kompatibilan.
+
+Na primer biblioteka ima:
+public function send(string $message): bool
+
+i interno popravi bug zbog kojeg slanje poruke nekad nije radilo.
+API ostaje:
+send(string $message): bool
+
+Verzija može otići:
+2.4.0 → 2.4.1
+
+Mentalno:
+PATCH
+→ bugfix
+→ backward compatible
+
+2. MINOR — nova funkcionalnost bez breaking change-a
+Na primer:
+2.4.1
+↓
+2.5.0
+
+Paket dobije novu mogućnost:
+public function sendLater(
+    string $message,
+    DateTimeImmutable $when
+): bool
+
+Ali postojeća:
+send()
+
+nastavlja da radi isto.
+Dakle:
+MINOR
+→ nova funkcionalnost
+→ postojeći kod ne bi trebalo da se polomi
+
+Primer:
+2.4.0
+→ postoje send()
+
+2.5.0
+→ send() i dalje postoji
+→ dodat sendLater()
+
+To je backward-compatible proširenje.
+3. MAJOR — breaking change
+Na primer:
+2.9.8
+↓
+3.0.0
+
+To znači:
+Nova verzija sme da uvede promene koje nisu kompatibilne sa prethodnim API-jem.
+
+Recimo stari package ima:
+public function send(string $message): bool
+
+a nova verzija promeni API u:
+public function send(Message $message): SendResult
+
+Kod aplikacije:
+$sender->send('Hello');
+
+više ne mora da radi.
+To je breaking change.
+Mentalno:
+MAJOR
+→ API može da se promeni
+→ postojeći consumer code možda mora da se prilagodi
+
+4. Backward compatibility je centralna ideja
+Recimo koristiš:
+Package 2.4.3
+
+Ako package poštuje SemVer, onda bi trebalo da očekuješ:
+2.4.4 ✅
+2.5.0 ✅
+2.9.7 ✅
+
+3.0.0 ⚠️
+
+Zašto?
+Jer sve unutar 2.x serije ne bi trebalo da uvodi breaking public API promene, dok 3.0.0 sme.
+Zato će nam u sledećoj lekciji imati mnogo više smisla nešto poput:
+^2.4
+
+jer Composer može koristiti SemVer granicu da kaže:
+Dozvoli kompatibilne verzije, ali nemoj automatski preći u novi breaking major.
+
+Composer dokumentacija upravo caret 
+operator opisuje kao način da se dozvole non-breaking SemVer update-i. 
+
+5. Primer kroz realnu biblioteku
+Recimo tvoja aplikacija trenutno koristi:
+Payment SDK 4.3.2
+
+Pojavi se:
+4.3.3
+
+Očekivanje:
+bugfix
+
+Pojavi se:
+4.4.0
+
+Očekivanje:
+nova funkcionalnost
+ali kompatibilna sa 4.3
+
+Pojavi se:
+5.0.0
+
+Sada treba proveriti migration guide / changelog jer postoje breaking promene.
+Mentalno:
+4.3.2
+  │
+  ├── 4.3.3 → fix
+  ├── 4.4.0 → feature
+  └── 5.0.0 → potential break
+
+6. Šta zapravo znači "breaking change"?
+Ne mora biti nešto ogromno.
+Recimo package ima:
+class Logger
+{
+    public function log(string $message): void
+    {
+    }
+}
+
+Ako nova verzija ukloni:
+log()
+
+breaking change.
+Ako promeni:
+log(string $message)
+
+u:
+log(LogMessage $message)
+
+breaking change.
+Ako promeni return type koji consumer očekuje — potencijalno breaking.
+Ako preimenuje namespace:
+Vendor\Old\Logger
+
+u:
+Vendor\New\Logger
+
+breaking.
+
+Ako promeni javno očekivano ponašanje tako da postojeći 
+consumer više nije kompatibilan — takođe može biti breaking.
+
+Dakle nije samo:
+„obrisali su pola biblioteke“.
+
+7. SemVer je contract autora, ne fizički zakon
+Ovo je veoma važno.
+Kad vidiš:
+2.4.1
+→
+2.4.2
+
+Composer ne može matematički dokazati da autor nije napravio breaking change.
+On veruje verzionoj konvenciji.
+Ako maintainer greškom ubaci breaking API promenu u patch release:
+2.4.1 → 2.4.2
+
+tvoj kod i dalje može da pukne.
+Dakle:
+SemVer
+→ obećanje / convention
+
+nije
+→ tehnička garancija
+
+Zato ozbiljni projekti koriste:
+composer.lock
+testove
+CI
+changelog/release notes
+
+a ne samo poverenje u broj verzije.
+8. Šta je posebno sa 0.x verzijama?
+Ovo je veoma bitna nijansa za Composer.
+Recimo:
+0.3.4
+
+Major je 0.
+U SemVer svetu 0.x uglavnom znači:
+API još nije stabilan kao 1.0.0+.
+
+Zato Composer tretira caret constraints opreznije.
+Na primer:
+^0.3
+
+nije:
+>=0.3 <1.0
+
+nego:
+>=0.3.0 <0.4.0
+
+A:
+^0.0.3
+
+znači:
+>=0.0.3 <0.0.4
+
+Dakle pre 1.0, sledeća cifra postaje mnogo značajnija za compatibility granicu.
+
+Mentalno:
+>=1.0
+→ major obično označava breaking granicu
+
+0.x
+→ API još nestabilan
+→ Composer je konzervativniji
+
+Ovo ćemo odmah primeniti kada dođemo do ^ u Lekciji 6.
+9. 1.0.0 ima posebno značenje
+Kada projekat iz:
+0.9.7
+
+pređe u:
+1.0.0
+
+to tipično poručuje:
+Javni API sada smatramo stabilnim.
+
+Od tog trenutka očekuje se klasična SemVer logika:
+1.0.1
+→ bugfix
+
+1.1.0
+→ backward-compatible feature
+
+2.0.0
+→ breaking change
+
+10. Pre-release verzije
+Možeš videti:
+2.0.0-alpha
+2.0.0-beta
+2.0.0-RC1
+2.0.0
+
+Composer prepoznaje stability nivoe:
+dev
+alpha
+beta
+RC
+stable
+
+gde je finalna verzija poput:
+2.0.0
+
+stable. getcomposer.org
+Mentalno:
+dev
+↓
+alpha
+↓
+beta
+↓
+RC
+↓
+stable
+
+RC znači:
+Release Candidate
+
+odnosno kandidat za final release ako se ne pronađu ozbiljni problemi.
+11. Composer po defaultu voli stable
+Ako samo normalno tražiš package, Composer po defaultu razmatra stable 
+release-ove osim ako konfiguracijom ili constraint-om eksplicitno 
+ne dozvoliš nestabilnije verzije. getcomposer.org
+
+Zato obično ne moraš da brineš da će ti Composer slučajno instalirati:
+4.0.0-alpha1
+
+umesto stabilne verzije samo zato što je novija.
+12. Verzija paketa uglavnom dolazi iz VCS tag-a
+Recimo Git repository ima tagove:
+v1.0.0
+v1.1.0
+v1.1.1
+v2.0.0
+
+Composer ih vidi kao dostupne package verzije.
+Composer normalizuje v prefix, pa:
+v2.0.0
+
+tretira kao verziju:
+2.0.0
+
+Composer se snažno oslanja na VCS tags/branches 
+kada određuje dostupne verzije paketa. getcomposer.org
+
+13. Nemoj mešati version i version constraint
+Ovo nam je priprema za sledeću lekciju.
+3.2.1
+
+je konkretna verzija.
+Ali:
+^3.2
+~3.2
+3.2.*
+>=3.2 <4.0
+
+nisu verzije.
+To su:
+version constraints
+
+Dakle:
+3.2.1
+→ version
+
+^3.2
+→ skup verzija koje prihvatam
+
+Composer koristi constraint da odluči 
+koje konkretne verzije su kandidati. getcomposer.org
+
+14. Zašto ne bismo napisali samo *?
+Recimo:
+{
+    "require": {
+        "some/package": "*"
+    }
+}
+
+To praktično kaže:
+Daj mi bilo koju verziju.
+
+Problem:
+Danas:
+3.4.0
+
+radi.
+Sutra izađe:
+4.0.0
+
+sa breaking promenama.
+Ako constraint nema korisnu gornju granicu, 
+možeš dozvoliti verzije koje više nisu backward compatible. 
+Composer dokumentacija baš upozorava na unbounded constraints kao * ili samo >=... 
+i preporučuje ograničene constraint-e poput caret-a kada je to prikladno. getcomposer.org
+
+Zato ćeš vrlo često viđati:
+"vendor/package": "^3.4"
+
+a ne:
+"vendor/package": "*"
+
+15. Praktična Laravel paralela
+Zamisli Laravel package čiji je trenutni API:
+Version 4.7.2
+
+Ako izađe:
+4.7.3
+
+očekuješ uglavnom fix.
+Ako izađe:
+4.8.0
+
+očekuješ novu funkcionalnost, 
+ali existing code bi trebalo da ostane kompatibilan.
+
+Ako izađe:
+5.0.0
+
+onda pre upgrade-a proveravaš:
+upgrade guide
+breaking changes
+PHP requirement
+removed methods
+changed APIs
+
+To je praktični značaj SemVer-a developeru.
+Najvažnija mapa Lekcije 5
+2.7.4
+│ │ │
+│ │ └── PATCH
+│ │     bugfix
+│ │     backward compatible
+│ │
+│ └──── MINOR
+│       new feature
+│       backward compatible
+│
+└────── MAJOR
+        breaking changes allowed
+
+I:
+0.x
+→ posebno oprezno
+→ API još nije stabilan kao 1.x+
+
+alpha / beta / RC
+→ pre-release
+
+stable
+→ final release
+
+Najvažnija rečenica:
+SemVer daje Composer-u i developeru značenje iza brojeva verzije, 
+ali kompatibilnost ipak zavisi od toga da maintainer zaista pravilno verzioniše paket.
