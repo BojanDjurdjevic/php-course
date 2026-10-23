@@ -1,0 +1,585 @@
+Lekcija 13/15 — PSR-4 konfiguracija u composer.json + composer dump-autoload
+
+Do sada smo razumeli mentalni model:
+App\Services\BookingService
+↓
+src/Services/BookingService.php
+
+Sada gledamo gde se to pravilo stvarno definiše i šta Composer radi kada kažeš:
+composer dump-autoload
+
+Najkraće:
+autoload sekcija u composer.json definiše pravila učitavanja klasa, 
+a composer dump-autoload regeneriše Composer-ove autoload fajlove na osnovu tih pravila.
+
+1. Osnovna PSR-4 konfiguracija
+Naš MiniStay projekat:
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
+
+To znači:
+App\
+→ src/
+
+Pa:
+App\Services\BookingService
+→ src/Services/BookingService.php
+
+App\Http\Request
+→ src/Http/Request.php
+
+App\Enums\BookingStatus
+→ src/Enums/BookingStatus.php
+
+To već znaš.
+Ali važna stvar je:
+Composer mora da generiše svoju autoload konfiguraciju na osnovu ovog composer.json.
+
+2. Šta se dešava nakon izmene composer.json?
+Recimo projekat prvo ima samo:
+{
+    "require": {
+        "php": "^8.3"
+    }
+}
+
+Onda ti ručno dodaš:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+Samo čuvanje composer.json nije dovoljno da već generisani 
+Composer autoloader automatski zna za novu konfiguraciju.
+
+Treba regenerisati autoload metadata:
+composer dump-autoload
+
+ili skraćeno:
+composer dumpautoload
+
+Najčešće ćeš viđati prvu varijantu.
+3. Šta dump-autoload zapravo radi?
+Ne instalira nove packages.
+Ne radi dependency update.
+Ne menja ti package verzije.
+On praktično radi:
+pročitaj autoload konfiguraciju
+↓
+pročitaj autoload pravila dependencies
+↓
+regeneriši Composer autoload metadata
+↓
+osveži vendor/autoload.php infrastrukturu
+
+Dakle:
+composer dump-autoload
+
+nije isto što i:
+composer install
+
+niti:
+composer update
+
+Mentalno:
+install
+→ dependencies
+
+update
+→ dependency resolution
+
+dump-autoload
+→ autoload metadata
+
+4. Kada ti stvarno treba dump-autoload?
+Najjasniji slučaj:
+Promenio si autoload konfiguraciju u composer.json.
+
+Na primer:
+Pre:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+Posle:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/",
+        "Domain\\": "domain/"
+    }
+}
+
+Sada treba:
+composer dump-autoload
+
+da Composer registruje:
+Domain\
+→ domain/
+
+5. Ako samo dodaš novu PSR-4 klasu?
+Ovo je jedna od važnijih praktičnih nijansi.
+Recimo mapping već postoji:
+"App\\": "src/"
+
+i sada samo napraviš:
+src/Services/PaymentService.php
+
+sa:
+<?php
+
+namespace App\Services;
+
+final class PaymentService
+{
+}
+
+U normalnom PSR-4 autoload setup-u obično ne moraš da pokrećeš:
+composer dump-autoload
+
+samo zato što si dodao novu klasu.
+Zašto?
+Jer Composer već zna pravilo:
+App\
+→ src/
+
+Kada PHP zatraži:
+App\Services\PaymentService
+
+Composer može iz tog pravila da izračuna:
+src/Services/PaymentService.php
+
+Dakle:
+nov PSR-4 class file
+→ uglavnom ne zahteva dump-autoload
+
+Ovo developeri često rade iz navike, ali nije uvek potrebno.
+6. Kada dump-autoload jeste potreban?
+Tipično kada menjaš:
+autoload.psr-4
+autoload.classmap
+autoload.files
+autoload.exclude-from-classmap
+autoload-dev
+
+odnosno samu Composer autoload konfiguraciju.
+Na primer:
+"autoload": {
+    "psr-4": {
+        "App\\": "app/"
+    }
+}
+
+promeniš u:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+Obavezno želiš regeneraciju.
+7. Šta se generiše u vendor/composer/?
+Posle:
+composer dump-autoload
+
+Composer generiše ili ažurira fajlove kao:
+vendor/composer/
+├── autoload_psr4.php
+├── autoload_classmap.php
+├── autoload_files.php
+├── autoload_real.php
+├── autoload_static.php
+└── ClassLoader.php
+
+Ne moraš da pamtiš tačna imena svih fajlova.
+Važniji mentalni model:
+composer.json
+↓
+dump-autoload
+↓
+vendor/composer/* metadata
+↓
+vendor/autoload.php
+↓
+Composer ClassLoader
+
+8. Primer sa više namespace-a
+Recimo:
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/",
+            "Domain\\": "domain/",
+            "Infrastructure\\": "infrastructure/"
+        }
+    }
+}
+
+Posle:
+composer dump-autoload
+
+Composer zna:
+App\Http\Request
+→ src/Http/Request.php
+
+Domain\Booking\Booking
+→ domain/Booking/Booking.php
+
+Infrastructure\Database\PdoBookingRepository
+→ infrastructure/Database/PdoBookingRepository.php
+
+Dakle autoload nije ograničen na jedan src/.
+9. Šta ako mapping promeniš, ali ne pokreneš dump?
+Recimo autoloader je generisan kada je bilo:
+"App\\": "src/"
+
+A ti ručno promeniš na:
+"App\\": "app/"
+
+i premestiš klase u:
+app/
+
+ali ne pokreneš regeneraciju.
+Composer autoload metadata može i dalje imati staro pravilo:
+App\
+→ src/
+
+pa dobiješ:
+Class "App\Services\BookingService" not found
+
+iako fajl postoji u:
+app/Services/BookingService.php
+
+Tada je:
+composer dump-autoload
+
+upravo ono što želiš.
+10. dump-autoload -o
+Vrlo često ćeš videti:
+composer dump-autoload -o
+
+ili:
+composer dump-autoload --optimize
+
+-o znači:
+Generiši optimized autoloader.
+
+Composer tada pokušava da napravi efikasniji class map za PSR-4/PSR-0 klase koje može pronaći.
+Mentalno:
+standard PSR-4
+→ izračunaj filepath kada klasa zatreba
+
+optimized autoload
+→ unapred napravi više class → filepath mapiranja
+
+Na primer konceptualno:
+App\Services\BookingService
+→ /project/src/Services/BookingService.php
+
+App\Http\Request
+→ /project/src/Http/Request.php
+
+To može smanjiti filesystem lookup tokom runtime-a.
+11. Development vs production
+U development-u je običan:
+composer dump-autoload
+
+često sasvim dovoljan.
+Na production-u se često koristi optimized autoload:
+composer install --no-dev --optimize-autoloader
+
+ili nakon install-a:
+composer dump-autoload -o
+
+Cilj je runtime efikasnost.
+Ali nemoj iz toga napraviti pravilo:
+-o moram uvek lokalno.
+
+Ne moraš.
+12. Zašto optimized autoload može otkriti PSR-4 problem?
+Recimo imaš:
+src/services/BookingService.php
+
+ali klasa je:
+namespace App\Services;
+
+class BookingService {}
+
+Pri optimizaciji Composer može skenirati klase i primetiti da se ne uklapaju u očekivanu PSR-4 strukturu.
+Može prijaviti upozorenje nalik:
+Class ... does not comply with psr-4 autoloading standard
+
+To je veoma korisno.
+Ne znači:
+Composer se pokvario.
+
+Nego:
+Tvoj class name / namespace / filepath nisu konzistentni.
+
+13. Tipičan problem iz realnog projekta
+Recimo napraviš:
+src/Services/Bookingservice.php
+
+a unutra:
+namespace App\Services;
+
+class BookingService {}
+
+Na Windows-u ti možda nešto prolazi.
+Pokreneš:
+composer dump-autoload -o
+
+i Composer upozori da klasa ne prati PSR-4 standard.
+Problem je:
+Bookingservice.php
+
+vs:
+BookingService.php
+
+Jedno veliko S.
+To je odličan način da rano uhvatiš problem pre Linux deployment-a.
+14. dump-autoload ne popravlja pogrešan namespace
+Ovo je važno.
+Ako imaš:
+src/Services/BookingService.php
+
+ali unutra:
+namespace App\Service;
+
+neće:
+composer dump-autoload
+
+magično ispraviti:
+Service
+
+u:
+Services
+
+Composer može regenerisati autoload metadata, ali ne može da popravi tvoj source design.
+Dakle:
+Class not found
+↓
+dump-autoload
+
+nije univerzalni lek.
+Prvo proveravaš:
+namespace
+filename
+folder
+class name
+use
+mapping
+
+15. composer dump-autoload i dependencies
+Recimo imaš:
+"require": {
+    "monolog/monolog": "^3.0"
+}
+
+ali Monolog nije instaliran.
+Ako uradiš samo:
+composer dump-autoload
+
+to nije zamena za:
+composer install
+
+dump-autoload neće rešiti činjenicu da dependency source nije tu.
+Dakle:
+package missing
+→ composer install
+
+autoload metadata outdated
+→ composer dump-autoload
+
+16. Kada install već radi dump?
+Važno praktično pitanje.
+Kada pokreneš:
+composer install
+
+Composer na kraju već generiše autoload fajlove.
+Zato posle svežeg:
+composer install
+
+obično nema smisla odmah zatim raditi:
+composer dump-autoload
+
+bez ikakve dodatne promene.
+Isto važi nakon mnogih Composer dependency operacija — Composer sam regeneriše autoloader.
+Dakle:
+composer install
+↓
+autoload generation već urađena
+
+Nemoj komande pokretati ritualno bez razumevanja.
+17. Laravel composer dump-autoload navika
+Sigurno si video savet:
+composer dump-autoload
+
+kada Laravel kaže:
+Class not found
+
+Ponekad zaista pomaže — naročito ako je autoload konfiguracija menjana.
+Ali ako si samo napravio:
+App\Services\BookingService
+
+u:
+app/Services/BookingService.php
+
+a Laravel već ima:
+App\ → app/
+
+problem verovatno nije to što nisi pokrenuo dump.
+Možda si napisao:
+namespace App\Service;
+
+umesto:
+namespace App\Services;
+
+ili pogrešan use.
+Zato želim da izađeš iz faze:
+"Class not found?"
+
+→ composer dump-autoload 😄
+
+u fazu:
+"Class not found?"
+
+→ koji FQCN PHP traži?
+→ koji PSR-4 prefix važi?
+→ koji filepath Composer očekuje?
+
+To je mnogo jači debugging mentalitet.
+18. Autoload optimizacija nije isto što i application cache
+Nemoj mešati:
+composer dump-autoload -o
+
+sa Laravel stvarima poput:
+config cache
+route cache
+view cache
+
+Composer optimizuje:
+class loading
+
+Laravel cache komande optimizuju druge framework koncepte.
+Dakle:
+Composer autoload optimization
+≠ Laravel config/route caching
+
+19. Naš MiniStay setup
+composer.json:
+{
+    "name": "bojan/ministay",
+    "require": {
+        "php": "^8.3",
+        "ext-pdo": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
+
+Pokrenemo:
+composer dump-autoload
+
+Sada struktura:
+src/
+├── Controllers/
+│   └── BookingController.php
+├── DTO/
+│   └── CreateBookingData.php
+├── Enums/
+│   └── BookingStatus.php
+├── Http/
+│   └── Request.php
+├── Models/
+│   └── Booking.php
+├── Repositories/
+│   └── BookingRepository.php
+└── Services/
+    └── BookingService.php
+
+može koristiti jedan:
+require __DIR__ . '/../vendor/autoload.php';
+
+u front controller-u.
+20. Jedna praktična debugging rutina
+Ako dobiješ:
+Class "App\Services\BookingService" not found
+
+idi ovim redom:
+1. Koji FQCN tražim?
+   App\Services\BookingService
+
+2. Koji mapping imam?
+   App\ → src/
+
+3. Koji filepath to daje?
+   src/Services/BookingService.php
+
+4. Da li fajl postoji?
+
+5. Da li se zove baš BookingService.php?
+
+6. Da li unutra piše:
+   namespace App\Services;
+
+7. Da li klasa glasi:
+   class BookingService
+
+8. Da li imam pogrešan use?
+
+9. Ako sam menjao composer autoload config:
+   composer dump-autoload
+
+To je pravi redosled.
+Ne:
+1. dump-autoload
+2. moli se
+3. Stack Overflow
+
+😄
+Najvažnija mapa Lekcije 13
+composer.json
+
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+↓ composer dump-autoload
+
+Composer regeneriše autoload metadata
+
+↓ vendor/autoload.php
+
+PHP može pronaći klase
+
+A razlika:
+Dodao novu klasu unutar postojećeg PSR-4 mapping-a
+→ obično NE treba dump-autoload
+
+Promenio autoload konfiguraciju
+→ DA, dump-autoload
+
+I:
+composer dump-autoload
+→ regeneriše autoload
+
+composer dump-autoload -o
+→ regeneriše + optimizuje class lookup
+
+Najvažnije je da dump-autoload više ne posmatraš kao magičnu komandu 
+za popravljanje Class not found, nego kao vrlo konkretnu operaciju:
+
+Regeneriši Composer-ovu mapu/pravilnik za učitavanje klasa.

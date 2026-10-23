@@ -1,0 +1,532 @@
+Lekcija 10/15 — vendor/ i vendor/autoload.php
+
+Ovo je jedna od onih stvari koje si koristio stotinu puta, 
+ali sada ćemo je rastaviti da više ne bude „Composer magija“.
+
+Najvažniji mentalni model:
+vendor/
+→ fizički instalirani Composer dependencies
+→ Composer-ovi generisani autoload fajlovi
+
+vendor/autoload.php
+→ ulazna tačka u Composer autoload sistem
+
+1. Šta je zapravo vendor/?
+Ako uradiš:
+composer install
+
+Composer napravi ili popuni:
+project/
+├── composer.json
+├── composer.lock
+├── src/
+├── public/
+└── vendor/
+
+Unutar vendor/ možeš imati:
+vendor/
+├── autoload.php
+├── composer/
+├── monolog/
+│   └── monolog/
+├── psr/
+│   └── log/
+└── ...
+
+Tu se nalazi stvarni PHP kod dependencies koje je Composer instalirao.
+Na primer:
+composer.json
+→ monolog/monolog je dependency
+
+composer.lock
+→ koristi tačno Monolog 3.x.y
+
+vendor/monolog/monolog/
+→ stvarni instalirani source code
+
+Dakle:
+composer.json
+→ deklaracija
+
+composer.lock
+→ resolved dependency state
+
+vendor/
+→ instalirani rezultat
+
+2. vendor/ nije samo third-party code
+Ovo je važna nijansa.
+Unutar:
+vendor/composer/
+
+Composer generiše sopstvene fajlove potrebne za autoloading.
+Na primer možeš videti fajlove nalik:
+vendor/composer/
+├── autoload_real.php
+├── autoload_psr4.php
+├── autoload_classmap.php
+├── autoload_files.php
+├── ClassLoader.php
+└── ...
+
+Nemoj ih ručno uređivati.
+To su generisani Composer fajlovi.
+Ako uradiš:
+composer install
+
+ili:
+composer dump-autoload
+
+Composer ih može ponovo generisati.
+3. Zašto vendor/ obično ne commitujemo?
+Zato što možemo da ga rekonstruišemo.
+U Git-u imamo:
+composer.json
+composer.lock
+
+Kolega klonira:
+git clone ...
+composer install
+
+i dobije svoj:
+vendor/
+
+sa istim lockovanim dependency verzijama.
+Zato je tipično:
+/vendor/
+
+Mentalno:
+source + composer metadata
+        ↓
+composer install
+        ↓
+      vendor/
+
+vendor/ je output dependency instalacije, ne source tvog projekta.
+4. Nemoj menjati kod unutar vendor/
+Recimo pronađeš bug i uradiš:
+vendor/some/package/src/Whatever.php
+
+pa direktno promeniš fajl.
+Lokalno:
+radi ✅
+
+Ali sledeći:
+composer install
+
+ili:
+composer update
+
+može tu izmenu da pregazi.
+Još gore, promena nije u Git-u jer je vendor/ ignorisan.
+Dakle:
+vendor/
+→ third-party/generated territory
+
+src/
+→ tvoj application code
+
+Ako dependency ima bug, pravilna rešenja su npr. upgrade/downgrade, 
+patch strategija, fork ili promena sopstvenog integration code-a — ne ručno trajno editovanje vendor/.
+
+5. Problem pre autoloading-a
+Bez autoloadera bismo možda imali:
+require 'src/Enums/BookingStatus.php';
+require 'src/Models/Booking.php';
+require 'src/Repositories/BookingRepository.php';
+require 'src/Repositories/PdoBookingRepository.php';
+require 'src/Services/BookingService.php';
+require 'src/Controllers/BookingController.php';
+
+Kako aplikacija raste:
+20 klasa
+100 klasa
+500 klasa
+
+ovo postaje suludo.
+Plus moraš razmišljati o redosledu:
+Interface mora biti učitan pre klase koja ga implementira?
+Parent pre child-a?
+DTO pre servisa?
+
+Autoloading rešava taj problem.
+
+6. Šta je autoloading?
+
+Autoloading znači:
+Kada PHP prvi put naiđe na klasu koju još ne poznaje, 
+registrovani autoloader pokušava da pronađe i učita odgovarajući PHP fajl.
+
+Recimo:
+$service = new BookingService();
+
+PHP kaže:
+Poznajem li BookingService?
+↓
+NE
+↓
+imam li registrovan autoloader?
+↓
+DA
+↓
+autoloader pokušava da pronađe fajl
+↓
+require odgovarajućeg fajla
+↓
+klasa postaje dostupna
+
+To je suština.
+7. PHP ima ugrađen autoload mehanizam
+Composer nije izmislio ideju autoloading-a.
+PHP omogućava registraciju autoload funkcija preko:
+spl_autoload_register(...)
+
+Vrlo primitivan ručni autoloader mogao bi izgledati konceptualno ovako:
+spl_autoload_register(function (string $class): void {
+    // pretvori class name u filepath
+    // proveri da li fajl postoji
+    // require ga
+});
+
+Composer ti samo daje veoma robustan, standardizovan i automatski generisan sistem povrh toga.
+Dakle:
+PHP
+→ daje autoload mehanizam
+
+Composer
+→ generiše i registruje autoloader
+
+8. vendor/autoload.php
+U aplikaciji obično napišemo:
+require __DIR__ . '/../vendor/autoload.php';
+
+ili zavisno od lokacije:
+require __DIR__ . '/vendor/autoload.php';
+
+To je obično jedini Composer require koji ručno praviš.
+Posle toga Composer autoloader zna za klase kojima je konfigurisan pristup.
+Mentalno:
+index.php
+↓
+require vendor/autoload.php
+↓
+Composer ClassLoader se registruje
+↓
+PHP sada može automatski da učitava klase
+
+9. Autoloader ne učitava automatski sve fajlove odjednom
+Ovo je važno.
+Ako imaš 500 klasa, vendor/autoload.php uglavnom ne radi:
+require class1.php
+require class2.php
+require class3.php
+...
+require class500.php
+
+za sve klase unapred.
+Ideja je uglavnom on-demand loading.
+Recimo aplikacija tokom request-a koristi samo:
+Request
+BookingController
+BookingService
+BookingRepository
+Booking
+
+Composer učitava ono što je potrebno kada PHP zatraži te klase.
+Mentalno:
+autoload ≠ load everything
+
+autoload = load class when needed
+
+To je vrlo bitna razlika.
+10. Autoload ne pravi objekat
+Još jedna stvar koju vredi razdvojiti.
+Ako napišemo:
+use App\Services\BookingService;
+
+time još nismo napravili:
+new BookingService(...)
+
+A ni use sam po sebi nije:
+"učitaj ovaj fajl odmah"
+
+use prvenstveno rešava ime klase u trenutnom fajlu.
+Kada PHP stvarno mora da koristi klasu:
+$service = new BookingService(...);
+
+autoload mehanizam može da se aktivira.
+Dakle:
+use
+→ name resolution/import alias
+
+autoload
+→ pronalaženje i učitavanje class file-a
+
+new
+→ kreiranje instance
+
+Tri različite stvari.
+Ovo je veoma dobra PHP interview nijansa.
+11. Kako Composer zna gde je tvoja klasa?
+Recimo composer.json kaže:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+A PHP traži:
+App\Services\BookingService
+
+Composer konceptualno kaže:
+App\
+→ src/
+
+ostatak:
+Services\BookingService
+
+↓ pretvori u path
+
+src/Services/BookingService.php
+
+I učita taj fajl.
+To je PSR-4 priča koju ćemo detaljno rastaviti u Lekciji 12.
+Za sada:
+namespace/class name
+↓
+autoload mapping
+↓
+filesystem path
+
+12. Jedan autoload.php za third-party i tvoj kod
+Ovo je lepa stvar.
+Ako imamo:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+i instaliran Monolog, isti:
+require __DIR__ . '/../vendor/autoload.php';
+
+može omogućiti:
+use App\Services\BookingService;
+use Monolog\Logger;
+
+Dakle isti Composer autoload sistem može učitavati:
+tvoj code
++
+third-party code
+
+Ne trebaju ti dva odvojena autoloadera.
+13. Primer našeg MiniStay projekta
+Struktura:
+MiniStay/
+├── composer.json
+├── composer.lock
+├── public/
+│   └── index.php
+├── src/
+│   ├── Controllers/
+│   │   └── BookingController.php
+│   ├── Services/
+│   │   └── BookingService.php
+│   └── Repositories/
+│       └── BookingRepository.php
+└── vendor/
+    ├── autoload.php
+    └── composer/
+
+public/index.php:
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\Controllers\BookingController;
+use App\Services\BookingService;
+
+I više ti ne treba:
+require '../src/Controllers/BookingController.php';
+require '../src/Services/BookingService.php';
+
+Composer to rešava kada klase zatrebaju.
+14. Šta ako zaboravimo vendor/autoload.php?
+Recimo napišeš:
+use App\Services\BookingService;
+
+$service = new BookingService();
+
+ali nisi registrovao nikakav autoloader.
+Ako klasa prethodno nije ručno učitana, PHP može završiti sa:
+Class "App\Services\BookingService" not found
+
+use nije dovoljan.
+On ne zna gde je fajl.
+Zato bootstrap/front-controller tipično vrlo rano radi:
+require __DIR__ . '/../vendor/autoload.php';
+
+Laravel takođe veoma rano uvodi Composer autoloader.
+15. Šta vendor/autoload.php konceptualno radi?
+Ne treba da pamtiš generisani Composer source code.
+Ali mentalno:
+require 'vendor/autoload.php';
+
+radi nešto poput:
+učitaj Composer ClassLoader
+↓
+učitaj Composer autoload konfiguraciju
+↓
+registruj autoloader u PHP-u
+↓
+vrati ClassLoader objekat
+
+Zanimljiva činjenica: vendor/autoload.php vraća Composer ClassLoader instancu, pa tehnički možeš:
+$loader = require __DIR__ . '/vendor/autoload.php';
+
+U običnoj aplikaciji ti to uglavnom nije potrebno.
+Najčešće samo:
+require __DIR__ . '/vendor/autoload.php';
+
+16. Šta je vendor/composer/?
+Tu Composer čuva generisanu infrastrukturu.
+Konceptualno stvari kao:
+Koji PSR-4 prefix vodi u koji folder?
+Koje classmap klase postoje?
+Koji files moraju biti uključeni?
+Kako da registrujem autoloader?
+
+Dakle:
+vendor/composer/
+→ Composer runtime/autoload metadata
+
+vendor/vendor-name/package-name/
+→ source konkretnog dependency-ja
+
+17. autoload.php postoji čak i bez third-party biblioteka
+Ovo je važno za naš kurs.
+Možeš imati:
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
+
+bez Monolog-a, PDF package-a ili bilo čega drugog.
+Composer ti je i dalje koristan jer pravi:
+vendor/autoload.php
+
+za tvoje sopstvene klase.
+Dakle Composer nije koristan samo kada imaš external dependencies.
+Možeš ga koristiti samo kao:
+PSR-4 autoload manager
+
+u Vanilla PHP aplikaciji.
+To je upravo ono što ćemo raditi.
+18. A šta kada dodamo novu klasu?
+Ako PSR-4 mapping već kaže:
+"App\\": "src/"
+
+i dodaš:
+src/Services/PaymentService.php
+
+sa:
+namespace App\Services;
+
+class PaymentService
+{
+}
+
+u standardnom PSR-4 setup-u Composer može da je pronađe kroz postojeći mapping.
+Ne moraš ručno dodavati svaki class file u composer.json.
+To je velika prednost PSR-4.
+Kasnije ćemo pričati kada i zašto pokrećemo:
+composer dump-autoload
+
+i kako optimized autoload menja ponašanje.
+19. Laravel veza
+Laravel public/index.php ti je praktično odličan primer front controller/bootstrap ideje.
+Veoma rano aplikacija učitava Composer autoloader, pa posle framework može da koristi ogroman broj:
+Laravel
+Symfony
+PSR
+Carbon
+tvoj App namespace
+third-party packages
+
+bez ručnih require poziva za svaku klasu.
+Zato si godinama pisao:
+use Illuminate\Http\Request;
+use App\Models\User;
+
+a nisi razmišljao:
+require '/vendor/laravel/framework/.../Request.php';
+require '/app/Models/User.php';
+
+Composer autoload je ogroman deo razloga zašto to radi.
+20. Najvažnija razlika: dependency installation vs autoload
+Nemoj ih izjednačiti.
+Composer radi:
+INSTALLATION
+→ stavi package code u vendor/
+
+AUTOLOAD
+→ omogući PHP-u da pronađe klase
+
+Recimo možeš imati package fizički u:
+vendor/
+
+ali ako autoload sistem nije uključen:
+require 'vendor/autoload.php';
+
+PHP ne mora automatski znati kako da pronađe njegovu klasu.
+Dakle:
+fajl postoji na disku
+≠
+PHP ga je učitao / zna kako da ga pronađe
+
+Mentalna mapa Lekcije 10
+composer install
+↓
+vendor/
+├── dependency source
+└── composer autoload infrastructure
+        ↓
+vendor/autoload.php
+        ↓
+registruje Composer ClassLoader
+        ↓
+PHP traži klasu
+        ↓
+Composer pronađe odgovarajući fajl
+        ↓
+fajl se učita
+        ↓
+klasa se koristi
+
+I četiri veoma bitne razlike:
+composer.json
+→ šta projekat zahteva
+
+composer.lock
+→ šta je konkretno resolved
+
+vendor/
+→ šta je konkretno instalirano
+
+vendor/autoload.php
+→ kako PHP automatski pronalazi klase
+
+I još jedna:
+use
+→ class name resolution
+
+autoload
+→ class file loading
+
+new
+→ object creation
+
+Ako ovo razlikuješ, Composer autoload ti je praktično prestao biti magija.

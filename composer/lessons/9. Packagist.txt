@@ -1,0 +1,492 @@
+Lekcija 9/15 — Packagist i izbor third-party paketa
+
+Najkraće:
+Packagist je glavni javni registry PHP paketa koje Composer može da pronađe i instalira.
+
+Composer je alat. Packagist je katalog paketa.
+Mentalno:
+Composer
+→ "Treba mi package X"
+
+Packagist
+→ "Evo gde je package X, koje verzije ima i od čega zavisi"
+
+Composer
+→ resolve + install
+
+1. Kako package završava na Packagist-u?
+Autor napravi PHP package, recimo GitHub repository:
+github.com/vendor/package
+
+u njemu ima svoj:
+composer.json
+
+koji može opisivati:
+{
+    "name": "vendor/package",
+    "require": {
+        "php": "^8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Vendor\\Package\\": "src/"
+        }
+    }
+}
+
+Zatim package registruje na Packagist-u.
+Od tada drugi mogu:
+composer require vendor/package
+
+Composer dobija metadata o tom package-u preko repository sistema i zatim instalira odgovarajući source/dist.
+2. vendor/package ime
+Recimo:
+composer require monolog/monolog
+
+Struktura:
+monolog / monolog
+   ↑         ↑
+ vendor    package
+
+Prvi deo obično predstavlja autora/organizaciju.
+Drugi konkretan package.
+Na primer konceptualno:
+laravel/framework
+symfony/console
+guzzlehttp/guzzle
+phpunit/phpunit
+
+To package ime je Composer identitet dependency-ja.
+Nemoj ga mešati sa PHP namespace-om.
+Package može biti:
+vendor/package
+
+a klase unutar njega mogu koristiti namespace:
+namespace Completely\Different\Namespace;
+
+Ta dva nisu tehnički obavezna da se poklapaju.
+3. Packagist ne sadrži nužno source kao GitHub
+Važan mentalni model:
+Packagist je prvenstveno package registry + metadata source.
+On Composer-u daje informacije poput:
+koji package postoji
+koje verzije postoje
+gde je source
+koji requirements postoje
+autoload konfiguraciju
+
+Sam source package-a tipično potiče iz njegovog VCS repository-ja ili distribution archive-a.
+Dakle nemoj zamišljati:
+Packagist = GitHub za PHP
+
+Bolje:
+GitHub/GitLab
+→ source repository
+
+Packagist
+→ Composer package registry
+
+4. Šta Composer sazna o package-u?
+Recimo tražiš:
+composer require vendor/package
+
+Composer treba da zna:
+verzije
+PHP requirements
+dependency-je
+autoload rules
+source/dist location
+stability
+
+Na primer package može zahtevati:
+{
+    "require": {
+        "php": "^8.2",
+        "psr/log": "^3.0"
+    }
+}
+
+Ti kažeš:
+"Želim vendor/package"
+
+ali Composer mora da uklopi i:
+psr/log
+PHP verziju
+sve ostale dependencies tvog projekta
+
+Opet se vraćamo na dependency graph.
+5. Ne instaliraš package samo zato što postoji
+Ovo je mnogo važniji deo lekcije.
+Za početnika je lako:
+Treba mi feature → nađem prvi package → composer require.
+
+Ali svaki dependency koji uvedeš postaje deo tvoje aplikacije.
+Dobijaš:
+tuđi kod
+tuđe dependencies
+tuđe security probleme
+tuđi release cycle
+tuđe breaking changes
+
+Zato se pre instalacije pita:
+Da li mi ovaj dependency zaista donosi više vrednosti nego troška?
+
+6. Prva stvar koju gledam — maintenance
+Recimo pronađeš package.
+Pitaš:
+Kada je poslednji put održavan?
+Da li ima aktuelne release-ove?
+Da li podržava trenutni PHP?
+Da li issues stoje godinama bez odgovora?
+
+Ako je poslednja promena bila pre sedam godina i package još očekuje:
+PHP 7.1
+
+a ti praviš moderan PHP 8.x projekat, to je ozbiljan znak za oprez.
+Ne znači automatski da je package loš — neke biblioteke su jednostavno završene i stabilne — ali moraš pogledati kontekst.
+7. Popularnost jeste signal, ali nije dokaz kvaliteta
+Možeš gledati stvari poput:
+downloads
+stars
+broj projekata koji ga koriste
+community
+
+Popularan package često ima:
+više korisnika
+više testiranja u realnom svetu
+više dokumentacije
+više odgovora na probleme
+
+ali:
+10 miliona downloads ≠ automatski dobar izbor za tvoj slučaj.
+
+Popularnost je signal, ne arhitektonska odluka.
+8. Pogledaj dependencies package-a
+Ovo je jedna od stvari koju developeri često ignorišu.
+Ti želiš malu funkciju.
+Package A kaže:
+Ja rešavam to.
+
+Ali ispod sebe dovede:
+15 dodatnih dependencies
+
+Za jednostavnu funkciju možda nije vredno.
+Recimo treba ti:
+generisanje UUID-a
+
+Ako mali, kvalitetan package to rešava — super.
+Ali ako dependency za trivialnu stvar povuče pola framework-a, možda treba razmisliti.
+Mentalno:
+benefit package-a
+vs
+dependency weight
+
+9. "Ne izmišljaj točak" nije isto što i "instaliraj package za sve"
+Dva ekstrema:
+Sve ću sam da napišem.
+
+i:
+Za svaku funkciju ću instalirati package.
+
+oba mogu biti loša.
+Na primer, nije pametno sam pisati:
+cryptography
+PDF parser
+HTTP client
+complex image processing
+standards-compliant mail transport
+
+ako postoje dobro održavane biblioteke.
+Ali za:
+function slug(string $value): string
+
+možda ti ne treba dependency od 40 paketa.
+Pravo pitanje:
+Kolika je kompleksnost problema i koliki je rizik da ga pogrešno implementiram?
+
+10. Security aspekt
+Third-party dependency je deo attack surface-a.
+Ako package ima vulnerability:
+tvoj code može biti savršen
+ali dependency može otvoriti problem
+
+Zato ozbiljan workflow uključuje:
+proveru advisories
+update-e
+composer audit
+
+composer audit ćemo praktično obraditi u završnoj lekciji modula.
+Važan mentalni model:
+dependency
+→ nije samo convenience
+→ postaje deo security odgovornosti projekta
+
+11. License
+Ovo početnici često ignorišu.
+Package ima licencu:
+MIT
+BSD
+Apache-2.0
+GPL
+proprietary
+...
+
+Licenca određuje kako smeš koristiti/distribuirati package.
+
+Za većinu tipičnih web projekata popularne permissive licence poput MIT/Apache/BSD uglavnom ne prave problem, 
+ali kod komercijalnog proizvoda ne bi trebalo samo ignorisati license metadata.
+
+Posebno ako package ima restriktivniju licencu.
+Dakle:
+"Radi tehnički"
+≠
+"Smem ga koristiti kako želim"
+
+12. PHP/framework compatibility
+Pre instalacije proveravaš:
+PHP requirement
+framework versions
+required extensions
+
+Na primer package možda kaže:
+"require": {
+    "php": "^8.4",
+    "illuminate/support": "^13.0"
+}
+
+a tvoj projekat koristi neku drugu kompatibilnu seriju.
+Composer će često tehnički zaustaviti nespojivu instalaciju, ali bolje je da ti unapred razumeš compatibility nego da naslepo gađaš composer require.
+13. Dokumentacija
+Vrlo praktičan kriterijum.
+Dobar package često ima:
+jasan README
+installation instructions
+examples
+API docs
+upgrade guide
+changelog
+
+Ako package rešava kompleksnu stvar, a dokumentacija je:
+"Install it and good luck"
+
+to ti povećava trošak održavanja.
+Za profesionalan projekat često je važnije:
+Koliko lako će sledeći developer razumeti dependency?
+
+nego samo:
+Mogu li ja danas nekako da ga nateram da radi?
+
+14. Stable API i SemVer ponašanje
+Pogledaj release istoriju.
+Ako package stalno:
+menja API u patch release-u
+lomi backward compatibility
+nema migration guide
+
+onda njegovi version numbers ne vrede mnogo.
+Seti se prethodne lekcije:
+SemVer
+→ convention / promise
+
+nije
+→ fizička garancija
+
+Dobar maintainer poštuje tu granicu.
+15. Framework-specific package vs framework-agnostic package
+Recimo treba ti payment integration.
+Možeš naći:
+generic PHP SDK
+
+ili:
+Laravel wrapper oko tog SDK-a
+
+Oba mogu biti dobra.
+Laravel wrapper može dati:
+service provider
+facade
+config publishing
+Laravel-friendly API
+
+ali uvodi dodatni layer.
+Generic SDK može biti:
+manje vezan za framework
+lakši za reuse
+bliži zvaničnom provider API-ju
+
+Nema univerzalno boljeg odgovora.
+Pitaš:
+Da li mi framework integracija stvarno daje dovoljno koristi?
+
+16. Official package vs community package
+Ako provider ima zvanični SDK:
+official vendor package
+
+to je često prvi kandidat koji bih pogledao.
+Ali "official" opet ne znači automatski:
+najbolji API
+najbolje održavanje
+najbolja Laravel integracija
+
+Može postojati kvalitetan community wrapper.
+Praktično:
+official SDK
+→ obično niži vendor-risk
+
+community wrapper
+→ možda bolji framework ergonomics
+
+Ali community package ti dodaje još jednog maintainer-a između tebe i originalnog servisa.
+17. Kada bih ja rekao "ne treba nam package"
+Recimo zadatak:
+pretvori status u human-readable label
+
+Već imaš:
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+
+    public function label(): string
+    {
+        return 'Pending';
+    }
+}
+
+Ako nađeš package:
+super-status-label-generator
+
+ne znači da treba da ga instaliraš. 😄
+
+Package dependency ima opravdanje kada ti štedi stvarnu kompleksnost, 
+rizik ili ozbiljan maintenance effort.
+
+18. Kada bih gotovo sigurno koristio kvalitetan package?
+Na primer:
+PSR-compatible logging
+HTTP client
+test framework
+complex PDF generation
+image manipulation
+cloud SDK
+payment SDK
+email transport
+date/time extensions gde imaju realnu vrednost
+
+jer postoji dovoljno edge case-ova i standarda da je proverena biblioteka vrlo vredna.
+19. Kako package izgleda u tvom dependency graph-u?
+Recimo MiniStay koristi:
+monolog/monolog
+
+a Monolog koristi:
+psr/log
+
+Dobijaš:
+MiniStay
+├── monolog/monolog
+│   └── psr/log
+└── PHP
+
+Ako sutra ukloniš Monolog i nijedan drugi dependency ne treba psr/log, 
+Composer može ukloniti i transitive dependency.
+
+Zato dependency graph nije statična hrpa foldera.
+Composer zna odnose.
+20. composer show
+Kada package već postoji u projektu, jedna korisna komanda je:
+composer show
+
+da vidiš instalirane pakete.
+I:
+composer show vendor/package
+
+za detalje konkretnog paketa.
+Tu možeš dobiti informacije poput:
+version
+description
+dependencies
+autoload
+license
+
+Detaljnije ćemo praktične Composer komande skupiti u Lekciji 15.
+21. Private packages
+Packagist nije jedini mogući source.
+Možeš imati:
+private Composer repository
+private VCS repository
+organizacione packages
+
+i definisati dodatne repositories u:
+"repositories": [...]
+
+Dakle Composer mentalni model je:
+Composer
+→ package repositories
+
+Packagist
+→ default/main public repository
+
+ne:
+Composer radi samo sa Packagist-om.
+
+22. Moja praktična checklist-a pre dodavanja dependency-ja
+Ne moraš ovo bubati, ali želim da stekneš refleks:
+1. Da li mi zaista treba package?
+2. Da li je održavan?
+3. Podržava li moj PHP/framework?
+4. Kakve dependencies dovlači?
+5. Ima li security problema?
+6. Kakva je licenca?
+7. Kakva je dokumentacija?
+8. Poštuje li SemVer / ima li stabilan API?
+9. Ima li dobru community/official podršku?
+10. Da li mi njegova vrednost opravdava coupling?
+
+Ako je odgovor dobar, onda:
+composer require vendor/package
+
+ima smisla.
+Veza sa tvojim Laravel iskustvom
+U Laravelu ti je veoma lako da uradiš:
+composer require neki/package
+
+i posle:
+Service Provider
+Facade
+config
+
+sve proradi gotovo magično.
+Ali sada znaš šta si time zapravo uradio:
+u dependency graph aplikacije
+→ dodao novi direktni dependency
+
+koji ima:
+→ svoje dependencies
+→ svoje version constraints
+→ svoj autoload
+→ svoj lifecycle
+→ svoj security/maintenance rizik
+
+To je profesionalniji način razmišljanja o packages.
+Mentalna mapa Lekcije 9
+Packagist
+→ public PHP package registry
+
+Composer
+→ package/dependency manager
+
+GitHub/GitLab
+→ source repository
+
+A pre composer require:
+PACKAGE
+├── maintenance
+├── compatibility
+├── dependencies
+├── security
+├── license
+├── docs
+└── stvarna vrednost za projekat
+
+Najvažnija rečenica ove lekcije:
+
+Svaki third-party package je istovremeno 
+funkcionalnost koju dobijaš i dependency koji preuzimaš na održavanje.

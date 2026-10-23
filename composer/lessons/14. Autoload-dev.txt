@@ -1,0 +1,508 @@
+Lekcija 14/15 — autoload-dev, test namespaces i ostali Composer autoload mehanizmi
+
+Do sada smo uglavnom koristili:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+}
+
+Sada širimo sliku.
+Composer podržava više autoload strategija, a posebno odvaja:
+autoload
+→ runtime/application code
+
+autoload-dev
+→ development/test code
+
+To je ista filozofija kao:
+require
+vs
+require-dev
+
+1. autoload-dev
+Recimo imamo:
+src/
+tests/
+
+i želimo:
+App\   → src/
+Tests\ → tests/
+
+composer.json:
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    }
+}
+
+To znači:
+App\Services\BookingService
+→ src/Services/BookingService.php
+
+Tests\Services\BookingServiceTest
+→ tests/Services/BookingServiceTest.php
+
+Vrlo čist setup.
+2. Zašto testovi nisu samo u autoload?
+Tehnički bi mogli biti.
+Na primer:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/",
+        "Tests\\": "tests/"
+    }
+}
+
+Ali onda si test namespace stavio u regularni application autoload.
+Semantički je čistije:
+production/application code
+→ autoload
+
+development/test code
+→ autoload-dev
+
+I onda se lepo slaže sa:
+composer install --no-dev
+
+na produkciji.
+3. --no-dev i autoload-dev
+Ako production deploy radi:
+composer install --no-dev
+
+onda ne instalira:
+require-dev dependencies
+
+i ne uključuje:
+autoload-dev rules
+
+Dakle production nema potrebu da zna za:
+Tests\
+
+što je upravo ono što želimo.
+Mentalno:
+require-dev
++
+autoload-dev
+→ development side of project
+
+4. Tipičan PHPUnit setup
+Recimo:
+project/
+├── src/
+│   └── Services/
+│       └── BookingService.php
+├── tests/
+│   └── Services/
+│       └── BookingServiceTest.php
+└── composer.json
+
+BookingService.php:
+namespace App\Services;
+
+final class BookingService
+{
+}
+
+Test:
+namespace Tests\Services;
+
+use App\Services\BookingService;
+use PHPUnit\Framework\TestCase;
+
+final class BookingServiceTest extends TestCase
+{
+}
+
+Composer mapping:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+},
+"autoload-dev": {
+    "psr-4": {
+        "Tests\\": "tests/"
+    }
+}
+
+Vrlo standardan obrazac.
+5. Kada menjaš autoload-dev, opet radiš dump
+Ako dodaš:
+"autoload-dev": {
+    "psr-4": {
+        "Tests\\": "tests/"
+    }
+}
+
+onda:
+composer dump-autoload
+
+da Composer regeneriše metadata.
+Isto pravilo kao za regularni autoload.
+6. PSR-4 nije jedini autoload mehanizam
+Composer podržava i druge mehanizme.
+Najvažniji koje treba da znaš:
+psr-4
+classmap
+files
+psr-0
+
+Za moderan OOP PHP:
+PSR-4 je uglavnom default izbor.
+
+Ostale koristiš kada postoji razlog.
+7. classmap
+Primer:
+"autoload": {
+    "classmap": [
+        "legacy/"
+    ]
+}
+
+Composer skenira PHP fajlove u tom folderu i pravi mapu tipa:
+LegacyUser
+→ /project/legacy/User.php
+
+OldBookingManager
+→ /project/legacy/BookingStuff.php
+
+Ovde ne moraš imati lepo PSR-4 pravilo:
+namespace → folder
+
+Composer može unapred pronaći deklarisane klase i mapirati ih.
+8. Kada je classmap koristan?
+Najčešće kod starijeg/legacy koda.
+Recimo imaš:
+legacy/
+├── users.php
+├── helpers_and_classes.php
+└── booking_old.php
+
+i unutra klase nisu organizovane po PSR-4 pravilima.
+Umesto da odmah refaktorišeš ceo legacy projekat, možeš:
+"classmap": [
+    "legacy/"
+]
+
+Composer skenira kod i pravi class map.
+Dakle:
+PSR-4
+→ predvidiva struktura
+
+classmap
+→ skeniraj šta stvarno postoji
+
+9. Zašto ne bismo sve koristili kroz classmap?
+Možemo, ali gubimo jednu veliku prednost PSR-4:
+Ne moraš regenerisati mapu svaki put kada dodaš novu klasu unutar već definisanog namespace mapping-a.
+
+Kod classmap strategije, ako dodaš novu klasu koju Composer još nije skenirao, tipično treba:
+composer dump-autoload
+
+da bi nova klasa završila u mapi.
+Kod standardnog PSR-4:
+App\ → src/
+
+nova pravilno smeštena klasa može biti pronađena po pravilu.
+Zato je za novi codebase PSR-4 prirodniji.
+10. files autoload
+Ovo je drugačije.
+Primer:
+"autoload": {
+    "files": [
+        "src/helpers.php"
+    ]
+}
+
+Ovde Composer ne čeka da PHP zatraži klasu.
+Umesto toga, taj fajl će biti uključen kada se Composer autoloader učita.
+Dakle:
+require 'vendor/autoload.php';
+
+može indirektno učitati:
+src/helpers.php
+
+11. Zašto files postoji?
+Najčešće za PHP funkcije ili konstante koje ne mogu da se autoloaduju isto kao klase.
+Na primer:
+function money(int $cents): string
+{
+    return number_format($cents / 100, 2);
+}
+
+Ne postoji standardni class autoload događaj tipa:
+"PHP je upravo naišao na nepoznatu funkciju money(), hajde da pronađemo njen fajl kroz PSR-4"
+
+Zato možemo reći Composer-u:
+"autoload": {
+    "files": [
+        "src/helpers.php"
+    ]
+}
+
+i helper funkcije se učitaju unapred.
+Laravel ekosistem često koristi ovaj obrazac u packages sa globalnim helper funkcijama.
+12. files treba koristiti sa merom
+Ako staviš:
+"files": [
+    "file1.php",
+    "file2.php",
+    "file3.php",
+    "file4.php",
+    "file5.php"
+]
+
+ti fajlovi se učitavaju prilikom Composer autoload bootstrapa.
+To nije isto kao lazy class autoload.
+Zato ne treba prebacivati application architecture u:
+gomilu globalnih helper fajlova
+
+samo zato što Composer može da ih učita.
+Za ozbiljnu logiku i dalje često želiš:
+klase
+servise
+objekte
+dependency injection
+
+13. classmap i optimized PSR-4
+Sećaš se:
+composer dump-autoload -o
+
+Composer tada može napraviti optimizovanu class mapu čak i za klase koje su inače definisane kroz PSR-4.
+Ali to ne znači da je:
+"classmap": [...]
+
+isto što i:
+composer dump-autoload -o
+
+Razlika:
+"classmap" u composer.json
+→ eksplicitna autoload strategija
+
+-o
+→ optimizacija postojećih autoload pravila
+
+Nemoj ih mešati.
+14. PSR-0
+Composer podržava i:
+"autoload": {
+    "psr-0": {
+        "Vendor\\Package\\": "src/"
+    }
+}
+
+PSR-0 je stariji autoload standard.
+U modernom PHP kodu gotovo uvek ćeš pre koristiti:
+PSR-4
+
+Bitno ti je da znaš:
+PSR-0
+→ stariji standard
+
+PSR-4
+→ moderniji i jednostavniji mapping model
+
+Ne treba nam sada duboka istorija PSR-0 pravila.
+Ako vidiš ga u starom projektu, samo znaš zašto postoji.
+15. Možeš kombinovati više autoload mehanizama
+Na primer:
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        },
+        "classmap": [
+            "legacy/"
+        ],
+        "files": [
+            "src/helpers.php"
+        ]
+    }
+}
+
+To znači:
+App\ classes
+→ PSR-4
+
+legacy classes
+→ classmap
+
+global helper functions
+→ files
+
+Composer zatim sve to spoji u jedan autoload sistem.
+16. Realan migration scenario
+Zamisli star Vanilla PHP projekat:
+legacy/
+├── BookingManager.php
+├── user_stuff.php
+└── db.php
+
+A ti počinješ da uvodiš modernu strukturu:
+src/
+├── Services/
+├── Repositories/
+└── DTO/
+
+Možeš privremeno imati:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    },
+    "classmap": [
+        "legacy/"
+    ]
+}
+
+Tako:
+nov kod
+→ PSR-4
+
+stari kod
+→ classmap
+
+i postepeno refaktorišeš legacy deo.
+To je vrlo realan use case.
+17. autoload-dev može imati više od PSR-4
+Recimo:
+"autoload-dev": {
+    "psr-4": {
+        "Tests\\": "tests/"
+    },
+    "files": [
+        "tests/helpers.php"
+    ]
+}
+
+Možeš tehnički imati i druge development-only autoload potrebe.
+Ali opet:
+Ne komplikuj bez razloga.
+
+Za naš projekat dovoljno je:
+"autoload-dev": {
+    "psr-4": {
+        "Tests\\": "tests/"
+    }
+}
+
+18. Kako ovo izgleda zajedno sa dependencies
+Možemo imati:
+{
+    "require": {
+        "php": "^8.3",
+        "ext-pdo": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    }
+}
+
+Sada imamo veoma zdrav projekat:
+src/
+→ application code
+
+tests/
+→ test code
+
+require
+→ production dependencies
+
+require-dev
+→ test/dev dependencies
+
+autoload
+→ production class rules
+
+autoload-dev
+→ dev/test class rules
+
+Simetrično i jasno.
+19. Laravel paralela
+Laravel projekat ti praktično radi upravo ovu vrstu razdvajanja.
+Application klase:
+App\
+→ app/
+
+Test klase:
+Tests\
+→ tests/
+
+A mnogi package-i koriste files autoload za helpers.
+Dakle ovo nije egzotičan Composer feature — koristio si ga 
+indirektno kroz framework i packages.
+
+20. Šta bih danas izabrao za novi projekat?
+Za naš Vanilla PHP projekat:
+"autoload": {
+    "psr-4": {
+        "App\\": "src/"
+    }
+},
+"autoload-dev": {
+    "psr-4": {
+        "Tests\\": "tests/"
+    }
+}
+
+I gotovo.
+Ne bih dodavao:
+classmap
+files
+psr-0
+
+dok se ne pojavi konkretna potreba.
+To je dobar princip:
+Koristi najjednostavniji autoload model koji rešava problem.
+
+Mentalna mapa Lekcije 14
+autoload
+→ production/application symbols
+
+autoload-dev
+→ development/test symbols
+
+A Composer autoload strategije:
+PSR-4
+→ namespace → predvidiv filepath
+→ default za moderan OOP PHP
+
+classmap
+→ skeniraj klase i napravi eksplicitnu mapu
+→ koristan za legacy/non-standard code
+
+files
+→ učitaj fajl pri bootstrapu autoloadera
+→ helpers/functions/constants
+
+PSR-0
+→ stariji standard
+→ uglavnom legacy
+
+I važna razlika:
+PSR-4
+→ novu pravilno smeštenu klasu obično pronađe bez novog dump-a
+
+classmap
+→ nova klasa tipično zahteva regeneraciju class map-a
+
+Najvažnija praktična ideja:
+Za moderan projekat drži application code u PSR-4 autoload, test code u PSR-4 autoload-dev, 
+a ostale mehanizme koristi samo kada konkretan problem to opravdava.

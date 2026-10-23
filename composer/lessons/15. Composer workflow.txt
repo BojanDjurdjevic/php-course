@@ -1,0 +1,696 @@
+Lekcija 15/15 — Praktičan Composer workflow
+
+Cilj ove lekcije je da Composer više ne gledaš kao skup nepovezanih komandi, 
+nego kao svakodnevni workflow.
+Mentalno:
+napravi projekat
+↓
+definiši dependencies
+↓
+instaliraj ih
+↓
+proveravaj stanje
+↓
+bezbedno update-uj
+↓
+ukloni ono što ne treba
+↓
+proveri security + platform
+↓
+deployuj reproducibilno
+
+1. composer init
+Ako krećeš od praznog Vanilla PHP projekta:
+composer init
+
+Composer te interaktivno vodi kroz kreiranje:
+composer.json
+
+Pita stvari poput:
+package name
+description
+author
+dependencies
+autoload
+
+Ne moraš koristiti init — možeš ručno napraviti composer.json.
+Ali za novi projekat je zgodan bootstrap.
+2. composer validate
+Jedna od korisnijih komandi:
+composer validate
+
+Proverava:
+da li je composer.json validan
+da li su struktura i constraints smisleni
+da li je composer.lock usklađen sa composer.json
+
+Composer dokumentacija čak preporučuje validate pre commitovanja 
+composer.json/lock fajla i pre release-a. 
+
+Na primer:
+{
+    "require": {
+        "php": "^8.3",
+    }
+}
+
+ima trailing comma, što nije validan JSON.
+composer validate će pomoći da to uhvatiš.
+Mentalno:
+composer validate
+→ da li je Composer konfiguracija zdrava?
+
+3. composer show
+Ako želiš da vidiš šta je instalirano:
+composer show
+
+Dobićeš listu paketa.
+Na primer:
+monolog/monolog
+psr/log
+phpunit/phpunit
+...
+
+Za konkretan paket:
+composer show monolog/monolog
+
+možeš videti podatke poput:
+verzija
+description
+license
+requirements
+autoload metadata
+
+Dakle kada se pitaš:
+Koju verziju zapravo trenutno imam?
+
+ne moraš ručno kopati kroz vendor/.
+composer show vendor/package
+
+4. Direct vs transitive dependencies u praksi
+Recimo composer.json sadrži:
+"require": {
+    "monolog/monolog": "^3.0"
+}
+
+ali:
+composer show
+
+prikaže i:
+psr/log
+
+Zašto?
+Jer:
+MiniStay
+↓
+monolog/monolog
+↓
+psr/log
+
+Monolog je direct dependency.
+psr/log može biti transitive dependency.
+Ovo je ista dependency graph priča koju smo radili od prve lekcije.
+5. composer why
+Ovo je odlična debugging komanda.
+Pitaš:
+composer why psr/log
+
+odnosno:
+Zašto je ovaj package uopšte instaliran?
+
+Composer ti pokaže package koji ga zahteva.
+Mentalno:
+psr/log je u vendor/
+↓
+zašto?
+↓
+composer why psr/log
+↓
+neki drugi package ga zahteva
+
+Ovo je posebno korisno kada vendor/ ima 70 paketa, a ti si direktno instalirao samo 10.
+6. composer why-not
+Suprotna situacija:
+Zašto ne mogu da instaliram verziju X?
+
+Možeš koristiti:
+composer why-not vendor/package 4.0
+
+ili ekvivalentni prohibits command.
+Composer ti može pokazati:
+package A zahteva <4.0
+package B zahteva ^3.0
+
+i odmah vidiš dependency conflict.
+Ovo je mnogo bolje od nasumičnog menjanja constraints dok Composer konačno ne prestane da se žali.
+7. composer outdated
+Ovo ti pokazuje pakete za koje postoje novije verzije:
+composer outdated
+
+Na primer:
+package/a    2.4.1    2.7.0
+package/b    1.3.0    2.0.0
+
+Ali pazi:
+outdated ne znači automatski „odmah update-uj sve“.
+
+Ako vidiš:
+1.3 → 2.0
+
+to može biti major upgrade sa breaking promenama.
+Za direct dependencies posebno možeš koristiti:
+composer outdated --direct
+
+što je zgodno jer prvo vidiš ono što si ti eksplicitno dodao projektu. Composer podržava i filtriranje na minor/patch nivoe. getcomposer.org
+8. Kako bih ja koristio outdated
+Periodično:
+composer outdated --direct
+
+onda pogledam:
+koji package je zastareo?
+da li je patch/minor/major?
+ima li security problem?
+šta kaže changelog?
+
+Tek onda:
+composer update vendor/package
+
+Dakle:
+outdated
+→ informacija
+
+update
+→ odluka
+
+Nemoj ih mentalno spojiti u:
+ima novija verzija → odmah update
+
+9. composer audit
+Ovo je danas vrlo važna komanda:
+composer audit
+
+Koristi se za proveru dependency security stanja, uključujući security advisories, a Composer može prijavljivati i abandoned packages u skladu sa konfiguracijom. Aktuelni Composer ima i širi dependency policy sistem za advisories, abandoned packages i druge rizike. getcomposer.org
+Mentalno:
+composer audit
+→ da li moj dependency set ima poznate probleme?
+
+Ako dobiješ advisory:
+Package X
+Affected versions: ...
+CVE/GHSA/PKSA...
+
+ne znači automatski:
+Aplikacija je ovog trenutka hakovana.
+
+Znači:
+Koristiš dependency/version za koji postoji poznat security problem i treba proceniti/update-ovati.
+
+10. audit nije zamena za update strategiju
+Nije dovoljno:
+composer audit
+
+i ako je danas čist:
+Gotovi smo zauvek.
+
+Novi security advisories mogu izaći sutra.
+Zato dependency maintenance postoji kao kontinuirana aktivnost:
+outdated
++
+audit
++
+changelog
++
+testovi
++
+kontrolisani update
+
+11. composer remove
+Ako package više ne treba:
+composer remove monolog/monolog
+
+Composer uklanja requirement iz composer.json, ažurira dependency graph/lock i uklanja packages koji više nisu potrebni. getcomposer.org
+Dakle nemoj:
+ručno obrisati vendor/monolog
+
+To ne rešava dependency model.
+Ispravno:
+composer remove vendor/package
+
+Mentalno:
+require
+→ uvedi dependency u graph
+
+remove
+→ ukloni dependency iz graph-a
+
+12. A šta sa transitive dependency-jem?
+Recimo:
+MiniStay
+↓
+Package A
+↓
+Package B
+
+Ukloniš:
+composer remove package/a
+
+Ako više nijedan package ne zahteva B, Composer može ukloniti i B.
+Ali ako imaš:
+Package C
+↓
+Package B
+
+onda B ostaje.
+Composer ne gleda:
+Koji folder da obrišem?
+
+nego:
+Kakav dependency graph sada treba da postoji?
+
+13. composer check-platform-reqs
+Ova komanda je veoma korisna za deployment:
+composer check-platform-reqs
+
+Proverava da li stvarna PHP verzija i extensions trenutnog sistema zadovoljavaju platform requirements instaliranih paketa. Za razliku od install/update resolution-a, proverava realnu platformu. getcomposer.org
+Na primer projekat zahteva:
+"require": {
+    "php": "^8.3",
+    "ext-pdo": "*",
+    "ext-mbstring": "*"
+}
+
+Server ima:
+PHP 8.3 ✅
+PDO ✅
+mbstring ❌
+
+onda:
+composer check-platform-reqs
+
+može uhvatiti problem pre nego što aplikacija krene da puca u runtime-u.
+14. Ovo je posebno dobro na produkciji
+Deployment može konceptualno imati:
+composer install --no-dev --optimize-autoloader
+composer check-platform-reqs
+
+Ako platform requirements nisu zadovoljeni:
+abort deploy
+
+Mnogo bolje nego:
+deploy ✅
+
+prvi korisnik otvori stranicu
+↓
+Call to undefined function ...
+
+Composer dokumentacija upravo navodi check-platform-reqs kao korisnu production/build proveru. getcomposer.org
+15. Oprez sa --ignore-platform-reqs
+Sigurno si video:
+composer install --ignore-platform-reqs
+
+To praktično kaže Composer-u:
+Ignoriši PHP/extension compatibility requirements.
+
+Može biti korisno u vrlo specifičnim situacijama, ali nije „fix“.
+Ako package stvarno zahteva:
+ext-intl
+
+a ti ga nemaš, ignorisanje Composer provere ne stvara intl extension iz vazduha.
+Dakle:
+--ignore-platform-reqs
+→ preskoči proveru
+
+nije
+→ popravi platformu
+
+To je česta loša navika:
+Composer se žali?
+→ --ignore-platform-reqs 😄
+
+Isto kao što smo rekli za dump-autoload: razumi problem pre komande.
+16. composer diagnose
+Još jedna zgodna pomoćna komanda:
+composer diagnose
+
+Može proveriti Composer environment/config i prijaviti probleme.
+Nije nešto što ćeš pokretati svaki dan, ali kada Composer čudno radi, korisno je znati da postoji.
+17. composer update — sada sa punim mentalnim modelom
+Posle celog modula više ga ne vidiš kao:
+update package
+
+nego:
+pročitaj composer.json constraints
+↓
+ponovo resolve dependency graph
+↓
+izaberi dozvoljene verzije
+↓
+promeni composer.lock
+↓
+instaliraj novi dependency state
+↓
+regeneriši autoload
+
+Zato je često pametnije:
+composer update monolog/monolog
+
+nego:
+composer update
+
+ako želiš da promeniš samo određeni deo dependency seta.
+18. Praktičan development workflow
+Recimo kloniraš projekat:
+git clone ...
+cd ministay
+composer install
+
+Zašto install?
+Jer želiš:
+composer.lock
+→ isti dependency state
+
+Zatim razvijaš.
+Treba ti novi runtime package:
+composer require vendor/package
+
+Treba ti test package:
+composer require --dev phpunit/phpunit
+
+Proveravaš:
+composer validate
+composer audit
+
+I commit:
+composer.json
+composer.lock
+source code
+
+19. Workflow kada želiš update jednog dependency-ja
+Recimo:
+composer outdated --direct
+
+vidiš:
+monolog/monolog 3.8 → 3.9
+
+Proveriš release notes.
+Onda:
+composer update monolog/monolog
+
+Posle:
+pokreni testove
+↓
+composer audit
+↓
+pregledaj diff composer.lock
+↓
+commituj promenu
+
+Ovo je kontrolisan dependency upgrade.
+20. Production workflow
+Tipično želiš nešto približno:
+composer install --no-dev --optimize-autoloader
+
+Zašto?
+install
+→ koristi lock
+
+--no-dev
+→ bez dev dependencies
+
+--optimize-autoloader
+→ production-friendly optimized autoload
+
+Composer -o/--optimize-autoloader pretvara PSR-0/4 resolution u optimizovaniju classmap formu i Composer ga posebno preporučuje za production use. getcomposer.org
+Zatim možeš:
+composer check-platform-reqs
+
+21. Sada konačno organizujemo naš OOP projekat
+Seti se Modula 8.
+Imali smo klase poput:
+Booking
+BookingStatus
+CreateBookingData
+BookingRepository
+InMemoryBookingRepository
+BookingService
+Request
+CreateBookingRequest
+BookingController
+PaymentGateway
+StripeGateway
+
+Pre su mogle biti u jednom ili nekoliko fajlova.
+Sada pravimo pravi Composer projekat:
+MiniStay/
+├── composer.json
+├── composer.lock
+├── public/
+│   └── index.php
+├── src/
+│   ├── Contracts/
+│   │   ├── BookingRepository.php
+│   │   └── PaymentGateway.php
+│   ├── Controllers/
+│   │   └── BookingController.php
+│   ├── DTO/
+│   │   └── CreateBookingData.php
+│   ├── Enums/
+│   │   └── BookingStatus.php
+│   ├── Http/
+│   │   ├── Request.php
+│   │   └── CreateBookingRequest.php
+│   ├── Models/
+│   │   └── Booking.php
+│   ├── Repositories/
+│   │   └── InMemoryBookingRepository.php
+│   └── Services/
+│       └── BookingService.php
+├── tests/
+└── vendor/
+
+Već vrlo liči na pravi PHP codebase.
+22. composer.json
+Na primer:
+{
+    "name": "bojan/ministay",
+    "description": "Vanilla PHP booking application",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "ext-pdo": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    }
+}
+
+Zatim:
+composer install
+
+ili nakon prvog dodavanja autoload konfiguracije:
+composer dump-autoload
+
+23. BookingService.php
+Fajl:
+src/Services/BookingService.php
+
+<?php
+
+namespace App\Services;
+
+use App\Contracts\BookingRepository;
+use App\DTO\CreateBookingData;
+use App\Enums\BookingStatus;
+use App\Models\Booking;
+
+final class BookingService
+{
+    public function __construct(
+        private BookingRepository $bookings
+    ) {}
+
+    public function create(CreateBookingData $data): Booking
+    {
+        $booking = new Booking(
+            1,
+            $data->roomId,
+            BookingStatus::Pending
+        );
+
+        $this->bookings->save($booking);
+
+        return $booking;
+    }
+}
+
+I sada se ceo prethodni OOP modul spojio sa Composer modulom.
+24. Front Controller
+public/index.php:
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\Controllers\BookingController;
+use App\Http\CreateBookingRequest;
+use App\Http\Request;
+use App\Repositories\InMemoryBookingRepository;
+use App\Services\BookingService;
+
+$repository = new InMemoryBookingRepository();
+
+$service = new BookingService($repository);
+
+$controller = new BookingController($service);
+
+$request = new Request($_POST);
+
+$formRequest = new CreateBookingRequest($request);
+
+$booking = $controller->store($formRequest);
+
+Pogledaj šta više nemamo:
+require '../src/DTO/CreateBookingData.php';
+require '../src/Models/Booking.php';
+require '../src/Services/BookingService.php';
+require '../src/Controllers/BookingController.php';
+...
+
+Samo:
+require __DIR__ . '/../vendor/autoload.php';
+
+I Composer + namespaces + PSR-4 rešavaju ostalo.
+To je ogromna poenta celog modula.
+25. Kompletan mentalni tok aplikacije
+Sada možemo nacrtati:
+composer.json
+│
+├── dependencies
+└── PSR-4 App\ → src/
+        ↓
+composer install / dump-autoload
+        ↓
+vendor/autoload.php
+        ↓
+public/index.php
+        ↓
+Request
+        ↓
+CreateBookingRequest
+        ↓
+BookingController
+        ↓
+CreateBookingData
+        ↓
+BookingService
+        ↓
+BookingRepository
+        ↓
+Booking
+
+Ovo više nije gomila PHP fajlova.
+Imamo:
+dependency management
++
+namespaces
++
+autoloading
++
+OOP architecture
+
+26. Mini cheat-sheet za svakodnevni rad
+Ovo je jedini spisak koji vredi imati pri ruci:
+composer install
+→ instaliraj locked dependency state
+
+composer require vendor/package
+→ dodaj runtime dependency
+
+composer require --dev vendor/package
+→ dodaj dev dependency
+
+composer update vendor/package
+→ ciljano update-uj dependency
+
+composer remove vendor/package
+→ ukloni dependency
+
+composer show
+→ šta je instalirano
+
+composer why vendor/package
+→ zašto je instalirano
+
+composer why-not vendor/package 3.0
+→ zašto ne mogu tu verziju
+
+composer outdated --direct
+→ šta od mojih direct dependencies ima novije
+
+composer audit
+→ security/dependency health
+
+composer validate
+→ proveri composer.json + lock konzistentnost
+
+composer check-platform-reqs
+→ proveri realni PHP/extensions environment
+
+composer dump-autoload
+→ regeneriši autoload metadata
+
+Ako ove komande razumeš, ne treba ti bubanje još 40 Composer opcija.
+Najvažniji mentalni model celog Modula 9
+composer.json
+→ namera / constraints / autoload config
+
+        ↓ dependency resolution
+
+composer.lock
+→ konkretan resolved dependency graph
+
+        ↓ composer install
+
+vendor/
+→ instalirani dependencies
+
+        ↓
+
+vendor/autoload.php
+→ Composer ClassLoader
+
+        ↓ PSR-4
+
+namespace/class
+→ odgovarajući PHP file
+
+I veoma bitno:
+Composer
+nije framework.
+
+Composer rešava:
+→ dependencies
+→ versions
+→ dependency graph
+→ reproducibility
+→ autoloading
+
+Dok:
+Laravel
+→ routing
+→ controllers
+→ container
+→ ORM
+→ validation
+→ queues
+→ auth
+→ framework lifecycle
+→ itd.
+
+Composer je jedan od temelja na kojem Laravel stoji.

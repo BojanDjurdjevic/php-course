@@ -1,0 +1,407 @@
+Lekcija 8/15 — composer.lock: zašto postoji i šta tačno garantuje
+
+Najkraće:
+composer.lock čuva tačno resolved stanje dependency-ja za projekat.
+
+Ako composer.json kaže:
+{
+  "require": {
+    "vendor/package": "^2.4"
+  }
+}
+
+to znači:
+Dozvoljene su kompatibilne verzije iz određenog opsega.
+
+Ali composer.lock kaže nešto konkretnije:
+vendor/package = 2.7.3
+dependency-x   = 1.4.8
+dependency-y   = 3.2.1
+
+Dakle:
+composer.json
+→ šta SME
+
+composer.lock
+→ šta JE IZABRANO
+
+To je centralna ideja.
+1. Zašto uopšte postoji lock file?
+Zamisli da imamo:
+"vendor/package": "^2.4"
+
+Danas je najnovija kompatibilna verzija:
+2.6.1
+
+Sutra izađe:
+2.7.0
+
+Prekosutra:
+2.8.4
+
+Bez lock fajla:
+Developer A danas
+→ 2.6.1
+
+Developer B sutra
+→ 2.7.0
+
+Production prekosutra
+→ 2.8.4
+
+A svi imaju isti:
+composer.json
+
+To nije baš reproducible environment.
+Sa lock-om:
+composer.lock
+→ 2.6.1
+
+onda svi rade:
+composer install
+
+i dobijaju:
+2.6.1
+
+Composer dokumentacija eksplicitno preporučuje commitovanje 
+lock fajla upravo da bi svi radili sa istim konkretnim verzijama. 
+
+2. composer.lock sadrži mnogo više od jednog broja verzije
+U lock fajlu za package možeš naći informacije poput:
+ime paketa
+tačna verzija
+source/dist reference
+dependencies tog paketa
+autoload metadata
+license
+package metadata
+
+I odvojeno postoje sekcije za:
+packages
+packages-dev
+
+Dakle lock predstavlja snapshot celog resolved dependency graph-a, ne samo tvojih direktnih dependencies.
+Na primer:
+Tvoja aplikacija
+↓
+Monolog 3.x
+↓
+psr/log
+
+lock čuva konkretno:
+monolog/monolog 3.9.0
+psr/log 3.0.2
+
+iako si možda samo Monolog direktno tražio.
+3. Direct i transitive dependency se oba lockuju
+Recimo:
+"require": {
+    "package/a": "^2.0"
+}
+
+package/a zahteva:
+package/b ^5.0
+
+Composer resolve-uje:
+package/a 2.7.1
+package/b 5.4.2
+
+Oba idu u lock.
+Dakle:
+direct dependency
+→ locked
+
+transitive dependency
+→ takođe locked
+
+To je važno jer promena transitive dependency-ja takođe može da polomi aplikaciju.
+4. Lock omogućava reproducible install
+Ovo smo već dotakli kod install, ali sad je fokus na samom lock-u.
+Recimo ti commit-uješ:
+composer.json
+composer.lock
+
+Kolega uradi:
+composer install
+
+CI uradi:
+composer install
+
+server:
+composer install --no-dev
+
+Composer koristi konkretne verzije iz lock-a, umesto da svaki put ponovo traži 
+"najnovije što constraint dozvoljava". To je ključ reproducible build-a. 
+
+5. Zašto vendor/ ne mora da se commituje
+Upravo zbog ove kombinacije:
+composer.json
++
+composer.lock
++
+Composer
+
+možeš da rekonstruišeš vendor/.
+Mentalno:
+Git repo
+├── composer.json
+├── composer.lock
+└── source code
+
+composer install
+↓
+vendor/ se ponovo napravi
+
+Zato se vendor/ najčešće stavlja u:
+.gitignore
+
+Lock čuva dependency state; vendor/ je instalirani rezultat tog state-a.
+6. composer.lock nije isto što i cache
+Bitno:
+Lock ne sadrži kompletan source code dependency-ja.
+On ne znači:
+Evo svih PHP fajlova biblioteke.
+
+On znači:
+Evo preciznog opisa šta treba instalirati.
+
+Composer onda iz repository/dist izvora rekonstruiše vendor/.
+Dakle:
+composer.lock
+→ recipe / resolved snapshot
+
+vendor/
+→ stvarno instalirani code
+
+7. Kada se lock menja?
+Najčešće kod:
+composer update
+
+jer Composer ponovo resolve-uje dependency graph i zapisuje nove konkretne verzije.
+Takođe kod:
+composer require some/package
+
+jer se dependency model menja pa Composer mora da napravi novi resolved state.
+Slično kod:
+composer remove some/package
+
+može se promeniti lock jer deo graph-a nestaje.
+Normalan:
+composer install
+
+uz već validan lock ga ne menja.
+8. Šta ako composer.json i lock više nisu usklađeni?
+Ovo je jako praktično.
+Na primer ručno promeniš:
+"package/a": "^2.0"
+
+u:
+"package/a": "^3.0"
+
+ali ne ažuriraš lock.
+Sada imaš:
+composer.json
+→ traži 3.x
+
+composer.lock
+→ možda još zaključan 2.8.1
+
+Composer može upozoriti ili prijaviti da lock nije usklađen sa trenutnim requirements. 
+Novije Composer verzije su strože i u nekim slučajevima će install završiti greškom kada 
+requirement postoji u composer.json, a nije prisutan u lock-u. 
+
+Zato je dobar workflow:
+menjaš dependency
+↓
+composer require/update/remove
+↓
+composer.json + composer.lock se menjaju zajedno
+
+9. Zato ne voliš ručne merge konflikte u lock-u
+composer.lock je velik JSON fajl i dve grane mogu da ga promene.
+Na primer:
+Branch A
+→ doda package/a
+
+Branch B
+→ doda package/b
+
+Git napravi conflict.
+Najgora ideja je:
+Ma samo ću ručno spojiti par redova da JSON izgleda validno.
+
+Jer lock nije obična lista — mora predstavljati konzistentan dependency graph.
+
+Composer dokumentacija upozorava da pogrešno rešeni merge konflikti 
+mogu ostaviti lock neusaglašenim sa composer.json. 
+
+Tu često proveravaš stanje sa:
+composer validate
+
+i po potrebi ponovo resolve-uješ odgovarajuće dependencies.
+10. Da li se composer.lock commit-uje?
+Za aplikaciju:
+Da, apsolutno.
+
+Na primer:
+Laravel app
+Vanilla PHP app
+API
+booking sistem
+
+želiš da tim, CI i produkcija koriste isti dependency set.
+Čak i Composer dokumentacija danas preporučuje commitovanje 
+lock fajla i kod library development-a, 
+između ostalog da tim/testovi koriste iste verzije; 
+samo lock biblioteke ne utiče na projekte koji tu biblioteku instaliraju kao dependency. 
+
+Za naš kurs i tvoje projekte:
+composer.lock
+→ COMMIT ✅
+
+bez komplikovanja.
+11. Zašto lock ne znači da nikad nećeš update-ovati dependencies?
+Lock nije zatvor.
+On samo kaže:
+Dok svesno ne odlučimo drugačije, koristi ove verzije.
+
+Kada želiš upgrade:
+composer update
+
+ili bolje ciljano:
+composer update vendor/package
+
+zatim:
+nov dependency graph
+↓
+nov composer.lock
+↓
+pokreni testove
+↓
+commituj novi lock
+
+Dakle:
+lock
+→ kontrolisana stabilnost
+
+update
+→ kontrolisana promena
+
+To je mnogo bolje nego nasumična promena prilikom svakog deploy-a.
+12. Lock i security
+Ovo je zanimljiva dodatna prednost.
+Ako se danas na package registry-ju pojavi nov release dependency-ja, 
+composer install sa postojećim lock-om neće ga automatski povući samo zato što ga constraint dozvoljava.
+To smanjuje iznenadne promene dependency graph-a. 
+Composer dokumentacija čak navodi lock kao pomoć u sprečavanju da novoobjavljene, 
+potencijalno problematične verzije odmah propagiraju u razvojni/CI environment 
+dok ne uradiš eksplicitni update.
+
+Naravno, lock nije zamena za security updates.
+Treba i dalje proveravati:
+security advisories
+outdated packages
+
+što ćemo u poslednjoj lekciji ovog modula povezati sa:
+composer audit
+composer outdated
+
+13. Lock i --no-dev
+Recimo lock sadrži:
+packages:
+→ Monolog
+
+packages-dev:
+→ PHPUnit
+
+Development:
+composer install
+
+instalira oba dela.
+Production:
+composer install --no-dev
+
+koristi isti lock, ali preskače dev dependencies. Composer CLI dokumentacija 
+navodi da --no-dev preskače require-dev pakete i njihove dev autoload rules. 
+
+Dakle ne praviš poseban:
+composer.production.lock
+
+Isti lock opisuje ceo projekat.
+14. composer.lock i PHP/platform requirements
+Lockuješ package verzije, ali to ne znači da svaki server automatski može da ih pokrene.
+Recimo lock sadrži package koji zahteva:
+PHP >= 8.3
+ext-intl
+
+A production ima:
+PHP 8.2
+
+i nema ext-intl.
+Isti lock neće magično rešiti taj problem.
+Zato moraš imati kompatibilan environment.
+Composer čak ima:
+composer check-platform-reqs
+
+za proveru realnog PHP/extensions environment-a. getcomposer.org
+Mentalno:
+composer.lock
+→ dependency reproducibility
+
+Docker/server/PHP config
+→ environment reproducibility
+
+To su povezani, ali različiti problemi.
+15. Najvažniji realni workflow
+Recimo danas hoćeš da update-uješ Monolog.
+Radiš:
+composer update monolog/monolog
+
+Composer može promeniti:
+Monolog 3.8.0
+↓
+Monolog 3.9.0
+
+a možda promeni i neki povezani transitive dependency ako je potrebno.
+Onda:
+pokreneš testove
+↓
+sve radi
+↓
+git add composer.json composer.lock
+↓
+commit
+
+Kolega/pipeline:
+composer install
+
+i dobija tačno dependency state koji si testirao.
+To je ceo smisao lock-a.
+Mentalna mapa Lekcije 8
+composer.json
+→ requirement / dozvoljeni opseg
+
+        ↓ resolution
+
+composer.lock
+→ tačne izabrane verzije
+→ ceo dependency graph
+
+        ↓ install
+
+vendor/
+→ konkretno instalirani fajlovi
+
+I:
+composer update
+→ MENJA lock
+
+composer install
+→ REPRODUKUJE lock
+
+Najbolji kratki intervju odgovor:
+
+composer.lock čuva tačne resolved verzije direktnih i transitive dependencies, 
+kako bi composer install mogao da reprodukuje 
+isti dependency set između developera, 
+CI-ja i produkcije. Zato se u aplikacijama lock file commit-uje.
