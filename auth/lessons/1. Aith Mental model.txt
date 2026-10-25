@@ -1,0 +1,639 @@
+Lekcija 1/15 — Authentication mental model
+
+Cilj prve lekcije je da pre koda tačno razdvojimo šta authentication rešava, 
+šta ne rešava i kako izgleda ceo request flow.
+
+Najkraće:
+Authentication odgovara na pitanje: „Ko si ti?“
+
+Dok:
+Authorization odgovara na pitanje: „Šta ti smeš da radiš?“
+
+To je osnovna razlika koju moraš da nosiš kroz ceo modul.
+1. Authentication vs Authorization
+Primer:
+Korisnik unese:
+email
+password
+
+Aplikacija proveri credentials i utvrdi:
+ovo je user #17
+
+To je:
+Authentication
+→ identitet je potvrđen
+
+Posle korisnik pokuša:
+DELETE /admin/users/5
+
+Aplikacija proverava:
+Da li user #17 ima pravo da briše korisnike?
+
+To je:
+Authorization
+→ dozvola / permission
+
+Mentalno:
+Authentication
+→ WHO ARE YOU?
+
+Authorization
+→ WHAT MAY YOU DO?
+
+2. Authentication nije isto što i login forma
+Login forma je samo jedan deo.
+Authentication sistem obuhvata mnogo više:
+credentials
+↓
+provera identiteta
+↓
+čuvanje auth state-a
+↓
+prepoznavanje korisnika u sledećem request-u
+↓
+logout
+↓
+session security
+↓
+protected routes
+
+Dakle:
+<form method="POST">
+
+nije „authentication sistem“.
+To je samo ulazna tačka.
+3. Koji su glavni pojmovi?
+Za početak nam trebaju četiri:
+Identity
+Credentials
+Authentication state
+Current user
+
+Identity
+Ko je korisnik?
+Na primer:
+user_id = 17
+email = bojan@example.com
+
+Credentials
+Čime dokazuje identitet?
+Najčešće:
+email + password
+
+Ali može biti i:
+API token
+magic link
+OAuth provider
+passkey
+
+U našem modulu fokus je klasičan:
+email + password
+
+Authentication state
+Kako posle uspešnog login-a aplikacija zna da je korisnik i dalje prijavljen?
+Kod našeg Vanilla PHP sistema:
+session
+
+Current user
+Kada sledeći request dođe:
+GET /account
+
+aplikacija iz auth state-a utvrdi:
+current user = user #17
+
+4. Ceo login flow
+Zamisli:
+POST /login
+
+sa:
+email = bojan@example.com
+password = secret123
+
+Mentalni flow:
+Request
+↓
+validation
+↓
+find user by email
+↓
+user exists?
+↓
+verify password
+↓
+password correct?
+↓
+establish auth state
+↓
+store user identity in session
+↓
+redirect
+
+U pseudo-kodu:
+$email = ...;
+$password = ...;
+
+$user = $users->findByEmail($email);
+
+if (!$user) {
+    // login failed
+}
+
+if (!password_verify($password, $user->passwordHash())) {
+    // login failed
+}
+
+$_SESSION['user_id'] = $user->id();
+
+Još ne radimo konkretan kod do kraja, samo mentalni tok.
+5. Password se ne „upoređuje direktno“
+Ovo ćemo detaljno u Lekciji 3.
+Ali već sada mentalno:
+Ne:
+if ($password === $user->password)
+
+nego:
+password_verify(
+    $plainPassword,
+    $storedHash
+)
+
+U bazi ne želimo:
+secret123
+
+nego hash:
+$2y$...
+
+ili neki drugi format koji PHP generiše.
+Dakle:
+user zna password
+↓
+server zna password hash
+↓
+server proverava poklapanje
+
+Server ne treba da čuva originalni password.
+6. Šta se dešava posle uspešnog login-a?
+Ovo je često mesto gde početnici imaju mentalnu rupu.
+Login request završi.
+HTTP je stateless.
+Sledeći request:
+GET /dashboard
+
+sam po sebi ne „pamti“ prethodni login.
+Zato nam treba auth state.
+Kod session-based authentication-a:
+login uspešan
+↓
+server session dobije:
+user_id = 17
+
+browser dobije session cookie
+↓
+sledeći request šalje cookie
+↓
+PHP pronalazi odgovarajuću session
+↓
+aplikacija vidi user_id = 17
+
+Dakle:
+HTTP
+→ stateless
+
+session
+→ dodaje state preko više request-ova
+
+7. Šta zapravo čuvamo u session-u?
+Vrlo često dovoljno je:
+$_SESSION['user_id'] = 17;
+
+Ne moraš da trpaš:
+$_SESSION['user'] = $entireUserObject;
+
+ili:
+$_SESSION['email']
+$_SESSION['name']
+$_SESSION['role']
+$_SESSION['phone']
+$_SESSION['everything']
+
+Zašto?
+Jer podaci mogu da se promene u bazi.
+Ako session čuva staru kopiju:
+role = admin
+
+a u bazi korisnik više nije admin, možeš dobiti zastareo auth state.
+Zato je zdrav mentalni model često:
+session
+→ čuva identity reference
+
+database
+→ source of truth za user data
+
+Na primer:
+$_SESSION['user_id'] = 17;
+
+pa sledeći request:
+session user_id
+↓
+UserRepository
+↓
+User object
+
+To ćemo detaljno u Lekciji 9.
+8. Authentication state nije isto što i User objekat
+Vrlo važna razlika:
+Auth state:
+user_id = 17
+
+nije isto što i:
+$user = new User(...);
+
+Session kaže:
+korisnik koji je authenticated ima ID 17.
+
+Repository onda može da učita:
+User #17
+
+To razdvajanje je dobro jer session ne postaje mini baza podataka.
+9. Request-by-request mental model
+Pretpostavimo korisnik se već loginovao.
+Dolazi:
+GET /profile
+
+Flow:
+browser šalje session cookie
+↓
+PHP učitava session
+↓
+$_SESSION['user_id'] = 17
+↓
+Auth sistem vidi authenticated user
+↓
+učita User #17
+↓
+controller dobija current user
+
+Sledeći request:
+POST /bookings
+
+isto:
+cookie
+↓
+session
+↓
+user_id
+↓
+current user
+
+Dakle authentication se ne dešava samo jednom zauvek.
+Svaki request mora da može da rekonstruiše:
+ko je current user?
+
+iz auth state-a.
+10. Guest vs Authenticated
+Vrlo često nam je dovoljan osnovni mentalni model:
+guest
+→ nema authenticated identity
+
+authenticated
+→ postoji validan authenticated identity
+
+Na primer:
+if ($auth->check()) {
+    // authenticated
+}
+
+ili:
+if ($auth->guest()) {
+    // guest
+}
+
+Laravel paralela ti je sigurno poznata:
+auth()->check();
+auth()->guest();
+auth()->id();
+auth()->user();
+
+Mi ćemo praktično napraviti sličan minimalistički sistem sami.
+11. Login nije Authorization
+Recimo user se uspešno loginovao.
+To znači:
+authenticated = true
+
+Ali ne znači automatski:
+canDeleteUsers = true
+canEditHotels = true
+canRefundBookings = true
+
+Authentication samo potvrđuje identitet.
+Posle authorization sloj koristi:
+role
+permissions
+ownership
+policies
+business rules
+
+da odluči šta sme.
+To već znaš iz Laravel Policies.
+Mentalno:
+Auth:
+"ovo je Bojan"
+
+Policy:
+"Bojan sme da menja ovu rezervaciju"
+
+Dve različite odgovornosti.
+12. Authentication i ownership
+Primer:
+User #17 je authenticated.
+Pokušava:
+DELETE /bookings/500
+
+Authentication kaže:
+current user = 17
+
+Authorization proverava:
+booking.user_id === 17 ?
+
+Dakle:
+authentication
+→ daje identitet
+
+authorization
+→ koristi identitet za odluku
+
+Bez identiteta nemaš ni osnovu za ownership proveru.
+13. Logout mental model
+Logout nije:
+obriši user-a.
+
+Niti:
+promeni password.
+
+Logout znači:
+ukloni / invalidiraj authentication state
+
+Kod session auth-a:
+authenticated session
+↓
+logout
+↓
+session više ne predstavlja authenticated user-a
+
+Posle:
+GET /profile
+
+aplikacija vidi:
+guest
+
+Detaljno ćemo to raditi u Lekciji 11.
+14. Registration nije isto što i Authentication
+Registration:
+create account
+
+Login:
+prove identity
+
+To su odvojeni use case-ovi.
+Registration flow:
+input
+↓
+validation
+↓
+hash password
+↓
+create user
+
+Login flow:
+input
+↓
+find existing user
+↓
+verify password
+↓
+establish auth state
+
+Možeš posle registration-a automatski loginovati user-a, ali to je dodatna odluka.
+15. Password reset nije „vrati mi stari password“
+Nikada ne treba da možeš da kažeš:
+Evo ti tvoj stari password.
+
+Ako možeš da ga pročitaš iz baze, već imaš problem.
+Password reset znači:
+prove ownership kroz reset token
+↓
+choose new password
+↓
+hash new password
+↓
+replace old hash
+
+To ćemo raditi kasnije.
+16. Remember me nije „čuvaj password u cookie-ju“
+Ovo je veoma važna granica.
+Nikada:
+cookie:
+email=...
+password=secret123
+
+Remember me treba da bude baziran na tokenu.
+Mentalno:
+persistent random token
+↓
+server-side verification
+↓
+restore authentication
+
+Detaljno u Lekciji 12.
+17. Gde se uklapaju Controller, Service i Repository?
+Pošto smo upravo završili OOP + Composer module, možemo odmah složiti arhitekturu.
+Login flow može izgledati:
+Login Request
+↓
+LoginController
+↓
+AuthService
+↓
+UserRepository
+↓
+Database
+
+A session deo:
+AuthService
+↓
+Session
+
+Na primer:
+Controller
+→ HTTP orchestration
+
+AuthService
+→ authentication use case
+
+UserRepository
+→ user persistence/query
+
+Session
+→ authentication state
+
+To će biti vrlo važno da ne završimo sa:
+login.php
+
+od 300 linija koji radi:
+POST
+SQL
+password
+session
+redirect
+HTML
+
+sve zajedno.
+18. Laravel paralela
+Laravel ti dosta ovoga sakrije iza:
+Auth::attempt(...)
+auth()->user()
+auth()->check()
+$request->user()
+auth middleware
+
+Ali ispod mentalno i dalje postoji:
+credentials
+↓
+user provider
+↓
+password verification
+↓
+session/guard state
+↓
+current user resolution
+
+Naš cilj nije da „napravimo Laravel“.
+Cilj je:
+Da razumeš šta Laravel zapravo automatizuje.
+
+To je ista filozofija kao što smo imali sa Composer-om i PDO-om.
+19. Authentication nije jedna klasa
+Vrlo važan architectural point.
+Auth sistem tipično uključuje više odgovornosti:
+User entity/model
+User repository
+password hashing
+session management
+Auth service
+controllers
+middleware
+tokens
+
+Ne želiš nužno:
+class Auth
+{
+    // 1500 linija
+}
+
+koja radi sve.
+Možemo imati centralni Auth/AuthService abstraction, ali ćemo odgovornosti držati čistim.
+20. Najvažniji kompletan mentalni tok
+Login
+Credentials
+↓
+validate
+↓
+find user
+↓
+verify password
+↓
+establish authenticated session
+↓
+current user available on future requests
+
+Sledeći request
+session cookie
+↓
+session
+↓
+user_id
+↓
+UserRepository
+↓
+current User
+
+Protected action
+current User
+↓
+authentication confirms identity
+↓
+authorization checks permission
+↓
+action allowed / denied
+
+Logout
+authenticated state
+↓
+invalidate/remove auth identity
+↓
+guest
+
+Najvažnije za zapamtiti
+Authentication
+→ Ko si ti?
+
+Authorization
+→ Šta smeš da radiš?
+
+credentials
+→ dokaz identiteta
+
+identity
+→ ko je korisnik
+
+auth state
+→ kako ga pamtimo između request-ova
+
+current user
+→ korisnik rekonstruisan iz auth state-a
+
+Kod session-based auth-a:
+login
+↓
+verify credentials
+↓
+$_SESSION['user_id']
+↓
+sledeći request
+↓
+session cookie
+↓
+user_id
+↓
+load User
+
+I najvažnije granice:
+namespace/login forma ≠ ceo auth sistem
+
+login ≠ authorization
+
+registration ≠ login
+
+logout
+→ uklanjanje auth state-a
+
+remember me
+→ token
+→ NE password u cookie-ju
+
+password reset
+→ novi password
+→ NE vraćanje starog password-a
+
+Arhitektonski:
+Controller
+→ HTTP
+
+AuthService
+→ authentication use case
+
+UserRepository
+→ user persistence
+
+Session
+→ auth state
