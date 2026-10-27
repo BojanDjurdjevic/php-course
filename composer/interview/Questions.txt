@@ -799,7 +799,7 @@ Jer
 
 Autoload automatski po svojim mapping pravilima vec vidi ovu klasu.
 
-Medjutim, ako bih rucno izmenio composer.json, i dodao na primer jos neke mapping spaces, onda dda bih azurirao, morao bih da pokrenem komandu.
+Medjutim, ako bih rucno izmenio composer.json, i dodao na primer jos neke mapping spaces, onda dda azurirao, morao bih da pokrenem komandu.
 
 ---
 
@@ -909,16 +909,7 @@ final class BookingService() {
    ) {}
 }
 
-
-
-
-
- 
-
-
-
-
-
+---
 
 Da — ideja ti je dobra, ali ovde ima nekoliko važnih grešaka baš u delovima koje zadatak proverava. Dao bih 7.6/10.
 composer.json ti je praktično odličan. ext-pdo nisam tražio, ali nije problem — samo je nepotreban za ovaj konkretan zadatak.
