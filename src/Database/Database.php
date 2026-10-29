@@ -1,21 +1,38 @@
 <?php
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../../');
-$dotenv->load();
+namespace App\Database;
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+use PDO;
 
-$host = $_ENV["DB_HOST"];
-$dbName = $_ENV['DB_NAME'];
-$dbUser = $_ENV['DB_USER'];
-$dbPass = $_ENV['DB_PASS'];
+final class Database
+{
+    private ?PDO $conn = null;
 
-$dsn = "mysql:host=$host;dbname=$dbName;charset=utf8mb4";
+    public function __construct(
+        private string $host,
+        private string $dbName,
+        private string $dbUser,
+        private string $dbPass,
+    ) {}
 
-$pdo = new PDO(
-    $dsn, $dbUser, $dbPass,
-    [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]
-);
+    public function connect(): PDO
+    {
+        if ($this->conn !== null) {
+            return $this->conn;
+        }
+
+        $dsn = "mysql:host=$this->host;dbname=$this->dbName;charset=utf8mb4";
+
+        $this->conn = new PDO(
+            $dsn,
+            $this->dbUser,
+            $this->dbPass,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]
+        );
+
+        return $this->conn;
+    }
+}

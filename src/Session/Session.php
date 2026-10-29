@@ -55,12 +55,10 @@ final class Session {
 
     public function flashGet(string $key, mixed $default = null): mixed {
 
-        //if($key === '') return $default; // nepotrebno
-
         if (
             !isset($_SESSION['_flash'])
             || !is_array($_SESSION['_flash'])
-            || !array_key_exists($key, $_SESSION['_flash']) // Mnogo bolje od onog gore
+            || !array_key_exists($key, $_SESSION['_flash']) 
         ) {
             return $default;
         }
