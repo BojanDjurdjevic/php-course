@@ -9,7 +9,7 @@ final class Session {
         if(session_status() === PHP_SESSION_ACTIVE) return;
 
         ini_set('session.use.only.cookies', '1');
-        ini_set('session_use_strict_mode', '1');
+        ini_set('session.use_strict_mode', '1');
 
         session_set_cookie_params([
             'lifetime' => 0,
@@ -73,6 +73,26 @@ final class Session {
     }
 
     public function destroy(): void {
+
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        $_SESSION = [];
+
+        $params = session_get_cookie_params();
+
+        if (ini_get('session.use_cookies')) {
+            setcookie(session_name(), '', [
+                'expires' => time() - 3600,
+                'path' => $params['path'],
+                'domain' => $params['domain'],
+                'secure' => $params['secure'],
+                'httponly' => $params['httponly'],
+                'samesite' => $params['samesite']
+            ]);
+        }
+        
         session_destroy();
     }
 
