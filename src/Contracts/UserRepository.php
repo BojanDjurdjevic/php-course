@@ -10,7 +10,7 @@ interface UserRepository {
 
     public function findByEmail(string $email): ?User;
 
-    public function create(string $name, string $email, string $passwordHash): User;
+    public function create(string $name, string $email, string $passwordHash, ?string $city = null): User;
 
     public function updatePasswordHash(int $userId, string $passwordHash): void;
 

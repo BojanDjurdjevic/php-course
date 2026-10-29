@@ -16,9 +16,15 @@ final class RegistrationService {
         ?string $city = null 
     ): User 
     {
+        $normalizedEmail = strtolower($email);
+
+        $user = $this->users->findByEmail($normalizedEmail);
+
+        if($user !== null) throw new \DomainException('Email already registered.');
+
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
-        return $this->users->create($name, $email, $passwordHash, $city);
+        return $this->users->create($name, $normalizedEmail, $passwordHash, $city);
     }
 
 }
