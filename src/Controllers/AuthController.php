@@ -21,6 +21,7 @@ final class AuthController {
             $_POST['name'] ?? null, 
             $_POST['email'] ?? null,
             $_POST['password'] ?? null,
+            $_POST['password_confirmation'] ?? null,
             $_POST['city'] ?? null
         );
 
@@ -29,7 +30,7 @@ final class AuthController {
         if(is_array($validated)) {
             $this->session->flashSet('errors', $validated);
 
-            //redirect
+            header('location: index.php?route=register', true, 303);
             exit;
         }
 
@@ -40,12 +41,22 @@ final class AuthController {
                 'email' => 'Email address already registered.'
             ]);
 
-            // redirect na register.php
+            header('location: index.php?route=register', true, 303);
             exit;
         }
         
         // Redirect ILI login + redirect
         exit;
         
+    }
+
+    public function login(): void 
+    {
+
+    }
+
+    public function logout(): void 
+    {
+
     }
 }

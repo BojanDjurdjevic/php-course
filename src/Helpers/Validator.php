@@ -154,6 +154,16 @@ class Validator {
         return $value;
     } 
 
+    public function validatePasswordConfirm(mixed $value, string $field, mixed $confirm): bool 
+    {
+        if($value !== $confirm) {
+            $this->errors[$field] = "Password confirmation $confirm must match the password";
+            return false;
+        }
+
+        return true;
+    } 
+
     /*
     public function validatePhone( mixed $value, string $field, array &$errors): ?string {
 

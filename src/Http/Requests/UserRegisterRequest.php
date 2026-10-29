@@ -14,6 +14,7 @@ class UserRegisterRequest implements Request {
         public mixed $name,
         public mixed $email,
         public mixed $password,
+        public mixed $confirm,
         public mixed $city = null,
 
         
@@ -25,6 +26,7 @@ class UserRegisterRequest implements Request {
         $name = $this->validator->validateRequiredString($this->name, 'name', 2, 55);
         $email = $this->validator->validateEmail($this->email, 'email');
         $password = $this->validator->validatePassword($this->password, 'password');
+        $confirmation = $this->validator->validatePasswordConfirm($password, 'password_confirmation', $this->confirm);
         $city = $this->validator->validateNullableString($this->city, 'city');
 
         if($this->validator->errors() !== []) {
