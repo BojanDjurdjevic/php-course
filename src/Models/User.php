@@ -11,8 +11,11 @@ final class User {
         private int $id,
         private string $email,
         private string $passwordHash,
+        private string $name,
+        private ?string $city,
         private ?DateTimeImmutable $emailVerifiedAt,
-        private UserStatus $status 
+        private UserStatus $status,
+        private DateTimeImmutable $createdAt
     ) {}
 
     public function id(): int {
@@ -25,6 +28,11 @@ final class User {
 
     public function passwordHash(): string {
         return $this->passwordHash;
+    }
+
+    public function createdAt(): DateTimeImmutable
+    {
+        return $this->createdAt;
     }
 
     public function isEmailVerified(): bool {

@@ -1,6 +1,9 @@
 <?php
 
 use App\Database\Database;
+use App\Enums\UserStatus;
+use App\Models\User;
+use App\Repositories\PdoUserRepository;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -15,3 +18,11 @@ $database = new Database(
 );
 
 $pdo = $database->connect();
+/*
+$id = 3;
+
+$userRepo = new PdoUserRepository($pdo);
+
+$user = $userRepo->findById($id);
+
+echo $user->email(); */

@@ -10,9 +10,9 @@ interface UserRepository {
 
     public function findByEmail(string $email): ?User;
 
-    public function create(string $name, string $email, string $paswordHash): User;
+    public function create(string $name, string $email, string $passwordHash): User;
 
-    public function updatePasswordHash(int $userId, string $paswordHash): void;
+    public function updatePasswordHash(int $userId, string $passwordHash): void;
 
     public function markEmailVerified(int $userId): void;
 
