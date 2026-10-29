@@ -1,0 +1,1387 @@
+# Questions
+
+OOP Interview #1
+
+Koja je razlika između class i object, i šta se dešava ovde:
+
+```php
+$user1 = new User();
+$user2 = $user1;
+```
+
+ako zatim promenimo property preko `$user2`?
+
+---
+
+Class je ovde devinicija, tip tj blueprint.
+
+Objekat je instanca te klase koji ima
+svoje stanje in runtime.
+
+U primeru, s obzirom da nije uradjeno clone (kopiranje),
+svaka promena preko `$user2` rezultirace promenom properties i na `$user1`.
+
+PS. Izvini ali ako ti nije problem, da ovde prekinemo pitabja,
+pa da mi das kao lekciju 31 -> Enums? To sam zaboravio da
+jos imamo a msm da je ipak vazno jer koristim u Laravel-u.
+
+Kada zavrsimo enums, vracamo se na pitanje 2.
+
+---
+
+Odgovor na pitanje #1: 10/10.
+Precizno:
+
+```text
+class
+→ definicija / tip / blueprint
+```
+
+```text
+object
+→ konkretna runtime instanca sa sopstvenim stanjem
+```
+
+A kod:
+
+```php
+$user2 = $user1;
+```
+
+ne pravi novi objekat, pa obe promenljive
+pristupaju istoj instanci. clone bi napravio odvojenu instancu.
+I da — Enums definitivno treba da ubacimo.
+Posebno zato što ih već koristiš u Laravelu i odlični su za
+status-e, role, tipove i zatvorene skupove vrednosti.
+
+---
+
+OOP Interview #2
+
+---
+
+## Koja je razlika između public, protected i private visibility-ja u PHP-u?
+
+I posebno: ako parent klasa ima:
+
+```php
+private string $name;
+```
+
+da li child klasa koja je nasleđuje može direktno da koristi:
+
+```php
+$this->name
+```
+
+i zašto?
+
+---
+
+## Public -> vidljivo bilo gde
+
+---
+
+## Protected -> Vidljivo samo u oviru klase i klasa koje je nasleđuju
+
+Private -> vidljivo samo u klasi. Čak ni klase koje nasleđuju ne mogu da mu pristupe.
+
+Stoga, u ovom primeru, child class neće moći direktno da koristi `$name`
+
+---
+
+Tačno — 10/10.
+Najkraće:
+
+```text
+public
+→ svuda
+```
+
+```text
+protected
+→ klasa + child klase
+```
+
+```text
+private
+→ samo klasa koja ga je definisala
+```
+
+I da, child ne može direktno da koristi:
+
+```php
+$this->name
+```
+
+ako je `$name` deklarisan kao private u parent klasi.
+Bitna nijansa: taj private property i dalje može biti deo parent objekta,
+samo child nema direktan pristup njemu. Parent može da
+izloži neku protected ili public metodu koja ga koristi.
+
+---
+
+OOP Interview #3
+
+---
+
+## Koja je razlika između abstract class i interface?
+
+Posebno me zanima:
+
+- kada bi koristio abstract class,
+- kada interface,
+- i zašto klasa može implementirati više interface-a, ali naslediti samo jednu klasu?
+
+---
+
+Abstract class je klasa koju ne možemo direktno koristiti tj inicijalizovati ali je vrlo zgodna
+kada imamo shared behavior između klasa. Nju mogu naslediti mnoge druge klase koje
+koristete njeno ponašanje, tj više različitih klasa vezanih jednim ponašanjem.
+
+Interface je contract i on služi da naglasi da se određena radnja ima izvršiti,
+tačnije određena metoda, s tim što ne pita na koji će način biti implementirana.
+
+Klasa može naslediti samo jednu klasu ali može implementirati više interfaces.
+
+Abstract class bih koristio kada više klasa zaista deli zajedničku osnovu. Na primer
+
+Abstract Class Notification
+
+```php
+construct(protected $text)
+
+public function text() -> return $this->text
+```
+
+abstract public function `notify()`
+
+Sada naslednice mogu da u notify implementiraju različite `platforme(Email, sms, viber)`
+
+---
+
+## Kada Interfaces?
+
+---
+
+## Kada me zanima: Šta objekat može da uradi?
+
+Interface Sendable ->
+
+```php
+public function send()
+```
+
+Pa sada klasa recimo class ViberNotification extends Notification implements Sendable...
+
+---
+
+Odlično — 10/10. Primer sa Notification i Sendable ti je baš dobar
+
+jer pokazuje da abstract class i interface nisu konkurenti; vrlo često rade zajedno.
+
+Tvoj mentalni model je dobar:
+
+```text
+abstract class
+→ zajednička osnova / porodica objekata
+→ može imati state
+→ constructor
+→ concrete metode
+→ abstract metode
+```
+
+```text
+interface
+→ contract / capability
+→ govori ŠTA objekat mora da ume
+→ ne određuje konkretnu implementaciju
+```
+
+Tvoj primer:
+
+```php
+abstract class Notification
+{
+    public function __construct(
+        protected string $text
+    ) {}
+
+    public function text(): string
+    {
+        return $this->text;
+    }
+
+    abstract public function notify(): void;
+}
+```
+
+pa:
+
+```php
+interface Sendable
+{
+    public function send(): void;
+}
+```
+
+i:
+
+```php
+class ViberNotification extends Notification implements Sendable
+{
+    public function notify(): void
+    {
+        // notification behavior
+    }
+
+    public function send(): void
+    {
+        // Viber implementation
+    }
+}
+```
+
+je potpuno legitiman dizajn.
+Jedino da odgovorimo još precizno na deo zašto jedna klasa, a više interface-a.
+PHP ne podržava multiple class inheritance:
+
+```php
+class C extends A, B // ❌
+```
+
+jer bi se brzo pojavile nejasnoće sa konkretnim stanjem i implementacijama. Recimo da i A i B imaju:
+
+```php
+public function save()
+```
+
+---
+
+## Koju implementaciju C nasleđuje?
+
+Interface uglavnom postavlja contract, pa je mnogo prirodnije:
+
+```php
+class Notification implements
+    Sendable,
+    Loggable,
+    Queueable
+{
+}
+```
+
+Klasa samo obećava:
+
+```text
+mogu da se pošaljem
+mogu da se logujem
+mogu da se queue-ujem
+```
+
+i sama obezbeđuje potrebne implementacije.
+
+---
+
+OOP Interview #4
+
+Objasni razliku između inheritance, composition i trait-a.
+
+I reci mi šta bi izabrao u ovom slučaju:
+
+BookingService i UserService oba treba da koriste istu malu `log()` implementaciju.
+Da li bi:
+
+1. jedan Service nasledio drugi,
+2. koristio composition,
+3. koristio trait,
+
+i zašto?
+
+---
+
+Inheritance - jednostavno, nasleđivanje. Jedna klasa nasledi drugu -> Class B IS-A class A.
+
+Composition - Class B HAS-A class A. Ovo je mnogo jači koncept u modernom programiranju.
+Dakle, ovde imamo klasu koja je sastavljena iz više drugih klasa, što daje ogromnu fleksibilnost.
+
+Trait - reuse implementation. -> rešava suprotan problem od na primer Interface-a.
+Trait je zgodan za implementaciju neke metode koju više klasa mogu deliti.
+Primer: Image upload - može ga koristiti UserProfile, Hotel, Room, a postupak je isti.
+
+U tvom primeru - BookingService / UserService nameće se Trait kao idealno rešenje.
+Potpuno 2 različita sveta, dakle ni govora o nasleđivanju.
+Takođe, besmisleno je da jedan bude injektovan u drugi.
+
+Na kraju, Trait rešava problem - daje `log()` metodu koji oba mogu da use;
+
+---
+
+Vrlo dobro — 9.5/10.
+Sve tri definicije su ti dobre:
+
+```text
+Inheritance
+→ IS-A
+```
+
+```text
+Composition
+→ HAS-A / koristi drugi objekat
+```
+
+```text
+Trait
+→ reuse konkretne implementacije
+```
+
+Posebno dobro si odmah odbacio:
+
+```php
+class UserService extends BookingService
+```
+
+jer među njima nema nikakvog IS-A odnosa.
+Jedina važna nijansa je tvoj zaključak da je trait idealno rešenje za `log()`. Za malu, potpuno lokalnu i stateless helper implementaciju može biti sasvim dobar:
+
+```php
+trait LogsActivity
+{
+    public function log(string $message): void
+    {
+        // mala zajednička implementacija
+    }
+}
+```
+
+Ali za pravi logging sistem bih češće izabrao composition:
+
+```php
+final class BookingService
+{
+    public function __construct(
+        private LoggerInterface $logger
+    ) {}
+}
+```
+
+i isto:
+
+```php
+final class UserService
+{
+    public function __construct(
+        private LoggerInterface $logger
+    ) {}
+}
+```
+
+Zašto? Zato što logger tada možeš da zameniš, mockuješ/testiraš,
+konfigurišeš i nemaš skrivenu implementaciju zalepljenu u klasama.
+
+Dakle praktično pravilo:
+
+```text
+malo reusable ponašanje bez ozbiljnih dependencies
+→ trait može biti odličan
+```
+
+```text
+pravi collaborator/service
+→ composition + DI je često bolji
+```
+
+I za Image upload bih iz istog razloga pre razmotrio ImageUploader
+servis nego trait ako upload uključuje Storage, image processing, konfiguraciju itd.
+
+---
+
+OOP Interview #5
+
+---
+
+## Koja je razlika između Dependency Injection i Dependency Inversion Principle?
+
+Da li ovaj kod koristi DI:
+
+```php
+class BookingService
+{
+    public function __construct(
+        private StripeGateway $gateway
+    ) {}
+}
+```
+
+i da li istovremeno dobro prati DIP?
+
+---
+
+Ovo svakako jeste DI ali krši DIP.
+
+StripeGateway jeste injectovan u BookingService, ali sada servis tesno zavisi od low level klase tj Stripe.
+
+A šta ako poželimo da ubacimo PayPal ili neki drugi method?
+
+Tu dolazi do problema.
+
+Taj problem rešava npr Interface PaymentGateway koji može da implementira bilo koji sistem plaćanja.
+
+Tada bi smo imali DI koji ne krši DIP.
+
+---
+
+Tačno — 10/10.
+Odlično si razdvojio pojmove:
+
+```text
+DI
+→ dependency dolazi spolja
+```
+
+```text
+DIP
+→ high-level kod ne treba da zavisi od konkretne low-level implementacije,
+  nego od apstrakcije
+```
+
+Zato je ovo:
+
+```php
+public function __construct(
+    private StripeGateway $gateway
+) {}
+```
+
+DI jeste, ali je coupling i dalje:
+
+```text
+BookingService
+→ StripeGateway
+```
+
+Bolje:
+
+```php
+public function __construct(
+    private PaymentGateway $gateway
+) {}
+```
+
+pa:
+
+```text
+BookingService
+        ↓
+ PaymentGateway
+        ↑
+ StripeGateway
+ PayPalGateway
+ FakePaymentGateway
+```
+
+Tada dobijamo i DI i dobar DIP dizajn.
+
+---
+
+## OOP Interview #6
+
+Objasni polymorphism na ovom primeru:
+
+```php
+interface PaymentGateway
+{
+    public function charge(int $amount): void;
+}
+
+class StripeGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // Stripe
+    }
+}
+
+class PayPalGateway implements PaymentGateway
+{
+    public function charge(int $amount): void
+    {
+        // PayPal
+    }
+}
+
+function pay(PaymentGateway $gateway, int $amount): void
+{
+    $gateway->charge($amount);
+}
+```
+
+Zašto funkcija `pay()` ne mora da zna da li je dobila Stripe ili PayPal,
+i zašto je to polymorphism?
+
+---
+
+Jednostavno zato što sve ove klase implementiraju contract koji kaže:
+
+"Moraš imati metodu `charge()`" i eventualno: "To mora biti neki payment metod"...
+ALI, ne pitam te kako ćeš je implementirati.
+
+Zato svaki Gateway može da implementira pay ili charge na svoj način.
+
+---
+
+Tačno — 10/10.
+To je baš polymorphism:
+
+```text
+isti contract
+→ isti poziv metode
+→ različita konkretna implementacija
+```
+
+`pay()` zna samo:
+
+PaymentGateway `$gateway`
+
+i zato sme bezbedno da pozove:
+
+```php
+$gateway->charge($amount);
+```
+
+---
+
+## Ne mora da zna da li je objekat StripeGateway,
+
+PayPalGateway ili neka treća implementacija.
+Svaka sama određuje kako će `charge()` raditi.
+
+---
+
+OOP Interview #7
+
+---
+
+## Koja je razlika između == i === kada porediš objekte u PHP-u?
+
+Šta očekuješ ovde:
+
+```php
+$a = new User('Bojan');
+$b = new User('Bojan');
+$c = $a;
+
+var_dump($a == $b);
+var_dump($a === $b);
+
+var_dump($a == $c);
+var_dump($a === $c);
+```
+
+Objasni posebno state equality naspram object identity.
+
+---
+
+Tačno — 9.8/10.
+Jedina sitna korekcija: za
+
+```php
+$a == $b
+```
+
+nije dovoljno samo da su iste klase. Moraju biti iste klase i imati jednako stanje/properties.
+Dakle u ovom primeru:
+
+```php
+$a == $b;   // true
+$a === $b;  // false
+
+$a == $c;   // true
+$a === $c;  // true
+```
+
+Mentalno:
+
+```text
+==
+→ state equality
+```
+
+---
+
+```text
+→ object identity
+```
+
+A `$c` = `$a` ne pravi novi objekat, nego još jednu promenljivu koja pristupa istoj instanci.
+
+---
+
+OOP Interview #8
+
+Koja je razlika između:
+
+self::
+
+i:
+
+static::
+
+u kontekstu inheritance-a?
+
+---
+
+## Šta će ispisati ovo i zašto?
+
+```php
+class User
+{
+    public static function role(): string
+    {
+        return 'user';
+    }
+
+    public static function first(): string
+    {
+        return self::role();
+    }
+
+    public static function second(): string
+    {
+        return static::role();
+    }
+}
+
+class Admin extends User
+{
+    public static function role(): string
+    {
+        return 'admin';
+    }
+}
+
+echo Admin::first();
+echo Admin::second();
+```
+
+Posebno objasni Late Static Binding.
+
+---
+
+`first()` će dati 'user'
+zato što self:: određuje da se poziv
+izvrsi samo unutar klase kojoj pripada.
+
+`second()` daje 'admin' jer
+static:: kaže PHP-u da obrati pažnju,
+kroz koju klasu je pozvana metoda,
+tj kroz koju klasu je poziv izvršen.
+
+PS. koristi Late Static Binding i vidi da je poziv došao kroz Admin → admin.
+
+---
+
+Tačno — 10/10.
+
+Samo terminološki najpreciznije:
+
+self::
+
+```text
+→ vezuje se za klasu u kojoj je metoda definisana
+```
+
+static::
+
+```text
+→ koristi Late Static Binding i gleda klasu kroz koju je poziv izvršen
+```
+
+Zato:
+
+```php
+Admin::first();  // user
+```
+
+jer je `first()` definisan u User, pa `self::role()` ostaje vezan za User.
+Dok:
+
+```php
+Admin::second(); // admin
+```
+
+jer `static::role()` vidi da je poziv došao kroz Admin.
+
+---
+
+## OOP Interview #9
+
+Objasni razliku između covariance i contravariance.
+Ako parent ima:
+
+```php
+public function create(): Animal
+```
+
+da li child sme da vrati:
+
+```php
+public function create(): Dog
+```
+
+ako Dog extends Animal?
+
+---
+
+## A kod parametara: ako parent prima Dog, da li child sme da proširi parametar na Animal?
+
+Objasni oba slučaja i zašto ne krše LSP.
+
+---
+
+OOP Interview #9
+
+Objasni razliku između covariance i contravariance.
+
+Ako parent ima:
+
+```php
+public function create(): Animal
+```
+
+da li child sme da vrati:
+
+```php
+public function create(): Dog
+```
+
+ako Dog extends Animal?
+
+---
+
+## A kod parametara: ako parent prima Dog, da li child sme da proširi parametar na Animal?
+
+Objasni oba slučaja i zašto ne krše LSP.
+
+---
+
+Covariance -> return type - od šireg ka specifičnijem.
+
+---
+
+## Ovde moze child da vrati Dog iz prostog razloga sto
+
+Dog IS - A Animal.
+Tako moze da suzi i da vrati specifičniji type
+ali samo pod uslovom da vraćeni tip
+jeste naslednik, child očekivanog.
+
+Contravariance -> Parametar: specifičnije ka širem.
+
+I ovo moze, jer child ovde prima širi parametar,
+bilo koji animal a dog jeste animal.
+
+---
+
+Tačno — 10/10.
+Odlično si zapamtio oba smera:
+
+```text
+Covariance
+→ return type
+→ šire ka specifičnijem
+→ Animal → Dog
+```
+
+```text
+Contravariance
+→ parameter type
+→ specifičnije ka širem
+→ Dog → Animal
+```
+
+I LSP veza je upravo tu:
+
+- ako caller očekuje Animal, a child vrati Dog,
+i dalje je contract ispunjen;
+- ako parent obećava da ume da primi Dog,
+a child kaže „ja mogu čak i bilo koji Animal“,
+child nije restriktivniji nego fleksibilniji.
+
+---
+
+OOP Interview #10
+
+Objasni razliku između:
+
+```php
+public const MAX_GUESTS = 4;
+
+public static int $maxGuests = 4;
+```
+
+i:
+
+```php
+public readonly int $guestCount;
+```
+
+Posebno me zanima:
+
+- šta pripada klasi, a šta instanci,
+- šta može da se menja tokom runtime-a,
+- i za koji slučaj bi izabrao const, a za koji readonly.
+
+---
+
+const su konstante koje pripadaju klasi i NE mogu se menjati, jer će PHP baciti grešku.
+
+static su static member i pripadaju klasi ne instanci, pa im se pristupa sa `Klasa::static`,
+nemamo instance pristup.
+
+readonly su immutable instance properties, koji mogu da se čitaju ali ne mogu nikako da se izmene,
+odnosno ne mogu se reasajnovati nakon inicijalizacije.
+
+---
+
+Tačno — 9.8/10. Vrlo dobro razlikuješ sva tri.
+Jedina bitna dopuna je da static property, za razliku od const, može da se menja tokom runtime-a:
+
+```php
+class Booking
+{
+    public static int $maxGuests = 4;
+}
+```
+
+Booking::`$maxGuests` = 6; // ✅
+
+Dakle najpreciznije:
+
+```text
+const
+→ pripada klasi
+→ fiksna vrednost
+→ ne menja se
+```
+
+```text
+static property
+→ pripada klasi, ne pojedinačnoj instanci
+→ shared mutable state
+→ može da se menja
+```
+
+```text
+readonly property
+→ pripada konkretnoj instanci
+→ inicijalizuje se
+→ posle ne može da se reassigned
+```
+
+Za:
+
+```php
+public const MAX_GUESTS = 4;
+```
+
+birao bih const ako je 4 pravilo klase/aplikacije.
+Za:
+
+```php
+public readonly int $guestCount;
+```
+
+birao bih readonly kada svaki konkretan booking ima svoj broj gostiju,
+ali nakon kreiranja tog objekta ne želimo da se property proizvoljno reassigned.
+Još jedna sitna nijansa: readonly nije automatski deep immutability.
+Ako readonly property sadrži mutable objekat, taj unutrašnji objekat i dalje može imati promenljivo stanje.
+
+---
+
+OOP Interview #11 — Enums
+
+Imamo:
+
+```text
+enum BookingStatus: string
+{
+    case Pending = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+}
+```
+
+Objasni razliku između:
+
+`BookingStatus::Confirmed`
+
+`BookingStatus::Confirmed`->name
+
+`BookingStatus::Confirmed`->value
+
+i zatim: koja je razlika između:
+
+```php
+BookingStatus::from($status)
+```
+
+i:
+
+```php
+BookingStatus::tryFrom($status)
+```
+
+ako `$status` sadrži vrednost koja ne postoji u enum-u?
+
+---
+
+`BookingStatus::Confirmed` - je sam enum case objekat tipa BookingStatus.
+
+`BookingStatus::Confirmed`->name // 'Confirmed' - je naziv case-a.
+
+`BookingStatus::Confirmed`->value // 'confirmed' - je njegova backend vrednost.
+
+ako `$status` sadrži vrednost koja ne postoji u Enum-u:
+
+`from($status)` će izbaciti grešku
+tryFrom će vratiti null.
+
+---
+
+Tačno — 10/10.
+Potpuno precizno:
+
+```text
+BookingStatus::Confirmed
+→ enum case objekat tipa BookingStatus
+```
+
+```text
+->name
+→ ime case-a: "Confirmed"
+```
+
+```text
+->value
+→ backed vrednost: "confirmed"
+```
+
+I:
+
+```php
+BookingStatus::from('nepostoji');
+```
+
+baca ValueError, dok:
+
+```php
+BookingStatus::tryFrom('nepostoji');
+```
+
+vraća null.
+
+---
+
+OOP Interview #12 — DTO vs Entity/Model
+
+---
+
+## Koja je razlika između DTO objekta i domain/entity objekta?
+
+Na primer:
+
+```php
+final readonly class CreateBookingData
+{
+    public function __construct(
+        public int $userId,
+        public int $roomId,
+        public DateTimeImmutable $checkIn,
+        public DateTimeImmutable $checkOut,
+    ) {}
+}
+```
+
+naspram:
+
+```php
+class Booking
+{
+    public function cancel(): void
+    {
+        // ...
+    }
+}
+```
+
+---
+
+## Šta je glavna odgovornost DTO-a, a šta Booking objekta?
+
+---
+
+Odgovornost DTO-a je pre svega da kroz aplikaciju provlači prepared immutable data.
+
+To nam daje sigurnost da podaci neće biti izmenjeni na putu kroz na primer:
+
+Controller -> Service -> Repository...
+
+na Booking gledamo više kao na model koji će eventualno iskoristiti DTO za rad sa bazom.
+
+---
+
+Vrlo dobro — 9.2/10.
+Prvi deo ti je suštinski dobar, samo dve važne korekcije.
+DTO nije po definiciji obavezno immutable.
+
+Mi ga često pravimo readonly jer je to odličan fit, ali glavna odgovornost DTO-a je:
+
+```text
+DTO
+→ strukturisan prenos podataka između slojeva
+→ jasan contract
+→ typed properties
+```
+
+Drugo, ne bih rekao da Booking „koristi DTO za rad sa bazom“. Preciznije:
+
+```text
+CreateBookingData
+→ prenosi input za use-case
+```
+
+```text
+Booking
+→ predstavlja business objekat
+→ ima identitet, stanje i ponašanje/invariants
+```
+
+```text
+BookingRepository
+→ zna kako da Booking sačuva/učita iz baze
+```
+
+Na primer:
+
+```php
+$booking->cancel();
+```
+
+ima smisla jer `cancel()` pripada business ponašanju Booking-a.
+Dok DTO tipično nema takvu domain odgovornost.
+Mentalno:
+
+```text
+DTO
+→ "evo podataka"
+```
+
+```text
+Entity / Domain object
+→ "evo poslovnog objekta koji zna svoja pravila"
+```
+
+---
+
+OOP Interview #13
+
+---
+
+## Koja je razlika između Service i Repository?
+
+Na primer, kod kreiranja rezervacije imamo:
+
+```text
+BookingService
+BookingRepository
+InventoryRepository
+```
+
+---
+
+## Šta treba da radi BookingService, a šta BookingRepository?
+
+I gde bi po tebi trebalo da bude transaction boundary ako jedan use-case mora atomski da:
+
+1. smanji inventory,
+2. kreira booking,
+3. upiše booking stavke?
+
+---
+
+Servis orkestrira i poziva radnje, tj u ovom slučaju Repositories.
+
+Servis kaže: "Smanji inventori" i ne zanima ga kako će tačno to da se uradi.
+
+Ta odgovornost pripada InventoryRepository-u, koji sprema sql i ostalo...
+
+Što se tiče transakcija, najbolje je da one budu u Servisu jer:
+
+Nije izvodljivo, pogotovo ako koristimo pdo da se nađu u istoj konekciji transakcije
+iz dva različita Repositori.
+
+Tako onda lepo bi bilo
+
+BookingService HAS Booking/InventoryRepository pa onda:
+
+transakcija
+->
+InventoryRepository - odradi inventory
+->
+BookingRepository -> odradi booking
+->
+Jel sve u redu? Jeste - commit / Nije - rollBack.
+
+---
+
+Da — onda smo potpuno na istoj strani. U tom slučaju ti je prethodni odgovor zapravo 10/10.
+Ako bi svaki Repository radio ovo:
+
+```php
+class BookingRepository
+{
+    private PDO $pdo;
+
+    public function __construct()
+    {
+        $this->pdo = new PDO(...);
+    }
+}
+```
+
+i drugi Repository imao svoj zaseban:
+
+```php
+$this->pdo = new PDO(...);
+```
+
+onda dobijaš:
+
+```text
+InventoryRepository
+→ PDO connection #1
+→ transaction #1
+```
+
+```text
+BookingRepository
+→ PDO connection #2
+→ transaction #2
+```
+
+I više nemaš jednu atomsku celinu. Može da se desi:
+
+```text
+inventory transaction
+→ COMMIT ✅
+```
+
+```text
+booking transaction
+→ FAIL + ROLLBACK ❌
+```
+
+i baza ostane nekonzistentna.
+Zato želimo:
+
+```text
+                PDO #1
+                  │
+        ┌─────────┴─────────┐
+        ↓                   ↓
+InventoryRepository   BookingRepository
+        │                   │
+        └── ista transaction ┘
+```
+
+Service tada kontroliše transaction boundary jer zna da sve operacije čine jedan use-case.
+Dakle tvoja ideja je bila potpuno ispravna; ja sam samo drugačije protumačio formulaciju.
+
+---
+
+OOP Interview #14
+
+---
+
+## Zašto je composition često fleksibilniji izbor od inheritance-a?
+
+Konkretno, zašto je:
+
+```php
+class BookingService
+{
+    public function __construct(
+        private PaymentGateway $payment,
+        private BookingRepository $bookings,
+    ) {}
+}
+```
+
+bolji dizajn od pravljenja varijanti poput:
+
+```php
+class StripeBookingService extends BookingService
+```
+
+ili još gore:
+
+```php
+class BookingService extends StripeGateway
+```
+
+?
+Objasni kroz IS-A vs HAS-A i mogućnost zamene dependency-ja.
+
+---
+
+Kao prvo, ovo poslednje bi bilo potpuno neprirodno jer bi bilo u pitanju
+nasleđivanje 2 potpuno različite klase, tj različitih identiteta.
+
+StripeBookingService extends BookingService s druge strane je potpuno nefleksibilno.
+
+Zato je najbolja varijanta composition, gde umesto nasleđivanja
+imamo model class A HAS-A class B, što daje veću fleksibilnost.
+
+Najčešće koristimo DI za to i klase + Interfaces su idealna rešenja.
+
+---
+
+Da — mislim da smo više nego dovoljno iscrpeli teorijski intervju. Posle #15 prelazimo na coding zadatke, jedan po jedan, kao kod SQL/PDO. Tvoj odgovor na #14 je 10/10.
+Posebno dobro:
+
+```text
+Inheritance
+→ IS-A
+```
+
+```text
+Composition
+→ HAS-A
+→ dependency možeš zameniti bez menjanja consumer klase
+```
+
+I da, ovo:
+
+```php
+class BookingService extends StripeGateway
+```
+
+je potpuno pogrešan odnos jer BookingService nije vrsta StripeGateway-a.
+Kod:
+
+```php
+class StripeBookingService extends BookingService
+```
+
+nije sintaksno ili univerzalno pogrešan — mogao bi imati smisla ako StripeBookingService zaista predstavlja specijalizovanu vrstu BookingService. Ali samo da bismo promenili payment provider, inheritance bi bio lošiji i mnogo manje fleksibilan od:
+
+```php
+new BookingService(
+    new StripeGateway(),
+    $repository
+);
+```
+
+ili:
+
+```php
+new BookingService(
+    new PayPalGateway(),
+    $repository
+);
+```
+
+To je baš ono „favor composition over inheritance“.
+
+---
+
+OOP Interview #15 — završno pitanje
+
+Hajde da završimo pitanjem koje spaja skoro ceo modul.
+
+Imamo tok za kreiranje rezervacije:
+
+```text
+HTTP Request
+→ CreateBookingRequest
+→ BookingController
+→ CreateBookingData
+→ BookingService
+→ BookingRepository + InventoryRepository
+→ PDO
+→ MySQL
+```
+
+Objasni mi ukratko odgovornost svakog od ovih OOP elemenata:
+
+```text
+CreateBookingRequest
+BookingController
+CreateBookingData (DTO)
+BookingService
+BookingRepository
+InventoryRepository
+```
+
+I posebno: gde bi smestio ova tri pravila?
+1. room_id mora biti integer
+2. soba mora biti slobodna za sve tražene noći
+3. promena inventory-ja + kreiranje booking-a moraju biti atomski
+
+Posle tvog odgovora dajem ti završnu ocenu za OOP intervju i odmah idemo na Coding Task #1.
+
+---
+
+CreateBookingRequest - prima HTTP i validira inpute -> ovde proveravamo validan room_id.
+
+BookingController - proverava / poziva request - poziva servis - daje output na kraju.
+
+CreateBookingData (DTO) - pravi strukturisane nepromenjive podatke koji se šalju kroz app.
+
+BookingService - orkestrira kreiranje bookinga, tako što poziva repozitorijume. -> Servis je odgovoran za transakciju,
+odnosno, da li postoji atomicity između Inventory & Booking.
+
+BookingRepository - Implementira kreiranje bookinga, u smislu sql - rad sa bazom.
+
+InventoryRepository - Implementira update inventory-a. -> ovde proveravam da li je soba slobodna za sve tražene datume.
+
+---
+
+Odlično — 10/10 za završno pitanje.
+
+Jedina fina nijansa:
+
+InventoryRepository treba da zna kako da proveri availability u bazi,
+dok odluka „booking sme da se napravi samo ako su sve noći slobodne“
+pripada business/use-case logici.
+
+Dakle vrlo čisto:
+
+```text
+BookingService
+→ pitaj InventoryRepository za availability
+→ ako nije dostupno: prekini use-case
+→ ako jeste: nastavi
+```
+
+A Repository radi konkretan SQL kojim do tog odgovora dolazi.
+I za transakciju si potpuno pogodio:
+
+```text
+BookingService
+→ zna da su inventory + booking jedna poslovna celina
+→ zato kontroliše begin / commit / rollback
+```
+
+```text
+Repositories
+→ koriste isti PDO
+→ izvršavaju svoje SQL operacije
+```
+
+Završna ocena — OOP intervju: 9.8/10
+
+Na ovom nivou bih smatrao OOP teoriju završenom. Posebno dobro razumeš composition/DI,
+interface/abstract razliku, SOLID, Service/Repository granice i object identity.
+To su stvari koje su za backend intervju mnogo važnije od memorisanja egzotične OOP sintakse.

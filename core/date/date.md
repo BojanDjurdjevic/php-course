@@ -1,0 +1,465 @@
+# date
+
+| Funkcija / metoda | Šta radi | Primer / napomena |
+| --- | --- | --- |
+| `date()` | formatira datum/vreme | date('Y-m-d H:i:s') |
+| `time()` | trenutni Unix timestamp | time() |
+| `strtotime()` | tekst → timestamp | strtotime('+2 days') |
+| `mktime()` | ručno pravi timestamp | mktime(12, 0, 0, 9, 18, 2026) |
+| `checkdate()` | proverava validnost datuma | checkdate(2, 29, 2024) |
+| `getdate()` | timestamp → niz informacija | getdate() |
+| `gmdate()` | kao date(), ali UTC | gmdate('Y-m-d H:i:s') |
+| `microtime()` | vreme sa mikrosekundama | korisno za benchmarking |
+| `hrtime()` | high-resolution timer | preciznije merenje trajanja |
+| `date_default_timezone_set()` | postavlja timezone | Europe/Belgrade |
+| `date_default_timezone_get()` | vraća trenutni timezone | — |
+| `timezone_identifiers_list()` | lista timezone-ova | — |
+| `new DateTime()` | objekat za datum/vreme | mutable |
+| `new DateTimeImmutable()` | immutable datum/vreme | često bolji izbor |
+| `DateTime::format()` | formatira datum | $date->format('d.m.Y') |
+| `DateTime::modify()` | menja datum relativno | ->modify('+1 month') |
+| `DateTime::setDate()` | menja datum | godina, mesec, dan |
+| `DateTime::setTime()` | menja vreme | sat, minut, sekund |
+| `DateTime::setTimezone()` | menja timezone | — |
+| `DateTime::getTimestamp()` | DateTime → timestamp | — |
+| `DateTime::setTimestamp()` | timestamp → DateTime | — |
+| `DateTime::diff()` | razlika između datuma | vraća DateInterval |
+| `DateTime::add()` | dodaje interval | P2D = 2 dana |
+| `DateTime::sub()` | oduzima interval | — |
+| `new DateInterval()` | predstavlja vremenski interval | new DateInterval('P1M') |
+| `DateInterval::format()` | formatira razliku | %y, %m, %d |
+| `new DatePeriod()` | prolazi kroz raspon datuma | kalendari, rezervacije |
+| `DateTime::createFromFormat()` | parsira poznati format | veoma korisno |
+| `DateTime::getLastErrors()` | greške pri parsiranju | validacija datuma |
+| `date_parse()` | rastavlja datum na komponente | proceduralna alternativa |
+
+---
+
+## MAPA PAMĆENJA
+
+```text
+CURRENT TIME
+time()
+```
+
+```text
+TEXT → TIME
+strtotime()
+```
+
+```php
+createFromFormat()
+```
+
+```text
+TIME → TEXT
+date()
+```
+
+```php
+format()
+```
+
+```text
+CHANGE TIME
+modify()
+add()
+sub()
+```
+
+```text
+COMPARE TIME
+diff()
+```
+
+---
+
+## RANGE OF DATES
+
+DatePeriod
+
+```text
+DURATION
+DateInterval
+```
+
+```text
+TIMEZONE
+DateTimeZone
+setTimezone()
+```
+
+```text
+PERFORMANCE TIME
+microtime()
+hrtime()
+```
+
+---
+
+## STRINGS UNUTAR METODA -> ZNAČENJE
+
+| Oznaka | Značenje | Primer |
+| --- | --- | --- |
+| `Y` | godina, 4 cifre | `2026` |
+| `y` | godina, 2 cifre | `26` |
+| `m` | mesec `01–12` | `09` |
+| `n` | mesec `1–12` | `9` |
+| `d` | dan `01–31` | `18` |
+| `j` | dan `1–31` | `18` |
+| `H` | sat `00–23` | `07` |
+| `i` | minuti | `41` |
+| `s` | sekunde | `49` |
+| `l` | naziv dana | `Friday` |
+| `D` | skraćeni dan | `Fri` |
+| `F` | naziv meseca | `September` |
+| `M` | skraćeni mesec | `Sep` |
+| `N` | dan u nedelji `1–7` | `5` |
+| `w` | dan u nedelji `0–6` | `5` |
+| `t` | broj dana u mesecu | `30` |
+| `L` | prestupna godina | `0` / `1` |
+| `U` | Unix timestamp | `...` |
+| `c` | ISO 8601 | veoma korisno |
+
+---
+
+## MAPA ZA DATE OBJEKAT
+
+```text
+NAPRAVI DATUM
+new DateTime()
+new DateTimeImmutable()
+```
+
+```text
+PRIKAŽI DATUM
+format()
+```
+
+```text
+PROMENI DATUM
+modify()
+setDate()
+setTime()
+```
+
+```text
+DODAJ / ODUZMI
+add()
+sub()
+DateInterval
+```
+
+```text
+UPOREDI DATUME
+diff()
+```
+
+---
+
+## RASPON DATUMA
+
+DatePeriod
+
+```text
+INPUT → DATUM
+createFromFormat()
+```
+
+```text
+VALIDACIJA
+getLastErrors()
+```
+
+```text
+TIMEZONE
+setTimezone()
+```
+
+```text
+DATETIME ↔ UNIX
+getTimestamp()
+```
+
+```php
+setTimestamp()
+```
+
+---
+
+## PANDAN SVEMU OVOME U LARAVELU
+
+| Core PHP | Carbon / Laravel | Primer |
+| --- | --- | --- |
+| `new DateTime()` | `Carbon::now()` / `now()` | `$date = now();` |
+| `new DateTime('...')` | `Carbon::parse()` | `Carbon::parse('2026-09-20')` |
+| `new DateTimeImmutable()` | `CarbonImmutable::parse()` | immutable pristup |
+| `date()` | `->format()` | `now()->format('d.m.Y')` |
+| `time()` | `now()->timestamp` | Unix timestamp |
+| `strtotime()` | `Carbon::parse()` | `Carbon::parse('next Monday')` |
+| `modify('+1 month')` | `->addMonth()` | čitljivije |
+| `modify('-3 days')` | `->subDays(3)` | — |
+| `setDate()` | `->setDate()` | isto postoji |
+| `setTime()` | `->setTime()` | isto postoji |
+| `setTimezone()` | `->setTimezone()` / `->timezone()` | — |
+| `getTimestamp()` | `->timestamp` / `->getTimestamp()` | — |
+| `setTimestamp()` | `Carbon::createFromTimestamp()` | — |
+| `diff()` | `diffInDays()`, `diffInYears()`... | mnogo praktičnije |
+| `add(DateInterval)` | `addDay()`, `addMonth()`... | — |
+| `sub(DateInterval)` | `subDay()`, `subMonth()`... | — |
+| `DateInterval` | `CarbonInterval` | `CarbonInterval::days(3)` |
+| `DatePeriod` | `CarbonPeriod` | raspon datuma |
+| `createFromFormat()` | `Carbon::createFromFormat()` | skoro isto |
+| `getLastErrors()` | `Carbon::getLastErrors()` | dostupno |
+| `checkdate()` | `Carbon::canBeCreatedFromFormat()` / validacija | zavisi od slučaja |
+
+---
+
+## CARBON METODE ZA `MODIFY()`
+
+```php
+$date->addSecond();
+$date->addSeconds(10);
+
+$date->addMinute();
+$date->addMinutes(30);
+
+$date->addHour();
+$date->addHours(3);
+
+$date->addDay();
+$date->addDays(7);
+
+$date->addWeek();
+$date->addWeeks(2);
+
+$date->addMonth();
+$date->addMonths(3);
+
+$date->addYear();
+$date->addYears(5);
+
+
+// ANALOGNO I ZA SUB() (SMANJITI ZA...)
+
+$date->subDay();
+$date->subDays(5);
+
+$date->subWeek();
+$date->subMonth();
+$date->subYear();
+
+$date->subHours(3);
+$date->subMinutes(30);
+```
+
+---
+
+## CARBON metode za `diff()`
+
+```php
+diffInSeconds()
+diffInMinutes()
+diffInHours()
+diffInDays()
+diffInWeeks()
+diffInMonths()
+diffInYears()
+
+// Posebno za poređenja u odnosu na danas:
+
+isToday()
+isTomorrow()
+isYesterday()
+
+isPast()
+isFuture()
+
+isWeekend()
+isWeekday()
+```
+
+---
+
+```php
+isSameDay()
+isSameMonth()
+isSameYear()
+isSameHour()
+```
+
+---
+
+## CARBON metode za format
+
+```php
+$date->year;
+$date->month;
+$date->day;
+
+$date->hour;
+$date->minute;
+$date->second;
+
+$date->dayOfWeek;
+$date->dayOfYear;
+$date->weekOfYear;
+
+$date->daysInMonth;
+```
+
+---
+
+## SUMA Laravel metoda za vreme
+
+```php
+now()
+today()
+
+Carbon::now()
+Carbon::parse()
+Carbon::create()
+Carbon::createFromFormat()
+
+format()
+toDateString()
+toDateTimeString()
+
+addDay()
+addDays()
+addWeek()
+addMonth()
+addYear()
+
+subDay()
+subDays()
+subMonth()
+
+startOfDay()
+endOfDay()
+startOfWeek()
+endOfWeek()
+startOfMonth()
+endOfMonth()
+
+diffInDays()
+diffInHours()
+diffInMonths()
+diffInYears()
+diffForHumans()
+
+isPast()
+isFuture()
+isToday()
+isWeekend()
+
+isSameDay()
+
+gt()
+gte()
+lt()
+lte()
+
+between()
+
+timezone()
+```
+
+timestamp
+
+```php
+copy()
+```
+
+---
+
+## MAPA pamćenja
+
+```text
+NAPRAVI DATUM
+now()
+today()
+Carbon::parse()
+Carbon::create()
+Carbon::createFromFormat()
+```
+
+```text
+        ↓
+```
+
+```text
+PROMENI DATUM
+addDay()
+addDays()
+addMonth()
+subDay()
+subMonth()
+```
+
+```text
+        ↓
+```
+
+```text
+GRANICE PERIODA
+startOfDay()
+endOfDay()
+startOfMonth()
+endOfMonth()
+```
+
+```text
+        ↓
+```
+
+```text
+UPOREDI
+isPast()
+isFuture()
+isToday()
+gt()
+lt()
+between()
+```
+
+```text
+        ↓
+```
+
+```text
+RAZLIKA
+diffInDays()
+diffInHours()
+diffInYears()
+```
+
+```text
+        ↓
+```
+
+```text
+PRIKAŽI
+format()
+toDateString()
+toDateTimeString()
+diffForHumans()
+```
+
+```text
+        ↓
+```
+
+```text
+RASPON
+CarbonPeriod
+```
+
+```text
+        ↓
+```
+
+```text
+TRAJANJE
+CarbonInterval
+```

@@ -1,0 +1,1835 @@
+# Questions
+
+PDO Interview — pitanje 1
+
+Objasni mi svojim rečima ceo ovaj flow:
+
+```php
+$pdo = new PDO($dsn, $username, $password);
+
+$stmt = $pdo->prepare(
+    'SELECT id, name, email
+     FROM users
+     WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+```
+
+Zanima me šta je:
+
+```php
+$pdo
+$stmt
+prepare()
+execute()
+fetch()
+```
+
+i šta se otprilike dešava od PHP-a do MySQL-a i nazad.
+
+---
+
+`$pdo` - Instanciranje PDO konekcije i PDO objekta.
+
+`$stmt` - Ovo je promenljiva u koju ćemo smestiti prepared statement
+u kome PDO priprema i šalje SQL-u priremljen upit ali još uvek bez povezanih vrednosti.
+
+`prepare()` -  služi da definiše prepared statement -
+Kao da kaže:
+
+"Spremam se da ti tražim ovo, evo ti i placeholderi
+za sada a uskoro ti šaljem realne podatke na njihova mesta".
+
+`execute()` - izvršenje prepared stmt s tim što u sebi sadrži vrednosti
+koje se vezuju za placeholder-e. Vraća true ili false u zavisnosti od uspeha.
+
+`fetch()` - tek ovde s ovom metodom čitamo rezultate koje je vratio sql.
+Dakle sve ono gore ima druge odgovornosti a pomoću ovoga čitamo redove.
+
+---
+
+Odlično — 9.7/10. Suštinski je sve tačno, samo dve male preciznosti.
+`$pdo` je:
+
+```text
+PDO objekat
+→ predstavlja konkretnu DB konekciju/session
+```
+
+`$stmt` nije samo „promenljiva za prepared statement“, nego konkretno:
+
+PDOStatement objekat
+
+koji predstavlja pripremljeni SQL posao i kasnije
+služi i za čitanje rezultata.
+Kod `prepare()` bih samo ublažio deo „šalje SQL-u“,
+jer zavisi da li koristimo native ili emulated prepares.
+
+Preciznije:
+
+```text
+prepare()
+→ PDO priprema statement
+→ kod native prepares DB server učestvuje u stvarnom prepare koraku
+→ kod emulated prepares PDO odrađuje više toga sam
+```
+
+Za `execute()` tačno:
+
+```text
+execute()
+→ prosleđuje vrednosti
+→ izvršava statement
+→ vraća true/false
+```
+
+ali uz:
+
+`PDO::ERRMODE_EXCEPTION`
+
+greške će tipično prekinuti tok preko exception-a, pa u praksi često ni ne proveravamo ručno false.
+I `fetch()` si objasnio baš kako treba:
+
+```text
+fetch()
+→ čita sledeći red iz result set-a
+```
+
+Dakle mentalni tok:
+
+```text
+PHP
+↓
+PDO connection
+↓
+PDOStatement
+↓
+prepare
+↓
+execute
+↓
+MySQL izvrši SQL
+↓
+result set
+↓
+fetch
+↓
+PHP podatak
+```
+
+---
+
+PDO Interview — pitanje 2
+
+Objasni razliku između:
+
+```php
+$pdo->query(...)
+$pdo->exec(...)
+$pdo->prepare(...)->execute(...)
+```
+
+Posebno me zanima:
+
+- šta svaki pristup vraća,
+- kada ga koristiš,
+- i koji biraš kada imaš user-controlled vrednost.
+
+---
+
+```php
+$pdo->query(...) - Je gotov query, bez bindovanja vrednsti ili parametara.
+```
+
+```text
+Koristimo ga kada imamo statički query, na primer proveravamo is_active = TRUE
+i vraća result set - PDOStatement
+```
+
+```php
+$pdo->exec(...)  - kada nas ne zanima result set nego isključivo koliko je redova pogodio.
+```
+
+Koristi se kao i query samo što vraća potpuno drugačije, umesto result - row numbers.
+Takođe, nije pogodan za dinamički upit.
+
+```php
+$pdo->prepare(...)->execute(...) - najbolje kada imamo dinamički upit gde u prepared stavljamo
+```
+
+placeholdere a onda u execute spajamo vrednosti. Najpogodniji za user controlled inputs.
+
+PS. ako bi mi na primer na UPDATE trebalo i affected rows a imam dinamički kreiran upit,
+koristio bih naravno prepare + execute + `rowCount()`
+
+---
+
+Odlično — 10/10. Ovo je baš intervju-ready odgovor.
+Sve tri si pravilno razdvojio:
+
+```text
+query()
+→ gotov/statički SQL
+→ tipično SELECT
+→ vraća PDOStatement
+```
+
+```text
+exec()
+→ gotov/statički SQL bez result seta
+→ tipično UPDATE / DELETE / DDL
+→ vraća broj affected rows
+```
+
+```text
+prepare() + execute()
+→ dinamičke vrednosti
+→ placeholders
+→ pravi izbor za user-controlled input
+→ radi preko PDOStatement-a
+```
+
+I tvoj PS je potpuno tačan:
+
+```php
+$stmt = $pdo->prepare(
+    'UPDATE users
+     SET name = :name
+     WHERE id = :id'
+);
+
+$stmt->execute([
+    'name' => $name,
+    'id' => $id,
+]);
+
+$affected = $stmt->rowCount();
+```
+
+Dakle `exec()` ti nije potreban samo zato što želiš affected rows. Ako imaš dinamičke vrednosti,
+`prepare()` + `execute()` + `rowCount()` je pravi pristup.
+
+Jedina mala terminološka nijansa: ne bih rekao da `prepare()` + `execute()` koristimo za „dinamički upit“ u svakom smislu,
+jer možeš imati potpuno fiksnu SQL strukturu sa samo dinamičkim vrednostima.
+
+Dinamička SQL struktura (ORDER BY, ime kolone, promenljiv broj filtera)
+je posebna priča i tu kombinujemo whitelist / controlled query building + placeholders za values.
+
+---
+
+PDO Interview — pitanje 3
+
+Objasni mi razliku između:
+
+```php
+$stmt->execute([
+    'id' => $id
+]);
+
+$stmt->bindValue(':id', $id, PDO::PARAM_INT);
+$stmt->execute();
+```
+
+i:
+
+```php
+$stmt->bindParam(':id', $id, PDO::PARAM_INT);
+$stmt->execute();
+```
+
+Posebno: koja je razlika između `bindValue()` i `bindParam()`
+i kada bi `bindParam()` imao praktičnu prednost?
+
+---
+
+`bindValue()` vezuje po vrednostima, tj ona je kao neki snapshot vrednosti
+u datom momentu i to ti je što ti je...
+
+`bindParam()` - vezuje vrednost za referencu za promenljivu pa kada god
+se promeni promenljiva do `execute()` samim tim se i menja vrednost placeholder-a.
+
+bindParam bi imao praktičnu vrednost na primer kada šaljemo više insert-a
+odjednom pa provlačimo kroz petlju i šaljemo za svaki element upit + nova vrednost.
+
+---
+
+Tačno — 10/10.
+Najvažniju razliku si pogodio vrlo precizno:
+
+```text
+bindValue()
+→ snapshot konkretne vrednosti u trenutku bindovanja
+```
+
+```text
+bindParam()
+→ veže promenljivu po referenci
+→ stvarna vrednost se uzima pri execute()
+```
+
+I praktičan primer za `bindParam()` ti je baš dobar:
+
+```php
+$stmt = $pdo->prepare(
+    'INSERT INTO tags (name) VALUES (:name)'
+);
+
+$stmt->bindParam(':name', $name);
+
+foreach ($tags as $tag) {
+    $name = $tag;
+    $stmt->execute();
+}
+```
+
+Jedino da kompletiramo i prvi slučaj:
+
+```php
+$stmt->execute([
+    'id' => $id,
+]);
+```
+
+je najjednostavniji način da za to konkretno izvršenje proslediš
+vrednosti placeholder-ima. Ne binduješ ih prethodno posebnom metodom.
+Dakle mentalno:
+
+```text
+execute([...])
+→ prosledi vrednosti odmah pri izvršenju
+```
+
+```text
+bindValue()
+→ unapred veži konkretnu vrednost
+```
+
+```text
+bindParam()
+→ unapred veži promenljivu po referenci
+```
+
+---
+
+PDO Interview — pitanje 4
+
+Objasni razliku između:
+
+```php
+fetch()
+fetchAll()
+fetchColumn()
+rowCount()
+```
+
+Posebno me zanima zašto je `rowCount()` dobar nakon UPDATE ili DELETE,
+ali nije pouzdan univerzalni način da prebrojiš redove vraćene SELECT upitom.
+
+---
+
+`fetch()` - povlaći po jedan red iz result set-a. Svaki put kada ga pozovemo nad više redova,
+npr while `$row` = `$stmt->fetch`() cursor se postavlja na sledeći, dakle nije stalno prikaz samo prvog.
+
+`fetchAll()` - Povlači sve redove, ceo result set - Nije idealan na ogromnoj količini podataka, bolje while... fetch
+
+`fetchColumn()` - Povlači kolonu, ako stavimo index, npr imamo: id, name, email `fetchColumn(1)` daće tačno name.
+
+`rowCount()` - Broj pogođenih redova, idealan za INSERT i UPDATE
+
+MEĐUTIM:
+
+```text
+Za SELECT je ponašanje driver-dependent i nije
+prenosivo/reliable na isti način. Zato je bolje kada imamo SELECT
+umesto rowCount - pitamo bazu sa COUNT(*)
+```
+
+---
+
+Odlično — 9.8/10.
+Sve si lepo razdvojio. Samo jedna nijansa kod `fetchColumn()`:
+
+```php
+fetchColumn(1)
+```
+
+ne znači „uzmi celu kolonu name iz svih redova“, nego:
+
+uzmi vrednost kolone sa indeksom 1 iz sledećeg reda.
+
+Dakle ako result set ima:
+
+id | name  | email
+1  | Ana   | ...
+2  | Marko | ...
+
+onda:
+
+```php
+$stmt->fetchColumn(1); // Ana
+$stmt->fetchColumn(1); // Marko
+```
+
+Cursor se i ovde pomera.
+
+Za `rowCount()` ti je odgovor tačan:
+
+```text
+INSERT / UPDATE / DELETE
+→ affected rows
+```
+
+```text
+SELECT
+→ ne oslanjamo se na rowCount()
+→ za broj rezultata pitamo bazu sa COUNT(*)
+```
+
+---
+
+PDO Interview — pitanje 5
+
+Objasni mi zašto je ovo bezbedno:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT * FROM users WHERE email = :email'
+);
+
+$stmt->execute([
+    'email' => $email,
+]);
+```
+
+a ovo nije:
+
+```php
+$stmt = $pdo->query(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+```
+
+Posebno me zanima razlika između:
+
+SQL strukture
+
+i:
+
+user-controlled vrednosti
+
+i zašto ni dobra PHP validacija email-a nije zamena za prepared statement.
+
+---
+
+tvoj drugi primer - query - je nebezbedan jer se interpolira u
+sql strukturu direktno user controlled podatak.
+
+Čak ni najbolja validacija php-a nije zamena za prepared statement
+jer postoji rizik od sql injection.
+
+---
+
+Tačno — 9.6/10.
+Najvažnije si pogodio:
+
+```text
+nebezbedno
+→ user-controlled vrednost postaje deo SQL stringa
+```
+
+Kod:
+
+```php
+$stmt = $pdo->query(
+    "SELECT * FROM users WHERE email = '$email'"
+);
+```
+
+PHP prvo sastavi jedan kompletan string.
+Ako je `$email` zlonameran, korisnik potencijalno utiče na značenje SQL-a.
+Prepared statement razdvaja dve stvari:
+
+```text
+SQL struktura
+→ SELECT * FROM users WHERE email = :email
+```
+
+```text
+podatak
+→ vrednost $email
+```
+
+Dakle placeholder kaže:
+
+ovo mesto je za vrednost, ne za SQL sintaksu.
+
+I dobra napomena za validaciju: njen posao je nešto drugo.
+
+```text
+validation
+→ "Da li ova vrednost zadovoljava pravila moje aplikacije?"
+```
+
+```text
+prepared statement
+→ "Ovu vrednost tretiraj kao podatak, a ne kao SQL kod."
+```
+
+Čak i ako uradiš:
+
+```php
+filter_var($email, FILTER_VALIDATE_EMAIL);
+```
+
+prepared statement i dalje ostaje pravilan DB-access obrazac.
+Ne treba da razmišljamo: „validirao sam, sada smem da interpoliram“.
+
+---
+
+PDO Interview — pitanje 6
+
+Imamo:
+
+```php
+$pdo->beginTransaction();
+
+try {
+    $inventoryRepository->decrease($roomId);
+    $bookingRepository->create($data);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+```
+
+Objasni mi:
+
+- zašto BookingService treba da kontroliše ovu transakciju, a ne svaki repository posebno,
+- zašto oba repository-ja moraju koristiti isti `$pdo`,
+- i zašto nakon `rollBack()` ponovo radimo throw `$e`.
+
+---
+
+Ako bi svaki repozitorijum posebno imao pdo - imali bismo 2 konekcije u jednoj transakciji.
+
+Zato je važno da Servis kontroliše transakciju i pdo konekciju kako bi oba repozitorijuma vršila radnje u sklopu jedne transakcije.
+
+Nakon rollback - ako bismo se samo oslonili na PDOException, možda bi nam druge greške bile sakrivene, zato je bolje Throwable
+koji pokriva daleko šire, pa će nakon rollback, osim greške vezane za transakciju throw `$e` prikazati sve eventualne relevantne greške.
+
+---
+
+Dobar odgovor — 9.2/10. Prva dva dela su dobra, a treći samo treba preciznije razdvojiti.
+Ako svaki repository napravi svoj:
+
+```php
+new PDO(...)
+```
+
+onda nemamo:
+
+2 konekcije u jednoj transakciji
+
+nego:
+
+```text
+2 konekcije
+→ 2 odvojena transaction state-a
+→ jedna transakcija ne može obuhvatiti obe
+```
+
+Zato Service određuje transaction boundary, a oba repository-ja moraju dobiti istu PDO instancu:
+
+```text
+BookingService
+     ↓
+isti $pdo
+   ↙     ↘
+```
+
+InventoryRepo  BookingRepo
+
+Tako:
+
+```php
+$pdo->beginTransaction();
+```
+
+obuhvata SQL oba repository-ja.
+Kod poslednjeg dela postoje dve različite stvari:
+
+```php
+catch (Throwable $e)
+```
+
+koristimo zato što želimo da rollback uradimo i ako pukne nešto što nije PDOException, recimo:
+
+```text
+RuntimeException
+Error
+DomainException
+```
+
+A:
+
+```php
+throw $e;
+```
+
+radimo posle rollback-a da ne progutamo originalnu grešku.
+Dakle:
+
+```text
+Throwable
+→ šta hvatamo
+```
+
+```text
+rollBack()
+→ vraćamo DB stanje
+```
+
+```text
+throw $e
+→ propagiramo originalni problem višem sloju
+```
+
+---
+
+PDO Interview — pitanje 7
+
+Imamo:
+
+```php
+$pdo->beginTransaction();
+
+$stmt = $pdo->prepare(
+    'SELECT available
+     FROM room_inventory
+     WHERE room_id = :room_id
+       AND date = :date
+     FOR UPDATE'
+);
+
+$stmt->execute([
+    'room_id' => $roomId,
+    'date' => $date,
+]);
+```
+
+Objasni mi:
+
+- ko zapravo postavlja lock — PDO ili MySQL,
+- koliko dugo taj lock traje,
+- i zašto ne želimo između FOR UPDATE i COMMIT da radimo spor HTTP poziv ili šaljemo email?
+
+---
+
+SQL postavlja Lock a ne PDO,
+
+Lock traje do završetka - zatvaranja transakcije tj commit ili rollback.
+
+U okviru jednog locka ne stavljamo ništa drugo što nije
+vezano za konkretne radnje koje traže atomicity,
+jer time predugo držimo lock a može čak da se desi i da email ode a da rezervacija ustvari je poništena.
+
+---
+
+Odlično — 9.8/10.
+Samo terminološki bih umesto:
+
+„SQL postavlja lock“
+
+rekao:
+
+MySQL/InnoDB postavlja lock kao posledicu SELECT ... FOR UPDATE statement-a.
+
+Jer SQL je instrukcija, a DB engine je taj koji stvarno zaključava redove.
+Ostalo ti je potpuno tačno:
+
+```text
+BEGIN
+↓
+SELECT ... FOR UPDATE
+↓
+MySQL/InnoDB drži lock
+↓
+provera + UPDATE/INSERT
+↓
+COMMIT ili ROLLBACK
+↓
+lock se oslobađa
+```
+
+I odlično si spojio oba razloga zašto ne želimo email/HTTP poziv unutar kritičnog dela:
+
+```text
+1. transakcija traje duže
+   → lock se drži duže
+   → drugi request-i čekaju
+   → veći rizik za contention/deadlock/timeouts
+```
+
+```text
+2. external side effect nije deo DB transakcije
+   → email može otići
+   → DB posle uradi ROLLBACK
+   → korisnik dobio potvrdu nepostojeće rezervacije
+```
+
+Zato:
+
+```text
+kratka DB transakcija
+→ COMMIT
+→ tek onda email / notification / ostali side effects
+```
+
+---
+
+PDO Interview — pitanje 8
+
+Imamo:
+
+```php
+$stmt = $pdo->prepare(
+    'UPDATE room_inventory
+     SET available = available - 1
+     WHERE room_id = :room_id
+       AND date >= :check_in
+       AND date < :check_out
+       AND available > 0'
+);
+
+$stmt->execute([...]);
+
+if ($stmt->rowCount() !== $numberOfNights) {
+    // ?
+}
+```
+
+Rezervacija traje 3 noći, ali `rowCount()` vrati 2.
+Šta to znači, šta treba da uradimo sa transakcijom
+i zašto ne smemo da ostavimo ta dva uspešna decrement-a u bazi?
+
+---
+
+Ovde moramo da uradimo rollback, jer želimo ili sva 3 noćenja ili ništa.
+
+Ne možemo sačuvati 2 nćenja, jer to nije konzistentno.
+
+---
+
+Tačno — 10/10.
+`rowCount()` === 2, a očekujemo 3 noćenja, znači da je samo 2 od 3 inventory reda
+zadovoljilo uslov i bilo decrementovano. Razlog može biti da jedan datum
+nema availability ili da odgovarajući inventory red uopšte ne postoji.
+
+Pošto je zahtev:
+
+3 noći kao jedna rezervacija
+
+moramo:
+
+```text
+2 uspešna UPDATE-a
++
+1 neuspešan
+→ ROLLBACK
+```
+
+i vratiti i ona dva decrement-a na prethodno stanje.
+To je čista Atomicity:
+
+```text
+sve 3 noći ✅
+ili
+nijedna ✅
+```
+
+2 od 3 ❌
+
+Zato je bitno da se ovaj UPDATE nalazi unutar iste transakcije kao i kreiranje booking-a.
+
+---
+
+PDO Interview — pitanje 9
+
+Nakon:
+
+```php
+$stmt = $pdo->prepare(
+    'INSERT INTO bookings (user_id, room_id)
+     VALUES (:user_id, :room_id)'
+);
+
+$stmt->execute([
+    'user_id' => $userId,
+    'room_id' => $roomId,
+]);
+```
+
+želimo ID upravo kreiranog booking-a.
+Zašto je ovo dobar pristup:
+
+```php
+$bookingId = $pdo->lastInsertId();
+```
+
+a ovo loš:
+
+```sql
+SELECT MAX(id) FROM bookings;
+```
+
+Posebno objasni šta se dešava ako dva request-a istovremeno kreiraju booking.
+
+---
+
+lastInsertId je baš vezan za pdo konekciju i vraća baš poslednji ID koji je upisan od strane naše konekcije.
+
+Drugi primer je loš zbog lost updates... desi se 2 requesta
+istovremeno a max pita isključivo koji je poslednji nevezano za
+konekciju i dobijemo pogrešan ID upisan od ko zna koje konekcije u međuvremenu.
+
+---
+
+Vrlo dobro — 9.6/10.
+
+Suština ti je potpuno tačna:
+
+```text
+lastInsertId()
+→ vezan za konkretnu PDO konekciju/session
+→ vraća ID koji je generisan za tvoj INSERT
+```
+
+Dok:
+
+```sql
+SELECT MAX(id) FROM bookings
+```
+
+pita:
+
+koji je trenutno najveći ID u celoj tabeli?
+
+Ako request A ubaci booking 101, a odmah zatim request B ubaci 102,
+onda A može sa `MAX(id)` dobiti 102, iako to nije njegov booking.
+
+Samo jedna terminološka korekcija: to nije baš lost update. Preciznije je reći:
+
+race condition / concurrency bug
+
+Lost update je situacija gde jedna konkurentna izmena pregazi drugu.
+Ovde ne pregazimo update, nego možemo pročitati tuđi ID zbog concurrency-ja.
+
+---
+
+PDO Interview — pitanje 10
+
+Imamo user-controlled filter:
+
+```php
+$ids = [5, 8, 12];
+```
+
+Zašto ovo ne radi kako želimo:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT * FROM hotels WHERE id IN (:ids)'
+);
+
+$stmt->execute([
+    'ids' => $ids,
+]);
+```
+
+i kako bezbedno napraviti IN (...) za proizvoljan broj ID-jeva koristeći PDO?
+
+---
+
+Zato sto 1 placeholder -> 1 vrednost, ne mozemo proslediti array vrednosti direktno.
+
+Tako da je bolje generisati niz od inputa i sa implode + array_fill i tako kao promenjivu vezati za upit.
+Tačno — 9.5/10. Suština je dobra, samo da preciziramo jednu stvar: ne vezujemo `implode()` rezultat kao jednu vrednost za placeholder, nego njime pravimo SQL strukturu placeholder-a.
+
+Na primer:
+
+```php
+$ids = [5, 8, 12];
+
+$placeholders = implode(
+    ',',
+    array_fill(0, count($ids), '?')
+);
+```
+
+dobijamo:
+
+?,?,?
+pa:
+
+```php
+$stmt = $pdo->prepare(
+    "SELECT * FROM hotels
+     WHERE id IN ($placeholders)"
+);
+
+$stmt->execute($ids);
+```
+
+Mentalno:
+
+```text
+[5, 8, 12]
+→ broj elemenata = 3
+→ napravi ?,?,?
+→ prepare SQL strukturu
+→ execute([5, 8, 12])
+```
+
+Dakle user values i dalje ne lepimo direktno u SQL.
+
+I naravno, moraš obraditi:
+
+```php
+$ids = [];
+```
+
+jer bi inače dobio nevalidno:
+
+IN ()
+
+---
+
+## PDO Interview — pitanje 11
+
+Korisnik bira sortiranje:
+
+?sort=price
+Zašto ovo nije pravo rešenje:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT * FROM hotels ORDER BY :sort'
+);
+
+$stmt->execute([
+    'sort' => $_GET['sort'],
+]);
+```
+
+I kako bi bezbedno omogućio samo:
+
+name
+price
+created_at
+kao dozvoljene opcije sortiranja?
+
+---
+
+Prvo, nemoguce je vezati placeholdere za
+nesto drugo osim konkretnih vrednosti.
+Dakle ne mozemo dinamicki bindovati za sql strukturu.
+A drugo, potpuno je nebezbedno slati korisnicki unos direktno u upit.
+Zato bi ovde trebalo napraviti whiteList gde bismo stavili samo zeljeno
+sortiranje (name, price, created_at) pa bi smo pripremili dinamicki sql strukturu sa
+`$whiteList['unos']` ako ga ima u dozvoljenim a ako ne ?? 'name' recimo po defaultu.
+
+---
+
+Tačno — 10/10.
+
+Odlično si razdvojio oba problema:
+
+```text
+1. placeholder
+→ služi za VALUE
+→ ne za SQL strukturu
+```
+
+```text
+2. user input
+→ ne sme direktno u ORDER BY
+→ mora kroz whitelist
+```
+
+Primer:
+
+```php
+$allowedSorts = [
+    'name'       => 'name',
+    'price'      => 'base_price',
+    'created_at' => 'created_at',
+];
+
+$sort = $_GET['sort'] ?? 'name';
+
+$column = $allowedSorts[$sort] ?? 'name';
+
+$sql = "
+    SELECT *
+    FROM hotels
+    ORDER BY $column
+";
+```
+
+Ovde korisnik zapravo šalje samo ključ:
+
+price
+a aplikacija odlučuje da to znači:
+
+base_price
+
+To je ključna bezbednosna razlika.
+
+---
+
+PDO Interview — pitanje 12
+
+Objasni mi šta se dešava sa PDO konekcijom u tipičnom PHP web request-u.
+
+Ako imamo:
+
+```php
+$pdo = new PDO(...);
+```
+
+da li ta konekcija ostaje zauvek otvorena?
+
+Kada se tipično zatvara kod obične, non-persistent PDO konekcije,
+i zašto 100 paralelnih request-ova potencijalno znači mnogo
+istovremenih MySQL konekcija, a ne jednu zajedničku konekciju za celu aplikaciju?
+
+Ova konelcija ne ostaje zauvek otvorena,
+i nema potrebe je zatvarati.
+
+A 100 razlicitih requestova - 100 paralelnih konekcija je samo od razlicitih user-a ali ako gledamo
+jedan user kroz aplikaciju, pdo se setuje jednom u aplikaciji i poziva se pdo objekat.
+
+100 razlicitih usera, njihove konekcije se nece sudarati.
+
+---
+
+Dobar odgovor, ali ovde ima jedna važna korekcija — 8.8/10.
+
+Tačno je:
+
+```text
+obična non-persistent PDO konekcija
+→ ne ostaje zauvek otvorena
+→ tipično živi do kraja PHP request-a
+→ na kraju request-a PHP je oslobodi
+```
+
+Zato obično nema potrebe za ručnim „close“. Ako baš želiš ranije da ukloniš referencu, možeš:
+
+```php
+$pdo = null;
+```
+
+ali to se u standardnom request flow-u uglavnom ne radi.
+
+Ono što bih ispravio je ovo:
+
+„ako gledamo jednog user-a kroz aplikaciju, PDO se setuje jednom u aplikaciji“
+
+Kod klasičnog PHP/FPM modela preciznije je:
+
+```text
+Request 1 korisnika A
+→ PHP bootstrap
+→ PDO konekcija
+→ response
+→ konekcija se zatvara
+```
+
+```text
+Request 2 ISTOG korisnika A
+→ novi PHP request
+→ nova PDO konekcija
+→ response
+→ zatvara se
+```
+
+Dakle nije:
+
+```text
+jedan user
+→ jedna PDO konekcija tokom celog njegovog boravka na sajtu
+```
+
+nego uglavnom:
+
+```text
+jedan aktivni HTTP request koji koristi DB
+→ jedna DB konekcija
+```
+
+Zato čak i isti korisnik može napraviti više paralelnih konekcija ako browser istovremeno pošalje više request-ova.
+
+---
+
+## I još jedna važna stvar: tih 100 konekcija se možda neće
+
+„pomešati“ jer su odvojene DB sesije, ali mogu itekako međusobno da utiču preko baze:
+
+```text
+isti inventory red
+→ lock contention
+```
+
+```text
+isti UNIQUE email
+→ constraint race
+```
+
+```text
+mnogo konekcija
+→ MySQL max_connections
+```
+
+```text
+više transakcija
+→ moguć deadlock
+```
+
+Dakle:
+
+```text
+odvojene connections ✅
+potpuno nezavisne u smislu podataka i lockova ❌
+```
+
+---
+
+PDO Interview — pitanje 13
+
+---
+
+## Koja je razlika između obične i persistent PDO konekcije?
+
+Posebno: šta znači:
+
+`PDO::ATTR_PERSISTENT` => true
+
+i zašto persistent konekcija nije automatski „bolja i brža opcija koju uvek treba uključiti“?
+
+---
+
+Obična konekcija se otvara na početku zahteva, a PHP je zatvara na kraju skripte (ili kad se `$pdo` uništi). Svaki zahtev ponovo radi TCP handshake,
+autentifikaciju i podešavanje sesije.
+
+Persistent konekcija (`PDO::ATTR_PERSISTENT` => true) ne zatvara se na kraju zahteva. PHP je zadrži u kešu procesa (php-fpm worker-a ili Apache procesa),
+pa sledeći zahtev koji dođe u isti proces i traži konekciju sa istim DSN-om, korisnikom i lozinkom dobije već otvorenu umesto nove.
+
+Zašto nije automatski bolja
+
+---
+
+## 1. Stanje sesije “curi” između zahteva. Konekcija se ponovo koristi, a ne resetuje se u potpunosti. Ostaju na primer:
+
+SET promenljive sesije (SET NAMES, time_zone, sql_mode),
+privremene tabele,
+zaključavanja (GET_LOCK),
+user promenljive (@x).
+
+Sledeći zahtev nasleđuje stanje prethodnog, a to su greške koje se jedva reprodukuju.
+
+---
+
+## 2. Otvorena transakcija može da “preživi”. Ako skripta pukne usred transakcije bez `rollBack()`,
+
+konekcija može ostati sa nezavršenom transakcijom i zaključanim redovima.
+PDO ne garantuje čišćenje, što je i razlog što je `inTransaction()` + rollback u tvom saveHotelGallery dobra navika.
+
+---
+
+## 3. Broj konekcija se množi. Svaki worker drži svoje konekcije. Sa 100 php-fpm workera imaš
+
+do 100 stalno otvorenih konekcija, bez obzira na to da li rade.
+MySQL ima max_connections, pa kod više aplikacija ili servera lako dođeš do “Too many connections”,
+a baza troši memoriju na mirujuće konekcije.
+
+---
+
+## 4. Dobitak je mali. Na MySQL-u je otvaranje konekcije obično nekoliko milisekundi,
+
+naročito na istoj mašini (localhost ili unix socket).
+Za većinu aplikacija se to ne oseća, a rizici iz tačaka 1-3 su stvarni.
+Ima smisla uglavnom kad je konekcija skupa: udaljena baza, TLS, spora autentifikacija, veoma visok saobraćaj.
+
+---
+
+PDO Interview — pitanje 14
+
+Objasni razliku između native i emulated prepared statements.
+
+Posebno me zanima:
+
+`PDO::ATTR_EMULATE_PREPARES` => false
+
+---
+
+## Šta time tražimo od PDO-a, ko kod native
+
+prepare-a stvarno priprema statement, i zašto nije ispravno reći:
+
+```text
+native = bezbedno
+emulated = nebezbedno
+```
+
+---
+
+Suštinska razlika nije bezbedno VS nebezbedno,
+oba su bezbedna ako se dobro urade i oba mogu biti nebezbedna ako ne.
+S tim što je programeru lakše da koristi native, manji je rizik da će pogrešiti jer,
+
+U slučaju native -> SQL obavlja veći deo posla
+
+Dok, kod emulated PDO obavlja veći deo posla.
+
+---
+
+Dobar odgovor — 9/10. Glavna ideja ti je tačna, ali jednu stvar bih ispravio:
+
+programeru native prepare nije nužno „lakši za korišćenje“,
+jer je PDO API praktično isti u oba slučaja.
+
+Kod:
+
+`PDO::ATTR_EMULATE_PREPARES` => false
+
+kažemo PDO-u:
+
+Ako driver podržava native prepared statements,
+koristi njih umesto PDO emulacije.
+
+Dakle:
+
+```text
+Native prepare
+→ PDO/driver pošalje prepare zahtev DB serveru
+→ MySQL stvarno priprema statement
+→ parametri se šalju pri execute()
+```
+
+```text
+Emulated prepare
+→ PDO emulira prepare mehanizam
+→ PDO odrađuje više posla pre slanja statement-a MySQL-u
+```
+
+I dobro si rekao da ne pravimo podelu:
+
+```text
+native = bezbedno
+emulated = nebezbedno
+```
+
+Mnogo važnije je:
+
+```text
+user values → parameters ✅
+user values ulepljene u SQL → ❌
+```
+
+Dakle razlika native/emulated govori prvenstveno gde
+se prepare mehanizam odvija, a ne daje jednostavnu oznaku bezbedno/nebezbedno.
+
+---
+
+## PDO Interview — pitanje 15
+
+Objasni razliku između:
+
+`PDO::ATTR_ERRMODE` => `PDO::ERRMODE_EXCEPTION`
+
+i metoda:
+
+```php
+$stmt->errorCode();
+$stmt->errorInfo();
+```
+
+---
+
+## Kada bismo koristili exception flow, a šta nam dodatno daju `errorCode()` i `errorInfo()`?
+
+---
+
+`PDO::ATTR_ERRMODE` => `PDO::ERRMODE_EXCEPTION` - ovo je atribut gde postavljamo
+da po defaultu dobijemo PDOException ako ne uspe.
+
+```php
+$stmt->errorCode(); daje konkretan error kod.
+
+$stmt->errorInfo(); - daje više informacija o grešci u vidu niza.
+```
+
+---
+
+Tačno — 9.7/10.
+Preciznije:
+
+```text
+PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+→ podešava način ponašanja PDO-a kod greške
+→ umesto tihog false/error stanja, PDO baca PDOException
+```
+
+`errorCode()`:
+
+```text
+→ vraća SQLSTATE kod poslednje greške
+```
+
+dok `errorInfo()` daje širi niz, tipično nešto kao:
+
+```php
+[
+    '23000', // SQLSTATE
+    1062,    // driver-specific kod
+    'Duplicate entry ...' // driver-specific poruka
+]
+```
+
+Dakle:
+
+```text
+Exception flow
+→ kontroliše tok programa kad nešto pukne
+```
+
+```text
+errorCode()/errorInfo()
+→ daju dodatne detalje o samoj DB grešci
+```
+
+U praksi sa ERRMODE_EXCEPTION uglavnom koristiš exception handling, a detaljnije kodove/poruke po potrebi za logovanje ili razlikovanje konkretnih DB problema.
+I naravno, sirov `errorInfo()` ne prikazujemo direktno korisniku.
+
+---
+
+## PDO Interview — pitanje 16
+
+Imamo:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT id, name, email
+     FROM users
+     WHERE id = :id'
+);
+
+$stmt->execute([
+    'id' => $id,
+]);
+
+$user = $stmt->fetch();
+```
+
+---
+
+## Ako nema user-a sa tim ID-em, šta vraća `fetch()`?
+
+I zašto je bitno da razlikujemo:
+
+query je uspešno izvršen
+
+od:
+
+query je našao red
+
+---
+
+U gornjem slučaju, fetch će vratiti false, ukoliko
+je user sa poslatim ID nepostojeći.
+
+Query je uspeo -> dakle, uspešno prošao kroz bazu i
+izvršio se (bez greške), samo nije pronašao korisnika u ovom slučaju.
+
+Da li je query našao ili nije red, to nema veze sa
+uspehom query-ja i to najbolje vidimo kroz fetch, da je query neuspešan,
+sve bi puklo ranije, pre fetch i bacilo error.
+
+---
+
+## PDO Interview — pitanje 17
+
+Imamo:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT *
+     FROM hotels
+     WHERE city = :city
+       AND base_price >= :min_price'
+);
+
+$stmt->execute([
+    'city' => $city,
+    'min_price' => $minPrice,
+]);
+```
+
+Objasni mi razliku između:
+
+```text
+validation
+normalization/casting
+PDO parameter binding
+```
+
+na primeru `$minPrice` koji stiže iz `$_GET` kao string "150".
+
+---
+
+## Šta bi radio u kom sloju i zašto te tri stvari nisu ista odgovornost?
+
+---
+
+validation - radim na nivou aplikacije, pre ulaska uopšte u pdo/sql priču,
+i tu proveravamo da li je podatak validan u smislu tipa, da li je required,
+ako je string da li je pravilan string itd.
+
+normalization/casting - Ovo isto radim na nivou aplikacije a nakon ili
+u toku validacije i ovo je minimalna popravka podatka, da bude validan za
+unos ali da ne bude prestrogo izmenjen (nasilno) tako da gubi smisao ono što je korisnik želeo da unese.
+
+PDO parameter binding - radim u okviru PDO objekta, vezan je za prepared
+statements i dobra je zaštita od SQL injectiona i
+zato se ne smemo oslanjati samo na 2 prethodna.
+
+---
+
+Vrlo dobro — 9.6/10.
+
+Najvažniju podelu razumeš tačno. Samo bih malo precizirao normalization/casting:
+
+nije cilj da „popravimo nevalidan podatak da postane validan“,
+jer time možemo sakriti loš input.
+Pre je cilj da validan podatak prevedemo u oblik koji aplikacija želi da koristi.
+
+Za `$minPrice` = "150" iz `$_GET`:
+
+```text
+1. Validation
+→ da li je numerička vrednost?
+→ da li je >= 0?
+→ da li je u dozvoljenom opsegu?
+```
+
+```text
+2. Normalization / casting
+→ "150" pretvori u 150
+→ sada PHP radi sa int/decimal reprezentacijom koju očekujemo
+```
+
+```text
+3. PDO parameter binding
+→ vrednost pošalji bazi kao podatak
+→ ne kao deo SQL strukture
+```
+
+Na primer:
+
+```php
+$minPrice = filter_input(
+    INPUT_GET,
+    'min_price',
+    FILTER_VALIDATE_INT
+);
+
+if ($minPrice === false || $minPrice < 0) {
+    throw new InvalidArgumentException('Invalid minimum price.');
+}
+```
+
+a onda:
+
+```php
+$stmt->bindValue(
+    ':min_price',
+    $minPrice,
+    PDO::PARAM_INT
+);
+```
+
+Dakle:
+
+```text
+validation
+→ da li prihvatam input?
+```
+
+```text
+normalization/casting
+→ u kom PHP obliku ga želim?
+```
+
+```text
+parameter binding
+→ kako ga bezbedno šaljem DB-u?
+```
+
+I potpuno tačno: ni odlična validacija ni casting nisu
+zamena za prepared statements.
+
+---
+
+PDO Interview — pitanje 18
+
+Imamo:
+
+```php
+$pdo->beginTransaction();
+
+try {
+    $bookingId = $bookingRepository->create(...);
+
+    $pdo->commit();
+
+    $mailer->sendConfirmation($bookingId);
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+```
+
+Šta se dešava ako:
+
+```text
+COMMIT uspe ✅
+email slanje pukne ❌
+```
+
+---
+
+## Da li tada možemo rollback-ovati booking?
+
+I zašto je važno razlikovati DB transaction
+failure od external side-effect failure?
+
+---
+
+Dobar odgovor — 9.3/10. Najvažnije si pogodio: booking ostaje napravljen, email ne ode.
+Ali jedna bitna korekcija: u ovom kodu email zapravo nije unutar DB transakcije, iako jeste unutar istog try bloka.
+
+```php
+$pdo->commit();
+
+$mailer->sendConfirmation($bookingId);
+```
+
+Čim je:
+
+```php
+$pdo->commit();
+```
+
+uspeo, transakcija je završena. Zato ako email posle pukne:
+
+```text
+booking COMMIT ✅
+email ❌
+```
+
+onda:
+
+```php
+$pdo->inTransaction()
+```
+
+vraća false, pa ovaj deo:
+
+```php
+if ($pdo->inTransaction()) {
+    $pdo->rollBack();
+}
+```
+
+ne radi rollback.
+I to je dobro, jer više nema šta da rollback-uješ — booking je već trajno commitovan.
+Dakle flow je:
+
+```text
+BEGIN
+↓
+INSERT booking
+↓
+COMMIT ✅
+↓
+transaction završena
+↓
+send email ❌
+↓
+catch(Throwable)
+↓
+inTransaction() === false
+↓
+nema rollback-a
+↓
+booking ostaje u bazi
+```
+
+---
+
+## Ono što je arhitektonski upitno jeste da li želimo
+
+da neuspeh email-a propagiramo isto kao neuspeh booking-a. Ako samo uradimo:
+
+```php
+throw $e;
+```
+
+viši sloj može korisniku prikazati:
+
+rezervacija nije uspela
+
+iako je rezervacija zapravo uspešno napravljena, samo email nije poslat.
+Zato se često odvoje ta dva failure domain-a:
+
+```text
+DB booking failure
+→ booking nije napravljen
+→ rollback
+```
+
+```text
+email failure posle commit-a
+→ booking postoji
+→ log / retry / queue
+→ ne predstavljaj korisniku kao DB failure
+```
+
+U Laravel svetu ti je već poznata ista ideja sa
+queued notification / afterCommit: prvo garantujemo DB stanje,
+pa onda side effect.
+
+---
+
+PDO Interview — pitanje 19
+
+Imamo:
+
+```php
+$pdo->beginTransaction();
+
+try {
+    $bookingRepository->create(...);
+
+    $pdo->commit();
+
+    $mailer->sendConfirmation(...);
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+```
+
+Kako bi ti arhitektonski razdvojio:
+
+booking nije mogao da se sačuva
+
+od:
+
+booking je sačuvan, ali email nije mogao da se pošalje
+
+tako da korisniku ne kažemo pogrešno
+da rezervacija nije uspela kada je COMMIT već prošao?
+
+---
+
+Jednostavno bih izdvojio `$emailer` iz
+try/catch blokova vezanih za transakciju.
+
+Pa kada se obradi i završi transakcija:
+
+Rollback -> Greška: Booking nije uspeeo...
+
+Commit -> dalje na obradu emaila.
+
+Pa ako email ne prođe:
+
+```text
+Booking success
+ali Email nije mogao da se pošalje
+```
+
+---
+
+Tačno — 10/10.
+Baš tako treba razdvojiti dva različita failure domain-a.
+DB deo:
+
+```php
+try {
+    $pdo->beginTransaction();
+
+    $bookingId = $bookingRepository->create(...);
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    throw $e;
+}
+```
+
+Ovde važi:
+
+```text
+ROLLBACK
+→ booking nije uspeo
+```
+
+```text
+COMMIT
+→ booking jeste uspeo
+```
+
+Tek posle toga ide side effect:
+
+```php
+try {
+    $mailer->sendConfirmation($bookingId);
+} catch (Throwable $e) {
+    // log
+    // retry / queue
+    // booking i dalje postoji
+}
+```
+
+Dakle korisniku ne smeš reći:
+
+Reservation failed
+
+ako je COMMIT već prošao.
+Mnogo preciznije je:
+
+```text
+Booking uspešan ✅
+Confirmation email trenutno nije poslat ❌
+```
+
+A u ozbiljnijoj aplikaciji bih email često prebacio u queue/retry mehanizam,
+jer slanje email-a ne treba da određuje uspeh same rezervacije.
+
+---
+
+PDO Interview — pitanje 20
+
+Imamo:
+
+```php
+$stmt = $pdo->prepare(
+    'SELECT *
+     FROM users
+     WHERE deleted_at = :deleted_at'
+);
+
+$stmt->execute([
+    'deleted_at' => null,
+]);
+```
+
+Zašto ovo neće pronaći redove gde je deleted_at NULL, i kako treba napisati SQL ako želimo:
+
+sve redove gde deleted_at jeste NULL
+
+A kako ako želimo:
+
+sve redove gde deleted_at nije NULL
+
+---
+
+Ovo neće pronaći redove jer u sql-u se tako ne radi
+poređenje sa null i ovde će automatski vratiti null.
+
+Pravilno:
+
+```sql
+WHERE deleted-at IS NULL
+```
+
+ILI
+
+```sql
+WHERE deleted-at IS NOT NULL
+```
+
+---
+
+Tačno — 9.6/10. Samo dve sitne korekcije.
+Prvo, sintaksa je sa underscore:
+
+```sql
+WHERE deleted_at IS NULL
+```
+
+ili:
+
+```sql
+WHERE deleted_at IS NOT NULL
+```
+
+Drugo, preciznije je reći da:
+
+deleted_at = NULL
+
+ne daje TRUE, nego zbog SQL three-valued logic daje:
+
+UNKNOWN
+
+a WHERE zadržava samo redove gde je uslov TRUE. Zato ne dobiješ očekivane redove.
+Dakle:
+
+```text
+= NULL
+→ pogrešan način poređenja
+→ UNKNOWN
+```
+
+```text
+IS NULL
+→ proverava da li NULL postoji
+```
+
+```text
+IS NOT NULL
+→ proverava da vrednost nije NULL
+```
+
+Ovim bih završio PDO interview checkpoint. Kroz 20 pitanja si
+
+```text
+uglavnom bio u rasponu 9–10/10, a ono što je posebno dobro jeste
+da više ne znaš PDO samo kao niz metoda tipa prepare → execute → fetch,
+nego razumeš connection/session, statement lifecycle, binding, transactions,
+```
+
+repository/service granice, concurrency i connection lifecycle.
+
+Sada prelazimo na PDO coding zadatke — jedan po jedan.
