@@ -1,10 +1,10 @@
 <?php
 
+use App\Auth\AuthService;
 use App\Auth\RegistrationService;
-use App\Controllers\AuthController;
 use App\Database\Database;
-use App\Enums\UserStatus;
-use App\Models\User;
+use App\Http\Controllers\LoginController;
+use App\Http\Controllers\RegistrationController;
 use App\Repositories\PdoUserRepository;
 use App\Session\Session;
 
@@ -31,11 +31,14 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 $userRepository = new PdoUserRepository($pdo);
 $registrationService = new RegistrationService($userRepository);
+$authService = new AuthService($userRepository, $session);
 
-$authController = new AuthController(
+$registrationController = new RegistrationController (
     $registrationService,
     $session
 );
+
+$loginController = new LoginController($authService, $session);
 
 switch ("$method:$route") {
     
@@ -51,27 +54,51 @@ switch ("$method:$route") {
 
     case 'POST:register':
 
-        $expected = $session->get('csrf-token');
+        $expected = $session->get('csrf_token');
         $received = $_POST['_token'] ?? null;
 
-        if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
+        if (
+            !is_string($expected) ||
+            !is_string($received) ||
+            !hash_equals($expected, $received)
+        ) {
+            $page = 'register';
+
             http_response_code(403);
-            exit('Invalid CSRF token!');
+            require __DIR__ . '/views/errors/403.php';
+            exit;
         }
 
-        $authController->register();
+        $registrationController->register();
         break;
 
     case 'GET:login':
+        if($session->get('csrf_token') === null) {
+            $token = bin2hex(random_bytes(32));
+            $session->put('csrf_token', $token);
+        }
+
         require __DIR__ . '/views/auth/loginpage.php';
         break;
 
     case 'POST:login':
-        $authController->login();
+        $loginController->login();
         break;
 
     case 'POST:logout':
-        $authController->logout();
+        $loginController->logout();
+        break;
+
+    case 'GET:dashboard':
+
+        $user = $authService->user();
+
+        if ($user === null) {
+            header('Location: index.php?route=login', true, 302);
+            exit;
+        }
+
+        require __DIR__ . '/views/dashboard.php';
         break;
 
     default:

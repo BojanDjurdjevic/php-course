@@ -30,6 +30,14 @@ final class User {
         return $this->passwordHash;
     }
 
+    public function name(): string {
+        return $this->name;
+    }
+
+    public function city(): ?string {
+        return $this->city;
+    }
+
     public function createdAt(): DateTimeImmutable
     {
         return $this->createdAt;

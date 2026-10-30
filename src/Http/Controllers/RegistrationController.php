@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Controllers;
+namespace App\Http\Controllers;
 
 use App\Auth\RegistrationService;
 use App\Helpers\Validator;
@@ -8,7 +8,7 @@ use App\Http\Requests\UserRegisterRequest;
 use App\Session\Session;
 use DomainException;
 
-final class AuthController {
+final class RegistrationController {
     public function __construct(
             private RegistrationService $service,
             private Session $session
@@ -48,15 +48,5 @@ final class AuthController {
         header('location: index.php?route=loginpage', true, 303);
         exit;
         
-    }
-
-    public function login(): void 
-    {
-
-    }
-
-    public function logout(): void 
-    {
-
     }
 }
