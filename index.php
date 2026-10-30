@@ -44,6 +44,13 @@ switch ("$method:$route") {
     
     case 'GET:register':
 
+        $user = $authService->user();
+
+        if ($user !== null) {
+            header('Location: index.php?route=dashboard', true, 302);
+            exit;
+        }
+
         if($session->get('csrf_token') === null) {
             $token = bin2hex(random_bytes(32));
             $session->put('csrf_token', $token);
@@ -53,6 +60,13 @@ switch ("$method:$route") {
         break;
 
     case 'POST:register':
+
+        $user = $authService->user();
+
+        if ($user !== null) {
+            header('Location: index.php?route=dashboard', true, 302);
+            exit;
+        }
 
         $expected = $session->get('csrf_token');
         $received = $_POST['_token'] ?? null;
@@ -73,6 +87,13 @@ switch ("$method:$route") {
         break;
 
     case 'GET:loginpage':
+        $user = $authService->user();
+
+        if ($user !== null) {
+            header('Location: index.php?route=dashboard', true, 302);
+            exit;
+        }
+
         if($session->get('csrf_token') === null) {
             $token = bin2hex(random_bytes(32));
             $session->put('csrf_token', $token);
@@ -82,16 +103,28 @@ switch ("$method:$route") {
         break;
 
     case 'POST:login':
+        $user = $authService->user();
+
+        if ($user !== null) {
+            header('Location: index.php?route=dashboard', true, 302);
+            exit;
+        }
         $loginController->login();
         break;
 
     case 'POST:logout':
+        $user = $authService->user();
+
+        if ($user === null) {
+            header('Location: index.php?route=loginpage', true, 302);
+            exit;
+        }
 
         if($session->get('csrf_token') === null) {
             $token = bin2hex(random_bytes(32));
             $session->put('csrf_token', $token);
         }
-        
+
         $loginController->logout();
         break;
 
