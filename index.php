@@ -40,10 +40,30 @@ $authController = new AuthController(
 switch ("$method:$route") {
     
     case 'GET:register':
+
+        if($session->get('csrf_token') === null) {
+            $token = bin2hex(random_bytes(32));
+            $session->put('csrf_token', $token);
+        }
+
         require __DIR__ . '/views/auth/register.php';
         break;
+
     case 'POST:register':
+
+        $expected = $session->get('csrf-token');
+        $received = $_POST['_token'] ?? null;
+
+        if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
+            http_response_code(403);
+            exit('Invalid CSRF token!');
+        }
+
         $authController->register();
+        break;
+
+    case 'GET:login':
+        require __DIR__ . '/views/auth/loginpage.php';
         break;
 
     case 'POST:login':
@@ -53,6 +73,7 @@ switch ("$method:$route") {
     case 'POST:logout':
         $authController->logout();
         break;
+
     default:
         http_response_code(404);
         echo '404 - Page not found';

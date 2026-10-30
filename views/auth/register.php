@@ -18,6 +18,11 @@ $errors = $session->flashGet('errors', []);
     >
 
         <input 
+            type="hidden" name="_token"
+            value="<?= htmlspecialchars($session->get('csrf_token'), ENT_QUOTES, 'UTF-8') ?>"
+        >
+
+        <input 
             type="text" name="name" id="" placeholder="Ime"
             class="w-full p-3 rounded-lg bg-gray-800 text-white
             placeholder-gray-400 border border-gray-700 focus:outline-none 

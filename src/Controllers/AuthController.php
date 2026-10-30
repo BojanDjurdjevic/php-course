@@ -45,7 +45,7 @@ final class AuthController {
             exit;
         }
         
-        // Redirect ILI login + redirect
+        header('location: index.php?route=loginpage', true, 303);
         exit;
         
     }
