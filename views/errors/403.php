@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/../../includes/header.php';
 
-$page = in_array($page ?? '', ['login', 'register'], true) ? $page : 'login';
+$page = in_array($page ?? '', ['loginpage', 'register'], true) ? $page : 'loginpage';
 
 ?>
 

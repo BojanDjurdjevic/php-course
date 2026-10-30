@@ -16,11 +16,11 @@ final class LoginController {
 
     public function login(): void
     {
-        $expected = $this->session->get('csrf-token');
+        $expected = $this->session->get('csrf_token');
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'login');
+            $this->session->put('page', 'loginpage');
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
@@ -38,7 +38,7 @@ final class LoginController {
         if(is_array($validated)) {
             $this->session->flashSet('errors', $validated);
 
-            header('location: index.php?route=login', true, 303);
+            header('location: index.php?route=loginpage', true, 303);
             exit;
         }
 
@@ -47,7 +47,7 @@ final class LoginController {
                 'login' => 'Invalid credentials.'
             ]);
 
-            header('Location: index.php?route=login', true, 303);
+            header('Location: index.php?route=loginpage', true, 303);
             exit;
         }
 
