@@ -2,7 +2,12 @@
 
 require_once __DIR__ . '/../../includes/header.php';
 
-$page = in_array($page ?? '', ['loginpage', 'register'], true) ? $page : 'loginpage';
+$page = $_SESSION['page'];
+unset($_SESSION['page']);
+
+$page = in_array($page ?? '', ['loginpage', 'register', 'dashboard'], true) ? $page : 'loginpage';
+
+//var_dump($page);
 
 ?>
 

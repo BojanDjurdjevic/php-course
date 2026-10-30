@@ -12,7 +12,6 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 $session = new Session();
 $session->start();
-$session->forget('user_id');
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
@@ -87,6 +86,12 @@ switch ("$method:$route") {
         break;
 
     case 'POST:logout':
+
+        if($session->get('csrf_token') === null) {
+            $token = bin2hex(random_bytes(32));
+            $session->put('csrf_token', $token);
+        }
+        
         $loginController->logout();
         break;
 

@@ -23,6 +23,15 @@ require_once __DIR__ . '/../includes/header.php';
             You have successfully logged in.
         </p>
 
+        <form action="?route=logout" method="POST">
+            <input 
+                type="hidden" name="_token"
+                value="<?= htmlspecialchars($session->get('csrf_token'), ENT_QUOTES, 'UTF-8') ?>"
+            >
+
+            <button type="submit">Logout</button>
+        </form>
+
     </main>
 
 </body>

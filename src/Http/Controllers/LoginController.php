@@ -57,6 +57,20 @@ final class LoginController {
 
     public function logout(): void
     {
+        $expected = $this->session->get('csrf_token');
+        $received = $_POST['_token'] ?? null;
 
+        if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
+            $this->session->put('page', 'dashboard');
+
+            http_response_code(403);
+            require __DIR__ . '/../../../views/errors/403.php';
+            exit;
+        }
+
+        $this->auth->logout();
+
+        header('Location: index.php?route=loginpage', true, 303);
+        exit;
     }
 }
