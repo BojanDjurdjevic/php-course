@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Auth\AuthService;
+use App\Auth\RememberMeService;
 use App\Helpers\Validator;
 use App\Http\Requests\UserLoginRequest;
 use App\Session\Session;
@@ -11,6 +12,7 @@ use Throwable;
 final class LoginController {
     public function __construct(
         private AuthService $auth,
+        private RememberMeService $remember,
         private Session $session
     ) {}
 
@@ -51,6 +53,11 @@ final class LoginController {
             exit;
         }
 
+        $this->remember->revoke();
+
+        $user = $this->auth->user();
+        if($user !== null && ($_POST['remember_me'] ?? null) === "1") $this->remember->issue($user);
+
         header('location: index.php?route=dashboard', true, 303);
         exit;
     }
@@ -68,6 +75,7 @@ final class LoginController {
             exit;
         }
 
+        $this->remember->revoke();
         $this->auth->logout();
 
         header('Location: index.php?route=loginpage', true, 303);

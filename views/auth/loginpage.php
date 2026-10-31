@@ -50,6 +50,11 @@ $errors = $session->flashGet('errors', []);
             </p>
         <?php endif; ?>
 
+        <label class="text-white">
+            <input type="checkbox" name="remember_me" value="1">
+            Remember me
+        </label>
+
         <button
             class="w-full bg-green-600 hover:bg-green-700 transition-colors text-white font-medium p-3 rounded-lg" 
         >Login</button>

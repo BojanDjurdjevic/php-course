@@ -5,6 +5,7 @@ namespace App\Session;
 final class Session {
 
     public function start(): void {
+        $isProduction = ($_ENV['APP_ENV'] ?? 'development') === 'production';
 
         if(session_status() === PHP_SESSION_ACTIVE) return;
 
@@ -15,7 +16,7 @@ final class Session {
             'lifetime' => 0,
             'path' => '/',
             'httponly' => true,
-            'secure' => false,
+            'secure' => $isProduction,
             'samesite' => 'Lax'
         ]);
 

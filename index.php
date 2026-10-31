@@ -2,9 +2,11 @@
 
 use App\Auth\AuthService;
 use App\Auth\RegistrationService;
+use App\Auth\RememberMeService;
 use App\Database\Database;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegistrationController;
+use App\Repositories\PdoRememberMeTokenRepository;
 use App\Repositories\PdoUserRepository;
 use App\Session\Session;
 
@@ -30,15 +32,18 @@ $route = $_GET['route'] ?? 'login';
 $method = $_SERVER['REQUEST_METHOD'];
 
 $userRepository = new PdoUserRepository($pdo);
+$rememberRepository = new PdoRememberMeTokenRepository($pdo);
+
 $registrationService = new RegistrationService($userRepository);
 $authService = new AuthService($userRepository, $session);
+$rememberMeService = new RememberMeService($userRepository, $rememberRepository, $authService);
 
 $registrationController = new RegistrationController (
     $registrationService,
     $session
 );
 
-$loginController = new LoginController($authService, $session);
+$loginController = new LoginController($authService, $rememberMeService, $session);
 
 switch ("$method:$route") {
     
@@ -129,10 +134,16 @@ switch ("$method:$route") {
         break;
 
     case 'GET:dashboard':
+        /*
+        if ($authService->guest()) {
+            $rememberMeService->restore();
+        } */
 
         $user = $authService->user();
 
-        if ($user === null) {
+        if($user === null) $rememberMeService->restore();
+
+        if ($authService->guest()) {
             header('Location: index.php?route=loginpage', true, 302);
             exit;
         }
