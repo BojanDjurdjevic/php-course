@@ -5,6 +5,7 @@ namespace App\Auth;
 use App\Contracts\RememberTokenRepository;
 use App\Contracts\UserRepository;
 use App\Models\User;
+use stdClass;
 
 final class RememberMeService {
 
@@ -15,31 +16,11 @@ final class RememberMeService {
     ) {}
 
     public function issue(User $user): void {
-        $selector = bin2hex(random_bytes(9));
+        $data = $this->generateTokenData();
 
-        $validator = bin2hex(random_bytes(32));
+        $this->remember->saveToken($user->id(), $data->selector, $data->hashed, $data->expiresAt);
 
-        $hashed_validator = hash('sha256', $validator);
-
-        $expire = time() + 60 * 60 * 24 *30;
-
-        $expiresAt = gmdate('Y-m-d H:i:s', $expire);
-
-        $this->remember->saveToken($user->id(), $selector, $hashed_validator, $expiresAt);
-
-        $isProduction = ($_ENV['APP_ENV'] ?? 'development') === 'production';
-
-        setcookie(
-            'remember_me', 
-            $selector . ':' . $validator,
-            [
-                'expires' => $expire,
-                'path' => '/',
-                'httponly' => true,
-                'secure' => $isProduction,
-                'samesite' => 'Lax'
-            ]
-        );
+        $this->setCookie($data->selector,  $data->validator, $data->expires);
 
     }
 
@@ -62,6 +43,8 @@ final class RememberMeService {
             return false;
         } 
 
+        if(!$this->rotate($data)) return false;
+
         // Authenticated session
         $this->auth->login($user);
 
@@ -75,6 +58,64 @@ final class RememberMeService {
         if($data !== null) $this->remember->deleteToken($data->selector, $data->validator_hash);
 
         $this->clearCookie();
+    }
+
+    private function rotate(object $oldData): bool
+    {
+        $expiration = \DateTimeImmutable::createFromFormat(
+            '!Y-m-d H:i:s',
+            $oldData->expires_at,
+            new \DateTimeZone('UTC')
+        );
+
+        if (
+            $expiration === false ||
+            $expiration->getTimestamp() <= time()
+        ) {
+            return false;
+        }
+
+        $newData = $this->generateTokenData(
+            $expiration->getTimestamp()
+        );
+
+        if (!$this->remember->rotateToken(
+            $oldData->selector,
+            $oldData->validator_hash,
+            $newData->selector,
+            $newData->hashed
+        )) {
+            return false;
+        }
+
+        $this->setCookie(
+            $newData->selector,
+            $newData->validator,
+            $newData->expires
+        );
+
+        return true;
+    }
+
+    // PRIVATE Helpers
+
+    private function generateTokenData(?int $expires = null): stdClass
+    {
+        $selector = bin2hex(random_bytes(9));
+        $validator = bin2hex(random_bytes(32));
+        $hashedValidator = hash('sha256', $validator);
+
+        $expires ??= time() + 60 * 60 * 24 * 30;
+
+        $data = new stdClass();
+
+        $data->selector = $selector;
+        $data->validator = $validator;
+        $data->hashed = $hashedValidator;
+        $data->expires = $expires;
+        $data->expiresAt = gmdate('Y-m-d H:i:s', $expires);
+
+        return $data;
     }
 
     private function cookieIsValid(): ?object
@@ -103,7 +144,7 @@ final class RememberMeService {
         $data = $this->remember->findToken($selector);
 
         if($data === null) {
-            $this->clearCookie();
+            //$this->clearCookie();
             return null;
         } 
 
@@ -117,11 +158,26 @@ final class RememberMeService {
         $validatorHash = hash('sha256', $validator);
 
         if(!hash_equals($data->validator_hash, $validatorHash)) {
-            $this->clearCookie();
+            //$this->clearCookie();
             return null;
         }
 
         return $data;
+    }
+
+    private function setCookie(string $selector, string $validator, int $expire) 
+    {
+        setcookie(
+            'remember_me', 
+            $selector . ':' . $validator,
+            [
+                'expires' => $expire,
+                'path' => '/',
+                'httponly' => true,
+                'secure' => ($_ENV['APP_ENV'] ?? 'development') === 'production',
+                'samesite' => 'Lax'
+            ]
+        );
     }
 
     private function clearCookie(): void

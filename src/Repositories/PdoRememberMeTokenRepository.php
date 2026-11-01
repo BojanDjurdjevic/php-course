@@ -53,4 +53,27 @@ final class PdoRememberMeTokenRepository implements RememberTokenRepository {
             'validator' => $validatorHash
         ]);
     }
+
+    public function rotateToken(string $oldSelector, string $oldValidatorHash, string $newSelector, string $newValidatorHash): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "UPDATE remember_tokens
+             SET
+                selector = :new_selector, validator_hash = :new_hash
+             WHERE
+                selector = :old_selector AND validator_hash = :old_hash 
+                AND expires_at > :now   
+            "
+        );
+
+        $stmt->execute([
+            'new_selector' => $newSelector,
+            'new_hash' => $newValidatorHash,
+            'old_selector' => $oldSelector,
+            'old_hash' => $oldValidatorHash,
+            'now' => gmdate('Y-m-d H:i:s'),
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
 }

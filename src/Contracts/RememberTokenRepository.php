@@ -10,4 +10,6 @@ interface RememberTokenRepository {
 
     public function deleteToken(string $selector, string $validatorHash): void;
 
+    public function rotateToken(string $oldSelector, string $oldValidatorHash, string $newSelector, string $newValidatorHash): bool;
+
 }
