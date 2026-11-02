@@ -6,4 +6,8 @@ interface PasswordResetTokenRepository {
 
     public function storeResetHash(int $userId, string $hash, string $expiresAt): bool;
 
+    public function findToken(string $token): ?object;
+
+    public function deleteByUserId(int $userId): void;
+
 }

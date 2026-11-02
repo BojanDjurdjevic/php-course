@@ -5,11 +5,14 @@ namespace App\Auth;
 use App\Contracts\PasswordResetTokenRepository;
 use App\Contracts\UserRepository;
 use App\Helpers\Logger;
+use PDO;
+use Throwable;
 
 final class PasswordResetService {
     public function __construct(
         private PasswordResetTokenRepository $reset,
         private UserRepository $users,
+        private PDO $pdo,
         private Logger $logger
     ) {}
 
@@ -48,5 +51,39 @@ final class PasswordResetService {
         }
 
         return true;
+    }
+
+    public function validateToken(string $token): bool 
+    {
+        if(!is_string($token)) return false;
+
+        if(!preg_match('/\A[a-f0-9]{64}\z/', $token)) return false;
+
+        $hashed = hash('sha256', $token);
+
+        $data = $this->reset->findToken($hashed);
+
+        if($data === null) return false;
+
+        if($data->expires_at < gmdate('Y-m-d H:i:s')) return false;
+
+        $user = $this->users->findById($data->user_id);
+
+        if($user === null || !$user->isActive()) return false;
+
+        return true;
+    }
+
+    public function finalReset($token, $userId, $passwordHash): void
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+
+            
+
+        } catch(Throwable $e) {
+
+        }
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Auth\PasswordResetService;
 use App\Helpers\Validator;
 use App\Http\Requests\ForgotPasswordRequest;
+use App\Http\Requests\UserRegisterRequest;
 use App\Security\RateLimiter;
 use App\Session\Session;
 
@@ -70,4 +71,31 @@ final class ResetPasswordController {
         exit;
         
     }
+
+    public function resetPassword(): void 
+    {
+        $token = $_POST['token'] ?? null;
+        $password = $_POST['password'] ?? null;
+        $password_confirm = $_POST['password_confirmation'] ?? null;
+
+        $validator = new Validator();
+
+        $confirm = $validator->validatePasswordConfirm($password, 'password_confirmation', $password_confirm);
+        $password = $validator->validatePassword($password, 'password');
+
+        if(!$confirm || $password === null) {
+            $this->session->flashSet(
+                'errors', $validator->errors()
+            );
+            header('location: index.php?route=reset-password', true, 303);
+            exit;
+        }
+
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        
+        $data = $this->reset->validateToken($token);
+
+
+    }
+
 }

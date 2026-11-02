@@ -83,7 +83,7 @@ $rememberMeService = new RememberMeService(
     $authService
 );
 
-$resetService = new PasswordResetService($resetRepository, $userRepository, $logger);
+$resetService = new PasswordResetService($resetRepository, $userRepository, $pdo, $logger);
 
 
 // =================================================
@@ -231,7 +231,8 @@ switch ("$method:$route") {
     // Password-reset routes
     // ---------------------------------------------
     case 'GET:forgot-password':
-        
+        if($authService->guest()) require __DIR__ . '/views/auth/forgot-password.php';
+        else require __DIR__ . '/views/dashboard.php';
     break;
 
     case 'POST:forgot-password':
@@ -240,12 +241,23 @@ switch ("$method:$route") {
         break;
 
     case 'GET:reset-password':
-        if($authService->guest()) require __DIR__ . '/views/auth/reset-password.php';
-        else require __DIR__ . '/views/dashboard.php';
-        break;
+
+        $token = $_GET['token'] ?? null;
+
+        if (
+            !is_string($token) ||
+            !$resetService->validateToken($token)
+        ) {
+            http_response_code(400);
+            require __DIR__ . '/views/errors/invalid-reset-token.php';
+            break;
+        }
+
+        require __DIR__ . '/views/auth/reset-password.php';
+    break;
 
     case 'POST:reset-password':
-        // PasswordResetController::reset()
+        $resetController->resetPassword();
         break;
 
 

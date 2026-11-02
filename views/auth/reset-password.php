@@ -27,6 +27,11 @@ $errors = $session->flashGet('errors', []);
         >
 
         <input 
+            type="hidden" name="token"
+            value="<?= htmlspecialchars($token, ENT_QUOTES, 'UTF-8') ?>"
+        >
+
+        <input 
             type="email" name="email" id="" placeholder="Email"
             class="w-full p-3 rounded-lg bg-gray-800 text-white
             placeholder-gray-400 border border-gray-700 focus:outline-none 
