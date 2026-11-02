@@ -50,10 +50,16 @@ $errors = $session->flashGet('errors', []);
             </p>
         <?php endif; ?>
 
-        <label class="text-white">
-            <input type="checkbox" name="remember_me" value="1">
-            Remember me
-        </label>
+        <div class="flex w-full p-3 bg-gray-800 text-white">
+            <label class="text-white">
+                <input type="checkbox" name="remember_me" value="1">
+                Remember me
+            </label>
+
+            <a href="index.php?route=forgot-password" rel="noopener noreferrer">Forgot password?</a>
+        </div>
+
+        
 
         <button
             class="w-full bg-green-600 hover:bg-green-700 transition-colors text-white font-medium p-3 rounded-lg" 

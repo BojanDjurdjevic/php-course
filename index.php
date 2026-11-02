@@ -217,6 +217,26 @@ switch ("$method:$route") {
         require __DIR__ . '/views/dashboard.php';
         break;
 
+    // ---------------------------------------------
+    // Password-reset routes
+    // ---------------------------------------------
+    case 'GET:forgot-password':
+        if($authService->guest()) require __DIR__ . '/views/auth/forgot-password.php';
+        else require __DIR__ . '/views/dashboard.php';
+    break;
+
+    case 'POST:forgot-password':
+        // PasswordResetController::requestReset()
+        break;
+
+    case 'GET:reset-password':
+        // Prikaz forme za novu lozinku
+        break;
+
+    case 'POST:reset-password':
+        // PasswordResetController::reset()
+        break;
+
 
     // ---------------------------------------------
     // 404
