@@ -1,24 +1,26 @@
 <?php
 
 use App\Auth\AuthService;
+use App\Auth\PasswordResetService;
 use App\Auth\RegistrationService;
 use App\Auth\RememberMeService;
 
 use App\Database\Database;
-
+use App\Helpers\Logger;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegistrationController;
-
+use App\Http\Controllers\ResetPasswordController;
+use App\Repositories\PdoPasswordResetTokenRepository;
 use App\Repositories\PdoUserRepository;
 use App\Repositories\PdoRememberMeTokenRepository;
-
+use App\Security\RateLimiter;
 use App\Session\Session;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
 
 // =================================================
-// 1. SESSION + GLOBAL CSRF
+// 1. SESSION + GLOBAL CSRF + Logger
 // =================================================
 
 $session = new Session();
@@ -31,9 +33,11 @@ if (!is_string($session->get('csrf_token'))) {
     );
 }
 
+$logger = new Logger();
+
 
 // =================================================
-// 2. ENV + DATABASE
+// 2. ENV + DATABASE + limiter
 // =================================================
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
@@ -48,7 +52,7 @@ $database = new Database(
 
 $pdo = $database->connect();
 
-
+$limiter = new RateLimiter($pdo);
 // =================================================
 // 3. REPOSITORIES
 // =================================================
@@ -56,6 +60,8 @@ $pdo = $database->connect();
 $userRepository = new PdoUserRepository($pdo);
 
 $rememberRepository = new PdoRememberMeTokenRepository($pdo);
+
+$resetRepository = new PdoPasswordResetTokenRepository($pdo);
 
 
 // =================================================
@@ -77,6 +83,8 @@ $rememberMeService = new RememberMeService(
     $authService
 );
 
+$resetService = new PasswordResetService($resetRepository, $userRepository, $logger);
+
 
 // =================================================
 // 5. CONTROLLERS
@@ -92,6 +100,8 @@ $loginController = new LoginController(
     $rememberMeService,
     $session
 );
+
+$resetController = new ResetPasswordController($session, $resetService, $limiter);
 
 
 // =================================================
@@ -221,16 +231,17 @@ switch ("$method:$route") {
     // Password-reset routes
     // ---------------------------------------------
     case 'GET:forgot-password':
-        if($authService->guest()) require __DIR__ . '/views/auth/forgot-password.php';
-        else require __DIR__ . '/views/dashboard.php';
+        
     break;
 
     case 'POST:forgot-password':
-        // PasswordResetController::requestReset()
+        
+        $resetController->sendLink();
         break;
 
     case 'GET:reset-password':
-        // Prikaz forme za novu lozinku
+        if($authService->guest()) require __DIR__ . '/views/auth/reset-password.php';
+        else require __DIR__ . '/views/dashboard.php';
         break;
 
     case 'POST:reset-password':

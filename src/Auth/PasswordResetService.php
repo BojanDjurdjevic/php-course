@@ -4,11 +4,13 @@ namespace App\Auth;
 
 use App\Contracts\PasswordResetTokenRepository;
 use App\Contracts\UserRepository;
+use App\Helpers\Logger;
 
 final class PasswordResetService {
     public function __construct(
         private PasswordResetTokenRepository $reset,
-        private UserRepository $users
+        private UserRepository $users,
+        private Logger $logger
     ) {}
 
     public function issue(string $email): bool 
@@ -33,7 +35,17 @@ final class PasswordResetService {
 
         $link = $baseUrl . '/index.php?route=reset-password&token=' . $token;
 
-        //Log the link
+        $isLocal = in_array(
+            $_ENV['APP_ENV'] ?? '',
+            ['local', 'development'],
+            true
+        );
+
+        $logResetLinks = ($_ENV['LOG_RESET_LINKS'] ?? 'false') === 'true';
+
+        if ($isLocal && $logResetLinks) {
+            $this->logger->info('Password reset link: ' . $link);
+        }
 
         return true;
     }

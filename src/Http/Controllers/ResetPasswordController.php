@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Auth\PasswordResetService;
 use App\Helpers\Validator;
 use App\Http\Requests\ForgotPasswordRequest;
+use App\Security\RateLimiter;
 use App\Session\Session;
 
 final class ResetPasswordController {
@@ -12,7 +13,7 @@ final class ResetPasswordController {
     public function __construct(
         private Session $session,
         private PasswordResetService $reset,
-
+        private RateLimiter $limiter
     ) {}
 
     public function sendLink(): void 
@@ -32,6 +33,8 @@ final class ResetPasswordController {
 
         $validated = $request->validated($_POST['email'] ?? null, null);
 
+        $email = mb_strtolower(trim($validated->email));
+
         if(is_array($validated)) {
             $this->session->flashSet('errors', $validated);
 
@@ -39,13 +42,29 @@ final class ResetPasswordController {
             exit;
         }
 
-        $issued = $this->reset->issue($validated->email);
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+        $emailAllowed = $this->limiter->allowPerHour(
+            'forgot_email',
+            $email,
+            3
+        );
+
+        $ipAllowed = $this->limiter->allowPerHour(
+            'forgot_ip',
+            $ip,
+            20
+        );
+
+        if ($emailAllowed && $ipAllowed) {
+            $issued = $this->reset->issue($email);
+        }
 
         if(!$issued) {
             //Log activity
         }
 
-        $this->session->flashSet('success', 'The link has been sent to the email.');
+        $this->session->flashSet('success', 'If an account with this email exists, reset instructions will be provided.');
 
         header('location: index.php?route=forgot-password', true, 303);
         exit;
