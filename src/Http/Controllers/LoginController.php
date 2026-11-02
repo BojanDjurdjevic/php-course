@@ -32,7 +32,7 @@ final class LoginController {
         $request = new UserLoginRequest(
             new Validator,
             $_POST['email'] ?? null,
-            $_POST['password']
+            $_POST['password'] ?? null,
         );
 
         $validated = $request->validate();

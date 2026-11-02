@@ -10,10 +10,10 @@ final class PdoPasswordResetTokenRepository implements PasswordResetTokenReposit
     public function __construct(private PDO $pdo) {}
 
     #[Override]
-    public function storeResetHash(int $userId, string $hash, string $expiresAt): void
+    public function storeResetHash(int $userId, string $hash, string $expiresAt): bool
     {
         $stmt = $this->pdo->prepare(
-            "INSERT INTO password_reset_tokens SET user_id = :user_id
+            "INSERT INTO password_reset_tokens SET user_id = :user_id,
             token_hash = :hash, expires_at = :expires"
         );
 
@@ -22,11 +22,7 @@ final class PdoPasswordResetTokenRepository implements PasswordResetTokenReposit
             'hash' => $hash,
             'expires' => $expiresAt
         ]);
-    }
 
-    #[Override]
-    public function resetPassword(string $email, string $password): void 
-    {
-
+        return $stmt->rowCount() === 1;
     }
 }
