@@ -76,4 +76,16 @@ final class PdoRememberMeTokenRepository implements RememberTokenRepository {
 
         return $stmt->rowCount() === 1;
     }
+
+    #[Override]
+    public function deleteByUserId(int $userId): void
+    {
+        $stmt = $this->pdo->prepare(
+            "DELETE FROM remember_tokens WHERE user_id = :user_id"
+        );
+
+        $stmt->execute([
+            'user_id' => $userId
+        ]);
+    }
 }

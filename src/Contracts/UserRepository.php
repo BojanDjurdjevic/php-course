@@ -16,4 +16,6 @@ interface UserRepository {
 
     public function markEmailVerified(int $userId): void;
 
+    public function incrementAuthVersion(int $userId): void;
+
 }

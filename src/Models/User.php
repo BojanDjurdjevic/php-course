@@ -15,7 +15,8 @@ final class User {
         private ?string $city,
         private ?DateTimeImmutable $emailVerifiedAt,
         private UserStatus $status,
-        private DateTimeImmutable $createdAt
+        private DateTimeImmutable $createdAt,
+        private int $authVersion
     ) {}
 
     public function id(): int {
@@ -49,6 +50,11 @@ final class User {
 
     public function isActive(): bool {
         return $this->status === UserStatus::Active;
+    }
+
+    public function authVersion(): int 
+    {
+        return $this->authVersion;
     }
 }
 

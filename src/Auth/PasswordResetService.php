@@ -3,15 +3,16 @@
 namespace App\Auth;
 
 use App\Contracts\PasswordResetTokenRepository;
+use App\Contracts\RememberTokenRepository;
 use App\Contracts\UserRepository;
 use App\Helpers\Logger;
 use PDO;
-use Throwable;
 
 final class PasswordResetService {
     public function __construct(
         private PasswordResetTokenRepository $reset,
         private UserRepository $users,
+        private RememberTokenRepository $remember,
         private PDO $pdo,
         private Logger $logger
     ) {}
@@ -92,10 +93,16 @@ final class PasswordResetService {
                 $passwordHash
             );
 
-            // 4. Obriši reset token
+            // 4. Increment auth version
+            $this->users->incrementAuthVersion($userId);
+
+            // 5. Delete remember tokens
+            $this->remember->deleteByUserId($userId);
+
+            // 6. Obriši reset token
             $this->reset->deleteByUserId($userId);
 
-            // 5. Potvrdi sve promene
+            // 7. Potvrdi sve promene
             $this->pdo->commit();
 
             return true;

@@ -83,7 +83,7 @@ $rememberMeService = new RememberMeService(
     $authService
 );
 
-$resetService = new PasswordResetService($resetRepository, $userRepository, $pdo, $logger);
+$resetService = new PasswordResetService($resetRepository, $userRepository, $rememberRepository, $pdo, $logger);
 
 
 // =================================================

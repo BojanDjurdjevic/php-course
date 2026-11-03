@@ -19,7 +19,8 @@ final class PdoUserRepository implements UserRepository {
     {
         $stmt = $this->pdo->prepare(
             "SELECT id, name, email, password_hash, city,
-            email_verified_at, status, created_at FROM users WHERE id = :id"
+            email_verified_at, status, auth_version, created_at 
+            FROM users WHERE id = :id"
         );
 
         $stmt->execute(['id' => $id]);
@@ -35,7 +36,8 @@ final class PdoUserRepository implements UserRepository {
     {
         $stmt = $this->pdo->prepare(
             "SELECT id, name, email, password_hash, city,
-            email_verified_at, status, created_at FROM users WHERE email = :email"
+            email_verified_at, status, auth_version, created_at 
+            FROM users WHERE email = :email"
         );
 
         $stmt->execute(['email' => $email]);
@@ -93,6 +95,19 @@ final class PdoUserRepository implements UserRepository {
         if($stmt->rowCount() !== 1) throw new RuntimeException('Email could not be verified.');
     }
 
+    #[Override]
+    public function incrementAuthVersion(int $userId): void
+    {
+        $stmt = $this->pdo->prepare(
+            "UPDATE users SET auth_version = auth_version + 1
+            WHERE id = :user_id"
+        );
+
+        $stmt->execute([
+            'user_id' => $userId
+        ]);
+    }
+
     private function hydrateUser(object $data): User
     {
         return new User(
@@ -104,6 +119,7 @@ final class PdoUserRepository implements UserRepository {
             $data->email_verified_at !== null ? new DateTimeImmutable($data->email_verified_at) : null, 
             UserStatus::from($data->status),
             new DateTimeImmutable($data->created_at),
+            (int) $data->auth_version
         ); 
     }
 

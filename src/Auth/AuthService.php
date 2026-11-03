@@ -40,6 +40,14 @@ final class AuthService {
 
         if($user === null || !$user->isActive()) {
             $this->session->forget('user_id');
+            $this->session->forget('auth_version');
+
+            return null;
+        }
+
+        if($user->authVersion() !== $this->session->get('auth_version')) {
+            $this->session->forget('user_id');
+            $this->session->forget('auth_version');
 
             return null;
         }
@@ -94,6 +102,7 @@ final class AuthService {
         $this->session->regenerate();
 
         $this->session->put('user_id', $user->id());
+        $this->session->put('auth_version', $user->authVersion());
 
         $this->currentUser = $user;
         $this->userResolved = true;
