@@ -32,18 +32,6 @@ $errors = $session->flashGet('errors', []);
         >
 
         <input 
-            type="email" name="email" id="" placeholder="Email"
-            class="w-full p-3 rounded-lg bg-gray-800 text-white
-            placeholder-gray-400 border border-gray-700 focus:outline-none 
-            focus:ring-2 focus:ring-blue-500"    
-        >
-        <?php if (isset($errors['email'])): ?>
-            <p class="text-red-400 text-sm mt-1">
-                <?= htmlspecialchars($errors['email'], ENT_QUOTES, 'UTF-8'); ?>
-            </p>
-        <?php endif; ?>
-
-        <input 
             type="text" name="password" id="password" placeholder="Password" autocomplete="current-password"
             class="w-full p-3 rounded-lg bg-gray-800 text-white
             placeholder-gray-400 border border-gray-700 focus:outline-none 

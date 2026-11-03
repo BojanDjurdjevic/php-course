@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../includes/header.php';
 
 $errors = $session->flashGet('errors', []);
+$success = $session->flashGet('success', '');
 
 ?>
 <body class="p-3 bg-gray-800 flex flex-col justify-center items-center w-screen h-screen">
@@ -12,6 +13,12 @@ $errors = $session->flashGet('errors', []);
     <?php if (isset($errors['login'])): ?>
         <p class="text-red-400 text-sm text-center">
             <?= htmlspecialchars($errors['login'], ENT_QUOTES, 'UTF-8') ?>
+        </p>
+    <?php endif; ?>
+
+    <?php if (is_string($success) && $success !== ''): ?>
+        <p class="text-green-500 text-sm text-center">
+            <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?>
         </p>
     <?php endif; ?>
 
