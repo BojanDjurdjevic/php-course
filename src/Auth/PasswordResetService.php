@@ -53,37 +53,80 @@ final class PasswordResetService {
         return true;
     }
 
-    public function validateToken(string $token): bool 
+    public function validateToken(mixed $token): bool
     {
-        if(!is_string($token)) return false;
+        $hash = $this->hashToken($token);
 
-        if(!preg_match('/\A[a-f0-9]{64}\z/', $token)) return false;
+        if ($hash === null) return false;
 
-        $hashed = hash('sha256', $token);
+        $data = $this->reset->findToken($hash);
 
-        $data = $this->reset->findToken($hashed);
-
-        if($data === null) return false;
-
-        if($data->expires_at < gmdate('Y-m-d H:i:s')) return false;
-
-        $user = $this->users->findById($data->user_id);
-
-        if($user === null || !$user->isActive()) return false;
-
-        return true;
+        return $this->isUsable($data);
     }
 
-    public function finalReset($token, $userId, $passwordHash): void
+    public function finalReset(mixed $token, string $passwordHash): bool
     {
+        $hash = $this->hashToken($token);
+
+        if ($hash === null) {
+            return false;
+        }
+
         $this->pdo->beginTransaction();
 
         try {
+            // 1. Pronađi i zaključaj token
+            $data = $this->reset->findTokenForUpdate($hash);
 
-            
+            // 2. Proveri token unutar transakcije
+            if (!$this->isUsable($data)) {
+                $this->pdo->rollBack();
+                return false;
+            }
 
-        } catch(Throwable $e) {
+            $userId = (int) $data->user_id;
 
+            // 3. Promeni lozinku korisnika
+            $this->users->updatePasswordHash(
+                $userId,
+                $passwordHash
+            );
+
+            // 4. Obriši reset token
+            $this->reset->deleteByUserId($userId);
+
+            // 5. Potvrdi sve promene
+            $this->pdo->commit();
+
+            return true;
+
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $e;
         }
+    }
+
+    private function hashToken(mixed $token): ?string
+    {
+        if (
+            !is_string($token) ||
+            !preg_match('/\A[a-f0-9]{64}\z/', $token)
+        ) return null;
+
+        return hash('sha256', $token);
+    }
+
+    private function isUsable(?object $data): bool
+    {
+        if ($data === null) return false;
+
+        if ($data->expires_at <= gmdate('Y-m-d H:i:s')) return false;
+
+        $user = $this->users->findById((int) $data->user_id);
+
+        return $user !== null && $user->isActive();
     }
 }

@@ -74,28 +74,67 @@ final class ResetPasswordController {
 
     public function resetPassword(): void 
     {
+        // CSRF
+        $expected = $this->session->get('csrf_token');
+        $received = $_POST['_token'] ?? null;
+
+        if (
+            !is_string($expected) ||
+            !is_string($received) ||
+            !hash_equals($expected, $received)
+        ) {
+            http_response_code(403);
+            require __DIR__ . '/../../../views/errors/403.php';
+            exit;
+        }
+
+        // REQUEST validate
         $token = $_POST['token'] ?? null;
         $password = $_POST['password'] ?? null;
-        $password_confirm = $_POST['password_confirmation'] ?? null;
+        $passwordConfirm = $_POST['password_confirmation'] ?? null;
+
+        if (!is_string($token)) {
+            http_response_code(400);
+            require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
+            exit;
+        }
 
         $validator = new Validator();
 
-        $confirm = $validator->validatePasswordConfirm($password, 'password_confirmation', $password_confirm);
+        $confirm = $validator->validatePasswordConfirm($password, 'password_confirmation', $passwordConfirm);
         $password = $validator->validatePassword($password, 'password');
 
         if(!$confirm || $password === null) {
             $this->session->flashSet(
                 'errors', $validator->errors()
             );
-            header('location: index.php?route=reset-password', true, 303);
+
+            header(
+                'Location: index.php?route=reset-password&token='
+                . rawurlencode($token),
+                true,
+                303
+            );
             exit;
         }
 
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-        
-        $data = $this->reset->validateToken($token);
 
+        $reset = $this->reset->finalReset($token, $passwordHash);
 
+        if (!$reset) {
+            http_response_code(400);
+            require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
+            exit;
+        }
+
+        $this->session->flashSet(
+            'success',
+            'Password has been reset successfully.'
+        );
+
+        header('Location: index.php?route=login', true, 303);
+        exit;
     }
 
 }

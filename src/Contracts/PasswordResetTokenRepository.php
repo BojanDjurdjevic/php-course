@@ -8,6 +8,8 @@ interface PasswordResetTokenRepository {
 
     public function findToken(string $token): ?object;
 
+    public function findTokenForUpdate(string $hash): ?object;
+
     public function deleteByUserId(int $userId): void;
 
 }

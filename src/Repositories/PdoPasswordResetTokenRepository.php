@@ -33,23 +33,21 @@ final class PdoPasswordResetTokenRepository implements PasswordResetTokenReposit
     }
 
     #[Override]
-    public function findToken(string $token): ?object
+    public function findToken(string $hash): ?object
     {
-        $stmt = $this->pdo->prepare(
-            "SELECT id, user_id, token_hash, expires_at 
-            FROM password_reset_tokens WHERE token_hash = :token
-            FOR UPDATE"
-        );
+        return $this->fetchToken($hash, false);
+    }
 
-        $stmt->execute([
-            'token' => $token
-        ]);
+    #[Override]
+    public function findTokenForUpdate(string $hash): ?object
+    {
+        if (!$this->pdo->inTransaction()) {
+            throw new \LogicException(
+                'findTokenForUpdate requires an active transaction.'
+            );
+        }
 
-        $data = $stmt->fetch(PDO::FETCH_OBJ);
-
-        if(!$data) return null;
-
-        return $data;
+        return $this->fetchToken($hash, true);
     }
 
     #[Override]
@@ -60,5 +58,24 @@ final class PdoPasswordResetTokenRepository implements PasswordResetTokenReposit
         );
 
         $stmt->execute(['user_id' => $userId]);
+    }
+
+    private function fetchToken(string $hash, bool $lock): ?object 
+    {
+        $sql = "SELECT id, user_id, token_hash, expires_at
+                FROM password_reset_tokens
+                WHERE token_hash = :hash";
+        
+        if($lock) $sql .= " FOR UPDATE";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->execute([
+            'hash' => $hash
+        ]);
+
+        $data = $stmt->fetch(PDO::FETCH_OBJ);
+
+        return $data === false ? null : $data;
     }
 }
