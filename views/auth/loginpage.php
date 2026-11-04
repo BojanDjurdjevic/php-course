@@ -23,7 +23,7 @@ $success = $session->flashGet('success', '');
     <?php endif; ?>
 
     <form 
-        action="/../php-course/index.php?route=login" method="POST"
+        action="index.php?route=login" method="POST"
         class="w-full max-w-md max-h-full min-h-72 p-6 m-3 bg-gray-900 rounded-2xl shadow-lg
         flex flex-col justify-around"    
     >

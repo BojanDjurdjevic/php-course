@@ -241,7 +241,10 @@ switch ("$method:$route") {
     // ---------------------------------------------
     case 'GET:forgot-password':
         if($authService->guest()) require __DIR__ . '/views/auth/forgot-password.php';
-        else require __DIR__ . '/views/dashboard.php';
+        else {
+            header('Location: index.php?route=dashboard', true, 302);
+            exit;
+        }
     break;
 
     case 'POST:forgot-password':
@@ -261,6 +264,9 @@ switch ("$method:$route") {
             require __DIR__ . '/views/errors/invalid-reset-token.php';
             break;
         }
+
+        header('Referrer-Policy: no-referrer');
+        header('Cache-Control: no-store');
 
         require __DIR__ . '/views/auth/reset-password.php';
     break;

@@ -34,14 +34,14 @@ final class ResetPasswordController {
 
         $validated = $request->validated($_POST['email'] ?? null, null);
 
-        $email = mb_strtolower(trim($validated->email));
-
         if(is_array($validated)) {
             $this->session->flashSet('errors', $validated);
 
             header('location: index.php?route=forgot-password', true, 303);
             exit;
         }
+
+        $email = mb_strtolower(trim($validated->email));
 
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 

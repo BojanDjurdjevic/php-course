@@ -56,7 +56,7 @@ final class RegistrationController {
             exit;
         }
 
-        $this->session->flashSet('verify', 'Registration completed. Please verify your email before logging in.');
+        $this->session->flashSet('success', 'Registration completed. Please verify your email before logging in.');
         
         header('location: index.php?route=loginpage', true, 303);
         exit;
