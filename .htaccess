@@ -1,0 +1,14 @@
+Options -Indexes -MultiViews
+
+DirectoryIndex index.php
+
+RewriteEngine On
+
+# Dozvoli koren aplikacije
+RewriteRule ^$ - [END]
+
+# Dozvoli samo index.php
+RewriteRule ^index\.php$ - [END]
+
+# Sve ostale direktne HTTP zahteve zabrani
+RewriteRule ^ - [F]

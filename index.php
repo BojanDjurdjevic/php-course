@@ -254,6 +254,9 @@ switch ("$method:$route") {
 
     case 'GET:reset-password':
 
+        header('Referrer-Policy: no-referrer');
+        header('Cache-Control: no-store');
+
         $token = $_GET['token'] ?? null;
 
         if (
@@ -264,9 +267,6 @@ switch ("$method:$route") {
             require __DIR__ . '/views/errors/invalid-reset-token.php';
             break;
         }
-
-        header('Referrer-Policy: no-referrer');
-        header('Cache-Control: no-store');
 
         require __DIR__ . '/views/auth/reset-password.php';
     break;

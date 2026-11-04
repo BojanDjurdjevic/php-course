@@ -97,5 +97,7 @@ $success = $session->flashGet('success', '');
 
     </form>
 
+    <p class="text-white text-center">Already have account? <span class="text-emerald-600 hover:text-emerald-400"><a href="index.php?route=loginpage">Login</a></span></p>
+
 </body>
 </html>

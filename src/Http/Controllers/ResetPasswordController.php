@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Auth\PasswordResetService;
 use App\Helpers\Validator;
 use App\Http\Requests\ForgotPasswordRequest;
-use App\Http\Requests\UserRegisterRequest;
 use App\Security\RateLimiter;
 use App\Session\Session;
 
@@ -23,7 +22,8 @@ final class ResetPasswordController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'forgot-password');
+            //$this->session->put('page', 'forgot-password');
+            $page = 'forgot-password';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
@@ -61,10 +61,6 @@ final class ResetPasswordController {
             $issued = $this->reset->issue($email);
         }
 
-        if(!$issued) {
-            //Log activity
-        }
-
         $this->session->flashSet('success', 'If an account with this email exists, reset instructions will be provided.');
 
         header('location: index.php?route=forgot-password', true, 303);
@@ -83,6 +79,8 @@ final class ResetPasswordController {
             !is_string($received) ||
             !hash_equals($expected, $received)
         ) {
+            $page = 'forgot-password';
+            
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
             exit;

@@ -23,7 +23,8 @@ final class LoginController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'loginpage');
+            //$this->session->put('page', 'loginpage');
+            $page = 'loginpage';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
@@ -80,7 +81,8 @@ final class LoginController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'dashboard');
+            //$this->session->put('page', 'dashboard');
+            $page = 'dashboard';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';

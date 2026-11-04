@@ -10,6 +10,13 @@ $success = $session->flashGet('success', '');
 
     <h2 class="text-center text-white">Login page</h2>
 
+    <a
+        href="index.php?route=register"
+        class="text-sm text-blue-400 hover:text-blue-300"
+    >
+        Don't have account? <span class="text-emerald-600 hover:text-emerald-400">SignUp</span> 
+    </a>
+
     <?php if (isset($errors['login'])): ?>
         <p class="text-red-400 text-sm text-center">
             <?= htmlspecialchars($errors['login'], ENT_QUOTES, 'UTF-8') ?>
@@ -57,13 +64,16 @@ $success = $session->flashGet('success', '');
             </p>
         <?php endif; ?>
 
-        <div class="flex w-full p-3 bg-gray-800 text-white">
+        <div class="flex justify-between w-full p-3 bg-gray-800 text-white">
             <label class="text-white">
                 <input type="checkbox" name="remember_me" value="1">
                 Remember me
             </label>
 
-            <a href="index.php?route=forgot-password" rel="noopener noreferrer">Forgot password?</a>
+            <a 
+                href="index.php?route=forgot-password" rel="noopener noreferrer"
+                class="text-emerald-600 hover:emerald-400"
+            >Forgot password?</a>
         </div>
 
         

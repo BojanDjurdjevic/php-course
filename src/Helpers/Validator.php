@@ -151,6 +151,16 @@ class Validator {
             return null;
         } 
 
+        if (str_contains($value, "\0")) {
+            $this->errors[$field] = 'Password contains invalid characters.';
+            return null;
+        }
+
+        if (strlen($value) > 72) {
+            $this->errors[$field] = 'Password exceeds 72 bytes.';
+            return null;
+        }
+
         return $value;
     } 
 
@@ -167,32 +177,6 @@ class Validator {
         }
 
         return true;
-    } 
-
-    /*
-    public function validatePhone( mixed $value, string $field, array &$errors): ?string {
-
-        $value = validateNullableString(
-            $value,
-            $field,
-            $this->errors,
-            30
-        );
-
-        if ($value === null) {
-            return null;
-        }
-
-        $clean = preg_replace('/[\s\-()]/', '', $value);
-
-        if (!preg_match('/^\+?[0-9]{8,15}$/', $clean)) {
-            $this->errors[$field] =
-                "Field $field must be a valid phone number.";
-
-            return null;
-        }
-
-        return $clean;
-    } */
+    }
 
 }

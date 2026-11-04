@@ -19,7 +19,8 @@ final class EmailVerificationController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'loginpage');
+            //$this->session->put('page', 'resend-verification');
+            $page = 'resend-verification';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
@@ -55,7 +56,8 @@ final class EmailVerificationController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            $this->session->put('page', 'forgot-password');
+            //$this->session->put('page', 'resend-verification');
+            $page = 'resend-verification';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
@@ -63,6 +65,8 @@ final class EmailVerificationController {
         }
 
         $email = $_POST['email'] ?? null;
+
+        if(!is_string($email)) $email = mb_strtolower(trim($email));
 
         if (
             !is_string($email) ||
@@ -76,14 +80,8 @@ final class EmailVerificationController {
             exit;
         }
 
-        $email = mb_strtolower(trim($email));
+        
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-
-        $emailAllowed = $this->limiter->allowPerHour(
-            'verification_email',
-            $email,
-            3
-        );
 
         $ipAllowed = $this->limiter->allowPerHour(
             'verification_ip',
@@ -91,8 +89,16 @@ final class EmailVerificationController {
             20
         );
 
-        if ($emailAllowed && $ipAllowed) {
-            $this->verify->resend($email);
+        if ($ipAllowed) {
+            $emailAllowed = $this->limiter->allowPerHour(
+                'verification_email',
+                $email,
+                3
+            );
+
+            if ($emailAllowed) {
+                $this->verify->resend($email);
+            }
         }
 
         $this->session->flashSet(
