@@ -156,8 +156,13 @@ class Validator {
 
     public function validatePasswordConfirm(mixed $value, string $field, mixed $confirm): bool 
     {
-        if($value !== $confirm) {
-            $this->errors[$field] = "Password confirmation $confirm must match the password";
+        if (
+            !is_string($value) ||
+            !is_string($confirm) ||
+            $value !== $confirm
+        ) {
+            $this->errors[$field] = 'Password confirmation must match the password.';
+
             return false;
         }
 
