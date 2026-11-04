@@ -32,7 +32,7 @@ $errors = $session->flashGet('errors', []);
         >
 
         <input 
-            type="text" name="password" id="password" placeholder="Password" autocomplete="current-password"
+            type="password" name="password" id="password" placeholder="Password" autocomplete="new-password"
             class="w-full p-3 rounded-lg bg-gray-800 text-white
             placeholder-gray-400 border border-gray-700 focus:outline-none 
             focus:ring-2 focus:ring-blue-500"    
@@ -44,7 +44,7 @@ $errors = $session->flashGet('errors', []);
         <?php endif; ?>
 
         <input 
-            type="text" name="password_confirmation" id="password_confirmation" placeholder="Password Confirmation" autocomplete="current-password"
+            type="password" name="password_confirmation" id="password_confirmation" placeholder="Password Confirmation" autocomplete="new-password"
             class="w-full p-3 rounded-lg bg-gray-800 text-white
             placeholder-gray-400 border border-gray-700 focus:outline-none 
             focus:ring-2 focus:ring-blue-500"    
