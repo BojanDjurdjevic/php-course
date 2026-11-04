@@ -7,9 +7,18 @@ require_once __DIR__ . '/../../includes/header.php';
 //$session = new Session();
 
 $errors = $session->flashGet('errors', []);
+$success = $session->flashGet('success', '');
 
 ?>
 <body class="p-3 bg-gray-800 flex flex-col justify-center items-center w-screen h-screen">
+
+    <h2 class="text-center text-white">Registration</h2>
+
+    <?php if (is_string($success) && $success !== ''): ?>
+        <p class="text-green-500 text-sm text-center">
+            <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?>
+        </p>
+    <?php endif; ?>
 
     <form 
         action="/../php-course/index.php?route=register" method="POST"

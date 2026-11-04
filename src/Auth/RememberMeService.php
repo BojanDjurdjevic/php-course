@@ -35,7 +35,7 @@ final class RememberMeService {
 
         $user = $this->users->findById((int) $data->user_id);
 
-        if($user === null || !$user->isActive()) {
+        if($user === null || !$user->isActive() || !$user->isEmailVerified()) {
             $this->remember->deleteToken($data->selector, $data->validator_hash);
             
             $this->clearCookie();

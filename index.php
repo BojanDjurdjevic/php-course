@@ -8,6 +8,7 @@ use App\Auth\RememberMeService;
 
 use App\Database\Database;
 use App\Helpers\Logger;
+use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResetPasswordController;
@@ -98,6 +99,7 @@ $emailVerifyService = new EmailVerificationService($emailVerifyRepository, $user
 
 $registrationController = new RegistrationController(
     $registrationService,
+    $emailVerifyService,
     $session
 );
 
@@ -108,6 +110,8 @@ $loginController = new LoginController(
 );
 
 $resetController = new ResetPasswordController($session, $resetService, $limiter);
+
+$emailVerifyController = new EmailVerificationController($emailVerifyService, $session, $limiter);
 
 
 // =================================================
@@ -267,7 +271,7 @@ switch ("$method:$route") {
         break;
     
     // ---------------------------------------------
-    // Email verify routes
+    // Email verification routes
     // ---------------------------------------------
 
     case 'GET:email-verify':
@@ -279,14 +283,29 @@ switch ("$method:$route") {
             !$emailVerifyService->validateToken($token)
         ) {
             http_response_code(400);
-            require __DIR__ . '/views/errors/invalid-token.php';
+            require __DIR__ . '/views/errors/invalid-verification-token.php';
             break;
         }
 
-        require __DIR__ . '/views/auth/reset-password.php';
-    break;
+        header('Referrer-Policy: no-referrer');
+        header('Cache-Control: no-store');
+
+        require __DIR__ . '/views/auth/email-verify.php';
+        break;
 
 
+    case 'POST:email-verify':
+
+        $emailVerifyController->emailVerify();
+        break;
+    
+    case 'GET:resend-verification':
+        require __DIR__ . '/views/auth/resend-verification.php';
+        break;
+
+    case 'POST:resend-verification':
+        $emailVerifyController->sendAgain();
+        break;
 
     // ---------------------------------------------
     // 404

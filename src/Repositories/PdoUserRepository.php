@@ -85,7 +85,7 @@ final class PdoUserRepository implements UserRepository {
     public function markEmailVerified(int $userId): void
     {
         $stmt = $this->pdo->prepare(
-            "UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = :id"
+            "UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = :id AND email_verified_at IS NULL"
         );
 
         $now = new DateTimeImmutable();

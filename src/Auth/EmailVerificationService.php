@@ -51,6 +51,61 @@ final class EmailVerificationService {
 
     }
 
+    public function verify(mixed $token): bool
+    {
+        $hash = $this->hashToken($token);
+
+        if ($hash === null) {
+            return false;
+        }
+
+        $this->pdo->beginTransaction();
+
+        try {
+
+            $data = $this->verify->findForUpdate($hash);
+
+            if (!$this->isUsable($data)) {
+                $this->pdo->rollBack();
+                return false;
+            }
+
+            $userId = (int) $data->user_id;
+
+            $this->users->markEmailVerified($userId);
+
+            $this->verify->deleteByUserId($userId);
+
+            $this->pdo->commit();
+
+            return true;
+
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    public function resend(string $email): void
+    {
+        $email = mb_strtolower(trim($email));
+
+        $user = $this->users->findByEmail($email);
+
+        if (
+            $user === null ||
+            !$user->isActive() ||
+            $user->isEmailVerified()
+        ) {
+            return;
+        }
+
+        $this->issue($user);
+    }
+
     public function validateToken(mixed $token): bool
     {
         $hash = $this->hashToken($token);

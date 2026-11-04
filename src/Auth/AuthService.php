@@ -4,6 +4,7 @@ namespace App\Auth;
 
 use App\Contracts\UserRepository;
 use App\Dto\UserLoginData;
+use App\Enums\LoginResult;
 use App\Models\User;
 use App\Session\Session;
 use DomainException;
@@ -38,7 +39,7 @@ final class AuthService {
 
         $user = $this->users->findById($id);
 
-        if($user === null || !$user->isActive()) {
+        if($user === null || !$user->isActive() || !$user->isEmailVerified()) {
             $this->session->forget('user_id');
             $this->session->forget('auth_version');
 
@@ -67,7 +68,7 @@ final class AuthService {
         return !$this->check();
     }
 
-    public function attempt(UserLoginData $data): bool 
+    public function attempt(UserLoginData $data): LoginResult 
     {
         $normalizedEmail = mb_strtolower(trim($data->email));
 
@@ -76,13 +77,15 @@ final class AuthService {
         $user = $this->users->findByEmail($normalizedEmail);
 
         if($user === null || !$user->isActive()) {
-            //password_verify($password, $dummyHash);
-
-            return false;
+            return LoginResult::INVALID_CREDENTIALS;
         }
 
         if(!password_verify($password, $user->passwordHash())) {
-            return false;
+            return LoginResult::INVALID_CREDENTIALS;
+        }
+
+        if(!$user->isEmailVerified()) {
+            return LoginResult::EMAIL_NOT_VERIFIED;
         }
 
         if(password_needs_rehash($user->passwordHash(), PASSWORD_DEFAULT)) {
@@ -93,7 +96,7 @@ final class AuthService {
 
         $this->login($user);
 
-        return true;
+        return LoginResult::SUCCESS;
 
     }
 

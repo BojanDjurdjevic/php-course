@@ -13,7 +13,7 @@ require_once __DIR__ . '/../../includes/header.php';
         </div>
 
         <h1 class="text-3xl font-bold mb-4">
-            Invalid reset token
+            Invalid or expired token
         </h1>
 
     </main>

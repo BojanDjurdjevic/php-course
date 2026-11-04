@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Auth\AuthService;
 use App\Auth\RememberMeService;
+use App\Enums\LoginResult;
 use App\Helpers\Validator;
 use App\Http\Requests\UserLoginRequest;
 use App\Session\Session;
@@ -44,12 +45,23 @@ final class LoginController {
             exit;
         }
 
-        if (!$this->auth->attempt($validated)) {
+        $result = $this->auth->attempt($validated);
+
+        if ($result === LoginResult::EMAIL_NOT_VERIFIED) {
+            $this->session->flashSet('errors', [
+                'login' => 'Please verify your email before logging in.'
+            ]);
+
+            header('Location: index.php?route=login', true, 303);
+            exit;
+        }
+
+        if ($result !== LoginResult::SUCCESS) {
             $this->session->flashSet('errors', [
                 'login' => 'Invalid credentials.'
             ]);
 
-            header('Location: index.php?route=loginpage', true, 303);
+            header('Location: index.php?route=login', true, 303);
             exit;
         }
 

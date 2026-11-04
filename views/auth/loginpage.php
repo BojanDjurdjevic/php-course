@@ -74,5 +74,12 @@ $success = $session->flashGet('success', '');
 
     </form>
 
+    <a
+        href="index.php?route=resend-verification"
+        class="text-sm text-blue-400 hover:text-blue-300"
+    >
+        Didn't receive your verification email?
+    </a>
+
 </body>
 </html>
