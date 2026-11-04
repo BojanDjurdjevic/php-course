@@ -21,26 +21,8 @@ use App\Session\Session;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-
 // =================================================
-// 1. SESSION + GLOBAL CSRF + Logger
-// =================================================
-
-$session = new Session();
-$session->start();
-
-if (!is_string($session->get('csrf_token'))) {
-    $session->put(
-        'csrf_token',
-        bin2hex(random_bytes(32))
-    );
-}
-
-$logger = new Logger();
-
-
-// =================================================
-// 2. ENV + DATABASE + limiter
+// 1. ENV + DATABASE + limiter
 // =================================================
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
@@ -56,6 +38,23 @@ $database = new Database(
 $pdo = $database->connect();
 
 $limiter = new RateLimiter($pdo);
+
+// =================================================
+// 2. SESSION + GLOBAL CSRF + Logger
+// =================================================
+
+$session = new Session();
+$session->start();
+
+if (!is_string($session->get('csrf_token'))) {
+    $session->put(
+        'csrf_token',
+        bin2hex(random_bytes(32))
+    );
+}
+
+$logger = new Logger();
+
 // =================================================
 // 3. REPOSITORIES
 // =================================================
