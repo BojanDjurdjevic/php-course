@@ -8,7 +8,7 @@ $success = $session->flashGet('success');
 ?>
 <body class="p-3 bg-gray-800 flex flex-col justify-center items-center w-screen h-screen">
 
-    <h2 class="text-center text-white">Forgot password</h2>
+    <h2 class="text-center text-white">Resend email verification</h2>
 
     <?php if (is_string($success) && $success !== ''): ?>
         <p class="text-green-500 text-sm text-center">

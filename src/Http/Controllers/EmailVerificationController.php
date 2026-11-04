@@ -10,7 +10,7 @@ final class EmailVerificationController {
     public function __construct(
         private EmailVerificationService $verify,
         private Session $session,
-        private RateLimiter $limiter
+        private RateLimiter  $limiter
     ) {}
 
     public function emailVerify(): void
@@ -30,13 +30,13 @@ final class EmailVerificationController {
 
         if(!is_string($token)) {
             http_response_code(400);
-            require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
+            require __DIR__ . '/../../../views/errors/invalid-verification-token.php';
             exit;
         }
 
         if(!$this->verify->verify($token)) {
             http_response_code(400);
-            require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
+            require __DIR__ . '/../../../views/errors/invalid-verification-token.php';
             exit;
         }
 
@@ -68,8 +68,12 @@ final class EmailVerificationController {
             !is_string($email) ||
             !filter_var($email, FILTER_VALIDATE_EMAIL)
         ) {
-            // Flash validation error + redirect
-            return;
+            $this->session->flashSet('errors', [
+                'email' => 'Please enter a valid email address.'
+            ]);
+
+            header('Location: index.php?route=resend-verification', true, 303);
+            exit;
         }
 
         $email = mb_strtolower(trim($email));
@@ -93,7 +97,10 @@ final class EmailVerificationController {
 
         $this->session->flashSet(
             'success',
-            'If this account exists and is not verified, verification instructions will be provided.'
+            'If the account is eligible, verification instructions will be provided.'
         );
+
+        header('Location: index.php?route=resend-verification', true, 303);
+        exit;
     }
 }
