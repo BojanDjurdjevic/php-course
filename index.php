@@ -1,6 +1,7 @@
 <?php
 
 use App\Auth\AuthService;
+use App\Auth\EmailVerificationService;
 use App\Auth\PasswordResetService;
 use App\Auth\RegistrationService;
 use App\Auth\RememberMeService;
@@ -10,6 +11,7 @@ use App\Helpers\Logger;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\ResetPasswordController;
+use App\Repositories\PdoEmailVerificationRepository;
 use App\Repositories\PdoPasswordResetTokenRepository;
 use App\Repositories\PdoUserRepository;
 use App\Repositories\PdoRememberMeTokenRepository;
@@ -63,6 +65,8 @@ $rememberRepository = new PdoRememberMeTokenRepository($pdo);
 
 $resetRepository = new PdoPasswordResetTokenRepository($pdo);
 
+$emailVerifyRepository = new PdoEmailVerificationRepository($pdo);
+
 
 // =================================================
 // 4. SERVICES
@@ -84,6 +88,8 @@ $rememberMeService = new RememberMeService(
 );
 
 $resetService = new PasswordResetService($resetRepository, $userRepository, $rememberRepository, $pdo, $logger);
+
+$emailVerifyService = new EmailVerificationService($emailVerifyRepository, $userRepository, $pdo, $logger);
 
 
 // =================================================
@@ -259,6 +265,27 @@ switch ("$method:$route") {
     case 'POST:reset-password':
         $resetController->resetPassword();
         break;
+    
+    // ---------------------------------------------
+    // Email verify routes
+    // ---------------------------------------------
+
+    case 'GET:email-verify':
+
+        $token = $_GET['token'] ?? null;
+
+        if (
+            !is_string($token) ||
+            !$emailVerifyService->validateToken($token)
+        ) {
+            http_response_code(400);
+            require __DIR__ . '/views/errors/invalid-token.php';
+            break;
+        }
+
+        require __DIR__ . '/views/auth/reset-password.php';
+    break;
+
 
 
     // ---------------------------------------------

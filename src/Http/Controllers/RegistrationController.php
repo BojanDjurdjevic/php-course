@@ -35,7 +35,7 @@ final class RegistrationController {
         }
 
         try {
-            $this->service->register($validated);
+            $user = $this->service->register($validated);
         } catch(DomainException $e) {
             $this->session->flashSet('errors', [
                 'email' => 'Email address already registered.'
