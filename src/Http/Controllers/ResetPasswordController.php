@@ -86,16 +86,46 @@ final class ResetPasswordController {
             exit;
         }
 
-        // REQUEST validate
         $token = $_POST['token'] ?? null;
-        $password = $_POST['password'] ?? null;
-        $passwordConfirm = $_POST['password_confirmation'] ?? null;
 
         if (!is_string($token)) {
             http_response_code(400);
             require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
             exit;
         }
+
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+        $ipAllowed = $this->limiter->allowPerHour(
+            'reset_submit_ip',
+            $ip,
+            9
+        );
+
+        if(!$ipAllowed) {
+            $this->session->flashSet(
+                'errors',
+                ['reset' => 'Too many attempts, pls try again later.']
+            );
+
+            header(
+                'Location: index.php?route=reset-password&token='
+                . rawurlencode($token),
+                true,
+                303
+            );
+            exit;
+        }
+
+        if (!$this->reset->validateToken($token)) {
+            http_response_code(400);
+            require __DIR__ . '/../../../views/errors/invalid-reset-token.php';
+            exit;
+        }
+
+        // REQUEST validate
+        $password = $_POST['password'] ?? null;
+        $passwordConfirm = $_POST['password_confirmation'] ?? null;
 
         $validator = new Validator();
 
