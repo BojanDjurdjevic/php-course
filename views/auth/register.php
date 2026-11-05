@@ -20,6 +20,12 @@ $success = $session->flashGet('success', '');
         </p>
     <?php endif; ?>
 
+    <?php if (isset($errors['register'])): ?>
+        <p class="text-red-500 text-sm text-center">
+            <?= htmlspecialchars($errors['register'], ENT_QUOTES, 'UTF-8') ?>
+        </p>
+    <?php endif; ?>
+
     <form 
         action="index.php?route=register" method="POST"
         class="w-full max-w-md max-h-full min-h-72 p-6 m-3 bg-gray-900 rounded-2xl shadow-lg
