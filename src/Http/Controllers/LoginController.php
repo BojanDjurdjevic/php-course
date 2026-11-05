@@ -7,14 +7,15 @@ use App\Auth\RememberMeService;
 use App\Enums\LoginResult;
 use App\Helpers\Validator;
 use App\Http\Requests\UserLoginRequest;
+use App\Security\RateLimiter;
 use App\Session\Session;
-use Throwable;
 
 final class LoginController {
     public function __construct(
         private AuthService $auth,
         private RememberMeService $remember,
-        private Session $session
+        private Session $session,
+        private RateLimiter $limiter
     ) {}
 
     public function login(): void
@@ -23,11 +24,27 @@ final class LoginController {
         $received = $_POST['_token'] ?? null;
 
         if(!is_string($expected) || !is_string($received) || !hash_equals($expected, $received)) {
-            //$this->session->put('page', 'loginpage');
             $page = 'loginpage';
 
             http_response_code(403);
             require __DIR__ . '/../../../views/errors/403.php';
+            exit;
+        }
+
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+        $ipAllowed = $this->limiter->allowPerHour(
+            'login_ip',
+            $ip,
+            40
+        );
+
+        if(!$ipAllowed) {
+            $this->session->flashSet('errors', [
+                'login' => 'Too many login attempts. Please try again later.'
+            ]);
+
+            header('Location: index.php?route=loginpage', true, 303);
             exit;
         }
 
@@ -42,7 +59,22 @@ final class LoginController {
         if(is_array($validated)) {
             $this->session->flashSet('errors', $validated);
 
-            header('location: index.php?route=loginpage', true, 303);
+            header('location: index.php?route=login', true, 303);
+            exit;
+        }
+
+        $emailAllowed = $this->limiter->allowPerHour(
+            'login_email',
+            $validated->email,
+            10
+        );
+
+        if(!$emailAllowed) {
+            $this->session->flashSet('errors', [
+                'login' => 'Too many login attempts. Please try again later.'
+            ]);
+
+            header('Location: index.php?route=login', true, 303);
             exit;
         }
 

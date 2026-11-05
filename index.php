@@ -105,7 +105,8 @@ $registrationController = new RegistrationController(
 $loginController = new LoginController(
     $authService,
     $rememberMeService,
-    $session
+    $session,
+    $limiter
 );
 
 $resetController = new ResetPasswordController($session, $resetService, $limiter);
