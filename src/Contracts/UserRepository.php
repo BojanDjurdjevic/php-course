@@ -18,4 +18,11 @@ interface UserRepository {
 
     public function incrementAuthVersion(int $userId): void;
 
+    public function rehashIfUnchanged(
+        int $userId,
+        string $expectedHash,
+        int $expectedVersion,
+        string $newHash
+    ): bool;
+
 }

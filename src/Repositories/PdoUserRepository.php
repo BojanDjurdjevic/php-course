@@ -108,6 +108,27 @@ final class PdoUserRepository implements UserRepository {
         ]);
     }
 
+    #[Override]
+    public function rehashIfUnchanged(int $userId, string $expectedHash, int $expectedVersion, string $newHash): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "UPDATE users
+            SET password_hash = :new_hash
+            WHERE id = :id
+            AND CAST(password_hash AS BINARY) = CAST(:expected_hash AS BINARY)
+            AND auth_version = :expected_version"
+        );
+
+        $stmt->execute([
+            'new_hash' => $newHash,
+            'id' => $userId,
+            'expected_hash' => $expectedHash,
+            'expected_version' => $expectedVersion
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
     private function hydrateUser(object $data): User
     {
         return new User(
@@ -122,6 +143,4 @@ final class PdoUserRepository implements UserRepository {
             (int) $data->auth_version
         ); 
     }
-
-
 }

@@ -91,7 +91,9 @@ final class AuthService {
         if(password_needs_rehash($user->passwordHash(), PASSWORD_DEFAULT)) {
             $hashed = password_hash($password, PASSWORD_DEFAULT);
 
-            $this->users->updatePasswordHash($user->id(), $hashed);
+            if(!$this->users->rehashIfUnchanged($user->id(), $user->passwordHash(), $user->authVersion(), $hashed)) {
+                return LoginResult::INVALID_CREDENTIALS;
+            }
         }
 
         $this->login($user);
